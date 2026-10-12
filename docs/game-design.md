@@ -84,3 +84,14 @@ anything shared publicly. Your own homebrew comes from the roster.
     Graze / Vex / Slow / Sap masteries
   - Not yet: cover, area effects, spells and spell slots, Hide, Help,
     grappling and shoving. These come in M4.
+- **M2 done:** Play page (🎮 in the DM menu).
+  - Three scenarios at 2024 difficulty: Goblin Ambush, The Restless Crypt,
+    Bandit Camp. Saved encounters with stat-block monsters can be played
+    too.
+  - Click to move (range and path cost shown), pick an action then a
+    target (chance to hit and the reasons for Advantage shown), plus Dash,
+    Disengage, Dodge, Second Wind and stand up.
+  - Monster AI, combat log, floating damage numbers.
+  - Auto-save and resume; victory and defeat screens.
+  - With the AI playing the party, it wins 70–83% of fights, which take
+    about 4 rounds.

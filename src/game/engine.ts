@@ -530,6 +530,9 @@ export function apply(state: GameState, cmd: Command, opts: { rng?: Rng } = {}):
   const next = produce(state, (draft) => {
     const ctx: Ctx = { s: draft, rng: opts.rng ?? seeded.rng, events };
     run(ctx, cmd);
+    // Whatever happened (a kill by Graze, an opportunity attack, a failed
+    // death save…), check for victory/defeat after every command.
+    checkOutcome(ctx);
     if (!opts.rng) draft.rngSeed = seeded.seed();
   });
   return { state: next, events };

@@ -2,7 +2,7 @@ import clsx from "clsx";
 import type { Combatant } from "../domain/types";
 
 /** HP as a bar: green → amber when bloodied → empty when down; temp HP in blue. */
-export function HpBar({ combatant: c, className }: { combatant: Combatant; className?: string }) {
+export function HpBar({ combatant: c, className }: { combatant: Pick<Combatant, "hpCurrent" | "hpMax" | "hpTemp">; className?: string }) {
   const max = Math.max(1, c.hpMax);
   const pct = Math.min(100, (Math.max(0, c.hpCurrent) / max) * 100);
   const tempPct = Math.min(100 - pct, (c.hpTemp / max) * 100);

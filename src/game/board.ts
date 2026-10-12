@@ -112,15 +112,28 @@ export function findPath(board: Board, from: Cell, to: Cell, budget: number, opt
   return { path, cost: total };
 }
 
-/** True if no wall cell lies on the line between the two cells' centres. */
+/**
+ * True if a straight line between the two cells' centres avoids walls.
+ * A line that grazes a wall corner counts as clear if it would be clear when
+ * nudged to either side, so you can see (and strike) diagonally past a
+ * corner even though you can't step past it.
+ */
 export function lineOfSight(board: Board, a: Cell, b: Cell): boolean {
   const idx = makeBoardIndex(board);
-  const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y)) * 4;
-  for (let i = 1; i < steps; i++) {
-    const t = i / steps;
-    const c = { x: Math.round(a.x + (b.x - a.x) * t), y: Math.round(a.y + (b.y - a.y) * t) };
-    if (sameCell(c, a) || sameCell(c, b)) continue;
-    if (idx.isWall(c)) return false;
-  }
-  return true;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const clear = (nudge: number) => {
+    const ox = (-dy / len) * nudge;
+    const oy = (dx / len) * nudge;
+    const steps = Math.max(Math.abs(dx), Math.abs(dy)) * 8;
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const c = { x: Math.round(a.x + dx * t + ox), y: Math.round(a.y + dy * t + oy) };
+      if (sameCell(c, a) || sameCell(c, b)) continue;
+      if (idx.isWall(c)) return false;
+    }
+    return true;
+  };
+  return clear(0.01) || clear(-0.01);
 }

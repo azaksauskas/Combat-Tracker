@@ -13,6 +13,7 @@ const NAV = [
   { to: "/encounters", label: "⚔️ Encounters" },
   { to: "/campaign", label: "📜 Campaign notes" },
   { to: "/info", label: "📕 Rules & notes" },
+  { to: "/play", label: "🎮 Play" },
 ];
 
 function ThemeButton({ className }: { className?: string }) {

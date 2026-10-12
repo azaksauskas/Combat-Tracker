@@ -69,9 +69,12 @@ describe("board", () => {
     expect([...r.keys()].sort()).toEqual(["0,0", "0,1", "1,0"]);
   });
 
-  it("blocks line of sight through walls", () => {
+  it("blocks line of sight through walls but not past a single corner", () => {
     expect(lineOfSight(board, { x: 0, y: 1 }, { x: 3, y: 1 })).toBe(false);
     expect(lineOfSight(board, { x: 0, y: 0 }, { x: 3, y: 0 })).toBe(true);
+    expect(lineOfSight(board, { x: 1, y: 0 }, { x: 0, y: 1 })).toBe(true); // diagonal next to the wall at (1,1)
+    const pillar = boardFromAscii(["...", ".#.", "..."]);
+    expect(lineOfSight(pillar, { x: 0, y: 0 }, { x: 2, y: 2 })).toBe(false); // straight through the pillar
   });
 });
 
@@ -155,6 +158,16 @@ describe("attacks", () => {
     const r = run(s, { type: "action", unitId: "brann", actionId: actionId(s, "brann", "Greatsword"), targetId: "gob" }, dice([2, 20]));
     expect(ofType(r.events, "attack")[0]!.hit).toBe(false);
     expect(unitOf(r.state, "gob").hp).toBe(7);
+  });
+
+  it("a kill by Graze still ends the battle", () => {
+    let s = game(OPEN, [setup("brann", "fighter", { x: 0, y: 0 }), setup("gob", "goblin-warrior", { x: 1, y: 0 })]);
+    s = produce(s, (d) => {
+      d.units[1]!.hp = 2;
+    });
+    const r = run(s, { type: "action", unitId: "brann", actionId: actionId(s, "brann", "Greatsword"), targetId: "gob" }, dice([2, 20]));
+    expect(unitOf(r.state, "gob").dead).toBe(true);
+    expect(r.state.outcome).toBe("victory");
   });
 
   it("Pack Tactics gives Advantage and the bite knocks Prone", () => {

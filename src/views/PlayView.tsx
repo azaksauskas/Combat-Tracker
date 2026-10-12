@@ -1,0 +1,366 @@
+import clsx from "clsx";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { HpBar } from "../components/HpBar";
+import { PARTY } from "../content/srd";
+import { describeAction, formatMod } from "../domain/statblock";
+import { averageDamage, hitChance } from "../game/ai";
+import { canAct, checkTarget, currentUnit } from "../game/engine";
+import { GameBoard, type BoardMode } from "../game/GameBoard";
+import { SCENARIOS, encounterScenario, type Scenario } from "../game/scenarios";
+import type { GameState, Unit } from "../game/state";
+import { dispatch, quitGame, runAi, startGame, usePlay } from "../game/store";
+import { useGame } from "../store/game";
+
+/** Solo skirmish: your four heroes against an encounter, monsters run by the computer. */
+export function PlayView() {
+  const game = usePlay((s) => s.game);
+  // A reload during the monsters' turn picks up where it left off.
+  useEffect(() => {
+    if (usePlay.getState().game) runAi();
+  }, []);
+  return game ? <Battle game={game} /> : <ScenarioPicker />;
+}
+
+function ScenarioPicker() {
+  const encounters = useGame((s) => s.library.encounters);
+  const playable = encounters
+    .map((e) => encounterScenario(e.name, e.combatants))
+    .filter((sc) => sc.custom.length > 0);
+
+  const card = (sc: Scenario & { custom?: unknown[] }) => (
+    <li key={sc.id} className="flex flex-col rounded-lg border border-line bg-surface p-4 shadow">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-lg font-bold text-accent">{sc.name}</h3>
+        {sc.difficulty && <span className="text-xs text-faint uppercase">{sc.difficulty}</span>}
+      </div>
+      <p className="mt-1 flex-1 text-sm text-muted">{sc.blurb}</p>
+      <button className="btn btn-primary mt-3 font-display" onClick={() => startGame(sc as Scenario)}>
+        ⚔ Fight
+      </button>
+    </li>
+  );
+
+  return (
+    <div className="mx-auto w-full max-w-5xl space-y-8">
+      <header>
+        <h2 className="text-3xl font-bold text-accent">Play</h2>
+        <p className="text-sm text-muted">A solo skirmish with the 2024 rules. You command the party; the monsters fight back.</p>
+      </header>
+      <section>
+        <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">Your party</h3>
+        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {PARTY.map((p) => (
+            <li key={p.key} className="rounded-md border border-line bg-surface-2 p-3 text-sm">
+              <div className="font-bold text-strong">{p.label}</div>
+              <div className="text-xs text-faint">{p.subtitle}</div>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section>
+        <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">Choose a battle</h3>
+        <ul className="grid gap-3 md:grid-cols-3">{SCENARIOS.map(card)}</ul>
+      </section>
+      {playable.length > 0 && (
+        <section>
+          <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">From your saved encounters</h3>
+          <ul className="grid gap-3 md:grid-cols-3">{playable.map(card)}</ul>
+          <p className="mt-2 text-xs text-faint">Only monsters with a structured stat block take part.</p>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function Battle({ game }: { game: GameState }) {
+  const { scenario, log, fx, aiRunning } = usePlay();
+  const [mode, setMode] = useState<BoardMode>({ kind: "move" });
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const active = currentUnit(game);
+  const heroTurn = !aiRunning && !game.outcome && active?.side === "party" && canAct(active);
+
+  // Back to moving whenever the turn changes or an action is used.
+  useEffect(() => setMode({ kind: "move" }), [active?.id, active?.turn.action]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "Escape") setMode({ kind: "move" });
+      if ((e.key === "e" || e.key === "E") && heroTurn && active) dispatch({ type: "end-turn", unitId: active.id });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [heroTurn, active]);
+
+  return (
+    <div className="flex w-full flex-col gap-3 lg:h-[calc(100dvh-6rem)]">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-2xl font-bold text-accent">{scenario?.name ?? "Skirmish"}</h2>
+          <p className="text-sm text-muted">
+            Round <strong className="text-strong">{game.round}</strong> ·{" "}
+            {game.outcome ? (game.outcome === "victory" ? "Victory!" : "Defeat") : aiRunning ? "Monsters are acting…" : active ? `${active.name}'s turn` : ""}
+          </p>
+        </div>
+        <button className="btn btn-ghost" onClick={() => confirm("Abandon this battle?") && quitGame()}>
+          Quit battle
+        </button>
+      </header>
+
+      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[15rem_1fr_20rem]">
+        <TurnOrder game={game} hoverId={hoverId} />
+
+        <section className="relative min-h-[50dvh] rounded-lg border border-line bg-surface p-2 shadow lg:min-h-0" aria-label="Battlefield">
+          <GameBoard
+            game={game}
+            mode={mode}
+            interactive={heroTurn}
+            fx={fx}
+            onMove={(to) => active && dispatch({ type: "move", unitId: active.id, to })}
+            onTarget={(targetId) => {
+              if (active && mode.kind === "target") dispatch({ type: "action", unitId: active.id, actionId: mode.actionId, targetId });
+            }}
+            onHoverUnit={setHoverId}
+          />
+          {game.outcome && <Outcome game={game} />}
+        </section>
+
+        <div className="flex min-h-0 flex-col gap-3">
+          {active && !game.outcome && <HeroPanel game={game} unit={active} heroTurn={heroTurn} mode={mode} setMode={setMode} hoverId={hoverId} />}
+          <CombatLog lines={log} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TurnOrder({ game, hoverId }: { game: GameState; hoverId: string | null }) {
+  const active = currentUnit(game);
+  return (
+    <section className="min-h-0 overflow-y-auto rounded-lg border border-line bg-surface p-2 shadow" aria-label="Turn order">
+      <ol className="space-y-1">
+        {game.units.map((u) => (
+          <li
+            key={u.id}
+            className={clsx(
+              "rounded-md border px-2 py-1.5 text-sm",
+              u.id === active?.id ? "border-accent bg-accent/10" : u.id === hoverId ? "border-line bg-surface-3/50" : "border-transparent",
+              u.dead && "opacity-40",
+            )}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className={clsx("truncate font-semibold", u.side === "enemy" ? "text-danger" : "text-strong", u.dead && "line-through")}>{u.name}</span>
+              <span className="text-xs text-faint tabular-nums">
+                {u.hp}/{u.hpMax}
+              </span>
+            </div>
+            <HpBar combatant={{ hpCurrent: u.hp, hpMax: u.hpMax, hpTemp: u.tempHp }} className="mt-1" />
+            {(u.conditions.length > 0 || (u.hp <= 0 && !u.dead && u.side === "party")) && (
+              <div className="mt-1 text-[10px] text-muted">
+                {u.conditions.join(", ")}
+                {u.hp <= 0 && !u.dead && u.side === "party" && ` · death saves ${u.death.successes}✓ ${u.death.failures}✗${u.death.stable ? " (stable)" : ""}`}
+              </div>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function Pip({ on, label }: { on: boolean; label: string }) {
+  return (
+    <span className={clsx("rounded-full px-2 py-0.5 text-xs font-semibold", on ? "bg-heal text-white" : "bg-surface-3 text-faint line-through")}>{label}</span>
+  );
+}
+
+function HeroPanel({
+  game,
+  unit: u,
+  heroTurn,
+  mode,
+  setMode,
+  hoverId,
+}: {
+  game: GameState;
+  unit: Unit;
+  heroTurn: boolean;
+  mode: BoardMode;
+  setMode: (m: BoardMode) => void;
+  hoverId: string | null;
+}) {
+  const send = (cmd: Parameters<typeof dispatch>[0]) => dispatch(cmd);
+  const prone = u.conditions.includes("Prone");
+  const secondWind = u.stats.features.includes("second-wind") ? (u.resources["second-wind"] ?? 0) : null;
+  const target = hoverId ? game.units.find((x) => x.id === hoverId) : undefined;
+
+  return (
+    <section className="space-y-3 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Current creature">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-lg font-bold text-strong">{u.name}</h3>
+        <span className="text-xs text-faint">
+          AC {u.ac} · {u.hp}/{u.hpMax} HP
+        </span>
+      </div>
+      {u.side === "party" ? (
+        <>
+          <div className="flex flex-wrap gap-1">
+            <Pip on={u.turn.action} label="Action" />
+            <Pip on={u.turn.bonusAction} label="Bonus" />
+            <Pip on={u.reaction} label="Reaction" />
+            <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-semibold text-strong">{u.turn.movement} ft</span>
+          </div>
+
+          <div className="space-y-1.5">
+            {u.stats.actions.map((a) => (
+              <button
+                key={a.id}
+                disabled={!heroTurn || !u.turn.action}
+                onClick={() => setMode(mode.kind === "target" && mode.actionId === a.id ? { kind: "move" } : { kind: "target", actionId: a.id })}
+                aria-pressed={mode.kind === "target" && mode.actionId === a.id}
+                className={clsx(
+                  "w-full rounded-md border p-2 text-left text-sm transition disabled:opacity-40",
+                  mode.kind === "target" && mode.actionId === a.id ? "border-accent bg-accent/10" : "border-line bg-surface-2 hover:border-accent",
+                )}
+              >
+                <div className="font-semibold text-strong">{a.name}</div>
+                <div className="text-xs text-muted">{describeAction(a)}</div>
+              </button>
+            ))}
+          </div>
+
+          {mode.kind === "target" && (
+            <TargetPreview game={game} attacker={u} actionId={mode.actionId} target={target} />
+          )}
+
+          <div className="grid grid-cols-3 gap-1">
+            <button className="btn px-1 text-xs" disabled={!heroTurn || !u.turn.action} onClick={() => send({ type: "dash", unitId: u.id })} title="Double your movement this turn">
+              Dash
+            </button>
+            <button className="btn px-1 text-xs" disabled={!heroTurn || !u.turn.action} onClick={() => send({ type: "disengage", unitId: u.id })} title="Move without opportunity attacks">
+              Disengage
+            </button>
+            <button className="btn px-1 text-xs" disabled={!heroTurn || !u.turn.action} onClick={() => send({ type: "dodge", unitId: u.id })} title="Attacks against you have Disadvantage">
+              Dodge
+            </button>
+            {secondWind !== null && (
+              <button
+                className="btn col-span-2 px-1 text-xs"
+                disabled={!heroTurn || !u.turn.bonusAction || secondWind <= 0}
+                onClick={() => send({ type: "second-wind", unitId: u.id })}
+                title="Bonus action: regain 1d10 + level HP"
+              >
+                Second Wind ({secondWind})
+              </button>
+            )}
+            {prone && (
+              <button className="btn px-1 text-xs" disabled={!heroTurn} onClick={() => send({ type: "stand-up", unitId: u.id })}>
+                Stand up
+              </button>
+            )}
+          </div>
+
+          <button className="btn btn-primary w-full font-display" disabled={!heroTurn} onClick={() => send({ type: "end-turn", unitId: u.id })} title="Shortcut: E">
+            End turn
+          </button>
+          <p className="text-[11px] text-faint">
+            {mode.kind === "target" ? "Click a highlighted creature to attack · Esc to cancel" : "Click a lit square to move · pick an action to attack"}
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-muted italic">The monsters are taking their turn…</p>
+      )}
+    </section>
+  );
+}
+
+function TargetPreview({ game, attacker, actionId, target }: { game: GameState; attacker: Unit; actionId: string; target: Unit | undefined }) {
+  const action = attacker.stats.actions.find((a) => a.id === actionId);
+  if (!action) return null;
+  if (!target || target.id === attacker.id || target.dead) return <p className="text-xs text-muted italic">Hover a creature to see your odds.</p>;
+  const check = checkTarget(game, attacker.id, actionId, target.id);
+  if (!check.ok) return <p className="text-xs text-danger">{check.reason}</p>;
+  const odds =
+    action.kind === "attack"
+      ? `${Math.round(hitChance(action.toHit, target.ac, check.advantage) * 100)}% to hit (${formatMod(action.toHit)} vs AC ${target.ac})`
+      : `DC ${action.dc} ${action.save.toUpperCase()} save`;
+  return (
+    <div className="rounded-md border border-line bg-surface-2/60 p-2 text-xs">
+      <div className="font-semibold text-strong">
+        {target.name}: {odds}
+      </div>
+      <div className="text-muted">≈ {averageDamage(action.damage).toFixed(1)} damage on a hit</div>
+      {check.reasons.length > 0 && (
+        <ul className="mt-1 space-y-0.5">
+          {check.reasons.map((r) => (
+            <li key={r} className={r.startsWith("+") ? "text-heal" : "text-danger"}>
+              {r.startsWith("+") ? "▲" : "▼"} {r.slice(2)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function CombatLog({ lines }: { lines: { id: number; text: string; tone: string }[] }) {
+  const ref = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    ref.current?.scrollTo({ top: ref.current.scrollHeight });
+  }, [lines.length]);
+  const tone = useMemo(
+    () =>
+      ({
+        turn: "mt-1 font-semibold text-accent",
+        hit: "text-strong",
+        crit: "font-bold text-highlight",
+        miss: "text-faint",
+        heal: "text-heal",
+        bad: "text-danger",
+        info: "text-muted",
+        win: "font-bold text-heal",
+        lose: "font-bold text-danger",
+      }) as Record<string, string>,
+    [],
+  );
+  return (
+    <section className="flex min-h-48 flex-1 flex-col rounded-lg border border-line bg-surface shadow lg:min-h-0" aria-label="Combat log">
+      <h3 className="border-b border-line px-3 py-1.5 text-xs font-bold tracking-wider text-faint uppercase">Combat log</h3>
+      <ol ref={ref} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-3 text-xs">
+        {lines.map((l) => (
+          <li key={l.id} className={tone[l.tone]}>
+            {l.text}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function Outcome({ game }: { game: GameState }) {
+  const scenario = usePlay((s) => s.scenario);
+  const won = game.outcome === "victory";
+  const fallen = game.units.filter((u) => u.side === "party" && u.dead).length;
+  const downed = game.units.filter((u) => u.side === "party" && !u.dead && u.hp <= 0).length;
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="w-80 rounded-lg border border-line bg-surface p-6 text-center shadow-2xl">
+        <h3 className={clsx("text-3xl font-bold", won ? "text-heal" : "text-danger")}>{won ? "Victory!" : "Defeat"}</h3>
+        <p className="mt-2 text-sm text-muted">
+          {won ? `Won in ${game.round} round${game.round === 1 ? "" : "s"}.` : "The party has fallen."}
+          {won && (fallen || downed) ? ` ${fallen ? `${fallen} fallen` : ""}${fallen && downed ? ", " : ""}${downed ? `${downed} unconscious` : ""}.` : ""}
+        </p>
+        <div className="mt-4 flex flex-col gap-2">
+          {scenario && (
+            <button className="btn btn-primary font-display" onClick={() => startGame(scenario)}>
+              Play again
+            </button>
+          )}
+          <button className="btn" onClick={quitGame}>
+            Choose another battle
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
