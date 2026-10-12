@@ -26,6 +26,8 @@ Copy `.env.example` to `.env.local` to configure it. Set `VITE_SYNC_BACKEND=loca
 | `#/encounters`| Saved encounters and the roster       |
 | `#/campaign`  | Campaign notes                        |
 | `#/info`      | DM reference (conditions)             |
+| `#/play`      | The solo game: party, adventures, skirmishes |
+| `#/adventures`| Adventure editor                      |
 
 Old `#admin` style links redirect automatically.
 
@@ -75,7 +77,7 @@ Display preferences (theme, custom colours, sidebar, map layout) are stored per 
 
 ## Game
 
-A solo 5e (2024 rules) adventure is being built on top of the tracker; see [docs/game-design.md](docs/game-design.md) for the plan and milestones.
+A solo 5e (2024 rules) game built on top of the tracker: story scenes with choices and skill checks, tactical grid battles, spells, levels 1–3, a character builder, and an editor for writing your own adventures. See [docs/game-design.md](docs/game-design.md) for the design and what each milestone delivered.
 
 ## Credits
 

@@ -1,3 +1,4 @@
+import { AdventureEditorView } from "./views/AdventureEditorView";
 import { lazy, Suspense } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router";
 import { Toaster } from "sonner";
@@ -27,6 +28,7 @@ export function App() {
           <Route path="campaign" element={<CampaignView />} />
           <Route path="info" element={<RulesView />} />
           <Route path="play" element={<PlayView />} />
+          <Route path="adventures" element={<AdventureEditorView />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -1,4 +1,4 @@
-import { PARTY, SRD_MONSTERS } from "../content/srd";
+import { PARTY, SRD_MONSTERS, type ContentEntry } from "../content/srd";
 import type { Combatant } from "../domain/types";
 import type { Cell } from "./board";
 import { boardFromAscii, type UnitSetup } from "./engine";
@@ -105,8 +105,8 @@ function starts(map: string[], ch: (c: string) => boolean): Cell[] {
 
 const content = [...PARTY, ...SRD_MONSTERS];
 
-function unitFrom(id: string, key: string, side: UnitSetup["side"], pos: Cell): UnitSetup {
-  const c = content.find((e) => e.key === key)!.build();
+function unitFrom(id: string, key: string | ContentEntry, side: UnitSetup["side"], pos: Cell): UnitSetup {
+  const c = (typeof key === "string" ? content.find((e) => e.key === key)! : key).build();
   return { id, name: c.name, side, image: c.image, stats: c.stats!, ac: c.ac, hp: c.hpMax, speed: c.speed, pos };
 }
 
@@ -120,13 +120,13 @@ function uniqueNames(units: UnitSetup[]) {
   });
 }
 
-export function scenarioSetup(sc: Scenario) {
+export function scenarioSetup(sc: Scenario, members: ContentEntry[] = PARTY) {
   const board = boardFromAscii(sc.map.map((r) => r.replace(/[P1-9]/g, ".")));
   const partyCells = starts(sc.map, (c) => c === "P");
   const monsterCells = starts(sc.map, (c) => /[1-9]/.test(c));
-  const party = PARTY.map((p, i) => unitFrom(`p${i}`, p.key, "party", partyCells[i] ?? { x: 0, y: i }));
+  const party = members.map((p, i) => unitFrom(`p${i}`, p, "party", partyCells[i] ?? { x: 0, y: i }));
   const monsters = sc.monsters.map((m, i) => unitFrom(`m${i}`, m, "enemy", monsterCells[i] ?? { x: board.width - 1, y: i }));
-  return { board, units: uniqueNames([...party, ...monsters]) };
+  return { board, units: uniqueNames([...party, ...monsters]), partyCells };
 }
 
 /** Plays a saved encounter from the DM tools: its monsters (with stat blocks) on an open field. */
@@ -153,8 +153,8 @@ export function encounterScenario(name: string, combatants: Combatant[]): Scenar
   return { id: `encounter:${name}`, name, blurb: `${custom.length} monsters from your saved encounter.`, map, monsters: [], custom };
 }
 
-export function setupFor(sc: Scenario & { custom?: UnitSetup[] }) {
-  if (!sc.custom) return scenarioSetup(sc);
-  const base = scenarioSetup({ ...sc, monsters: [] });
-  return { board: base.board, units: [...base.units, ...sc.custom] };
+export function setupFor(sc: Scenario & { custom?: UnitSetup[] }, members: ContentEntry[] = PARTY) {
+  if (!sc.custom) return scenarioSetup(sc, members);
+  const base = scenarioSetup({ ...sc, monsters: [] }, members);
+  return { board: base.board, units: [...base.units, ...sc.custom], partyCells: base.partyCells };
 }

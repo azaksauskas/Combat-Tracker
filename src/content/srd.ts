@@ -15,17 +15,17 @@ type ActionInput = Omit<Extract<StatAction, { kind: "attack" }>, "id" | "kind" |
 };
 type SaveInput = Omit<Extract<StatAction, { kind: "save" }>, "id" | "kind" | "notes"> & { notes?: string };
 
-const attack = (a: ActionInput): StatAction => ({ id: newId(), kind: "attack", reach: 5, range: null, notes: "", ...a });
-const save = (a: SaveInput): StatAction => ({ id: newId(), kind: "save", notes: "", ...a });
+export const attack = (a: ActionInput): StatAction => ({ id: newId(), kind: "attack", reach: 5, range: null, notes: "", ...a });
+export const save = (a: SaveInput): StatAction => ({ id: newId(), kind: "save", notes: "", ...a });
 type Spell<K extends StatAction["kind"]> = Omit<Extract<StatAction, { kind: K }>, "id" | "kind" | "notes"> & { notes?: string };
-const heal = (a: Spell<"heal">): StatAction => ({ id: newId(), kind: "heal", notes: "", ...a });
-const buff = (a: Spell<"buff">): StatAction => ({ id: newId(), kind: "buff", notes: "", ...a });
-const missile = (a: Spell<"missile">): StatAction => ({ id: newId(), kind: "missile", notes: "", ...a });
-const stats = (s: Partial<StatBlock> & Pick<StatBlock, "abilities">): StatBlock => StatBlockSchema.parse(s);
+export const heal = (a: Spell<"heal">): StatAction => ({ id: newId(), kind: "heal", notes: "", ...a });
+export const buff = (a: Spell<"buff">): StatAction => ({ id: newId(), kind: "buff", notes: "", ...a });
+export const missile = (a: Spell<"missile">): StatAction => ({ id: newId(), kind: "missile", notes: "", ...a });
+export const stats = (s: Partial<StatBlock> & Pick<StatBlock, "abilities">): StatBlock => StatBlockSchema.parse(s);
 
 const plainText = (traits: StatBlock["traits"]) => traits.map((t) => `<p><strong>${t.name}.</strong> ${t.text}</p>`).join("");
 
-function creature(
+export function creature(
   base: Pick<CombatantDraft, "name" | "isMonster" | "ac" | "hpMax" | "speed"> & { size?: number },
   block: StatBlock,
 ): CombatantDraft {

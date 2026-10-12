@@ -6,11 +6,14 @@ export function Dialog({
   onClose,
   title,
   children,
+  wide,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
+  /** For bigger forms, e.g. the character builder. */
+  wide?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
 
@@ -26,7 +29,7 @@ export function Dialog({
       ref={ref}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
-      className="m-auto w-[min(40rem,calc(100vw-2rem))] rounded-lg border border-line bg-surface p-0 text-text shadow-2xl"
+      className={`m-auto ${wide ? "w-[min(64rem,calc(100vw-2rem))]" : "w-[min(40rem,calc(100vw-2rem))]"} rounded-lg border border-line bg-surface p-0 text-text shadow-2xl`}
     >
       {open && (
         <div className="p-6">

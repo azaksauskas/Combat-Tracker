@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { AdventureSchema } from "./adventure";
+import { CharacterSpecSchema } from "./character";
 import { StatBlockSchema } from "./statblock";
 
 /**
@@ -129,10 +131,12 @@ export const EncounterSchema = z.object({
 });
 export type Encounter = z.infer<typeof EncounterSchema>;
 
-/** Reusable content: the stat-block roster and saved encounters. */
+/** Reusable content: the stat-block roster, saved encounters, your adventures and characters. */
 export const LibraryDocSchema = z.object({
   roster: z.array(CombatantSchema).catch([]),
   encounters: z.array(EncounterSchema).catch([]),
+  adventures: z.array(AdventureSchema).catch([]),
+  characters: z.array(CharacterSpecSchema).catch([]),
 });
 export type LibraryDoc = z.infer<typeof LibraryDocSchema>;
 

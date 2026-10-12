@@ -4,8 +4,11 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { ADVENTURES } from "../content/adventures";
 import { acknowledge, choose, finishFight, finishShortRest, startAdventure, StoryError, type Adventure, type CampaignState } from "./adventure";
 import { equip, heroSetups, potionStash, unequip } from "./party";
-import { SCENARIOS, scenarioSetup } from "./scenarios";
+import { SCENARIOS, encounterScenario, setupFor, type Scenario } from "./scenarios";
+import type { UnitSetup } from "./engine";
 import { quitGame, startBattle, usePlay } from "./store";
+import { chosenParty } from "./party-store";
+import { useGame } from "../store/game";
 
 /** The adventure in progress, auto-saved after every step. */
 export const useCampaign = create<{ state: CampaignState | null }>()(
@@ -15,14 +18,16 @@ export const useCampaign = create<{ state: CampaignState | null }>()(
   }),
 );
 
-export const adventureOf = (s: CampaignState | null): Adventure | undefined => ADVENTURES.find((a) => a.id === s?.adventureId);
+/** Built-in adventures first, then the DM's own from the library. */
+export const allAdventures = (): Adventure[] => [...ADVENTURES, ...useGame.getState().library.adventures];
+export const adventureOf = (s: CampaignState | null): Adventure | undefined => allAdventures().find((a) => a.id === s?.adventureId);
 
 const set = (state: CampaignState | null) => useCampaign.setState({ state });
 const current = () => useCampaign.getState().state;
 
 export function beginAdventure(adv: Adventure) {
   quitGame();
-  set(startAdventure(adv));
+  set(startAdventure(adv, undefined, chosenParty()));
 }
 
 export function pickChoice(choiceId: string, heroKey?: string) {
@@ -57,15 +62,24 @@ export const unequipItem = (heroKey: string, itemId: string) => {
   if (s) set({ ...s, party: unequip(s.party, heroKey, itemId) });
 };
 
+/** A built-in scenario, or "encounter:<id>" for one of the DM's saved encounters. */
+export function findScenario(id: string): (Scenario & { custom?: UnitSetup[] }) | undefined {
+  if (id.startsWith("encounter:")) {
+    const enc = useGame.getState().library.encounters.find((e) => `encounter:${e.id}` === id);
+    return enc ? { ...encounterScenario(enc.name, enc.combatants), id } : undefined;
+  }
+  return SCENARIOS.find((x) => x.id === id);
+}
+
 /** Starts the pending fight on the battle screen with the adventure's party. */
 export function goToBattle() {
   const s = current();
   const fight = s?.pending[0];
   if (!s || fight?.kind !== "fight") return;
-  const sc = SCENARIOS.find((x) => x.id === fight.scenarioId);
-  if (!sc) return;
-  const base = scenarioSetup(sc);
-  const starts = base.units.filter((u) => u.side === "party").map((u) => u.pos);
+  const sc = findScenario(fight.scenarioId);
+  if (!sc) return toast.error(`This adventure's fight "${fight.scenarioId}" no longer exists`);
+  const base = setupFor(sc, []);
+  const starts = base.partyCells;
   const units = [...heroSetups(s.party, starts), ...base.units.filter((u) => u.side === "enemy")];
   startBattle(sc, base.board, units, { surprised: fight.surprised, stash: potionStash(s.party) }, "campaign");
 }

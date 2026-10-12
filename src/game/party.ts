@@ -1,4 +1,4 @@
-import { PARTY } from "../content/srd";
+import { PARTY, type ContentEntry } from "../content/srd";
 import { secureRng, type Rng } from "../domain/dice";
 import { ActionSchema, abilityMod, type Feature, type StatAction, type StatBlock } from "../domain/statblock";
 import type { Cell } from "./board";
@@ -60,8 +60,9 @@ export const ITEMS: Record<string, { name: string; description: string; kind: "p
 
 const HIT_DIE: Record<string, number> = { Fighter: 10, Rogue: 8, Cleric: 8, Wizard: 6 };
 
-export function createParty(): Party {
-  const heroes = PARTY.map((p): Hero => {
+/** A fresh level-1 party from the ready-made heroes, or the ones you picked. */
+export function createParty(members: ContentEntry[] = PARTY): Party {
+  const heroes = members.map((p): Hero => {
     const c = p.build();
     const stats = c.stats!;
     return {
@@ -91,8 +92,8 @@ interface ClassLevel {
   traits: { name: string; text: string }[];
   /** Spell slots at this level (replaces the previous table row). */
   spellSlots?: number[];
-  /** New spells or attacks. */
-  actions?: StatAction[];
+  /** New spells or attacks (the stat block gives the spell save DC). */
+  actions?: (s: StatBlock) => StatAction[];
 }
 
 /** A spell learned on level-up, with a stable id. */
@@ -121,7 +122,7 @@ const CLASS_LEVELS: Record<string, Record<number, ClassLevel>> = {
     3: {
       features: ["disciple-of-life"],
       spellSlots: [4, 2],
-      actions: [spell({ kind: "buff", name: "Aid", buff: "aid", range: 30, targets: 3, slot: 2, notes: "+5 max HP and current HP until the end of the adventure day" })],
+      actions: () => [spell({ kind: "buff", name: "Aid", buff: "aid", range: 30, targets: 3, slot: 2, notes: "+5 max HP and current HP until the end of the adventure day" })],
       traits: [
         { name: "Life Domain: Disciple of Life", text: "Healing spells that use a slot restore an extra 2 + the slot's level HP." },
         { name: "2nd-level spells", text: "Aid. Spell slots: four 1st, two 2nd." },
@@ -133,12 +134,12 @@ const CLASS_LEVELS: Record<string, Record<number, ClassLevel>> = {
     3: {
       features: ["potent-cantrip"],
       spellSlots: [4, 2],
-      actions: [
+      actions: (st) => [
         spell({
           kind: "save",
           name: "Shatter",
           save: "con",
-          dc: 13,
+          dc: 8 + st.proficiency + abilityMod(st.abilities.int),
           range: 60,
           area: { shape: "sphere", size: 10 },
           slot: 2,
@@ -164,14 +165,16 @@ export interface LevelUpReport {
 /** One level: fixed HP (2024 average), a hit die, and class features. */
 export function levelUp(hero: Hero): LevelUpReport {
   const level = hero.level + 1;
-  const hpGain = Math.max(1, hero.hitDie / 2 + 1 + abilityMod(hero.stats.abilities.con));
+  // 2024 fixed HP: half the hit die + 1 + Con; dwarves get 1 more (Dwarven Toughness).
+  const toughness = hero.stats.traits.some((t) => t.name === "Dwarven Toughness") ? 1 : 0;
+  const hpGain = Math.max(1, hero.hitDie / 2 + 1 + abilityMod(hero.stats.abilities.con)) + toughness;
   const cl = CLASS_LEVELS[hero.className]?.[level] ?? { traits: [] };
   const stats: StatBlock = {
     ...hero.stats,
     level,
     features: [...hero.stats.features, ...(cl.features ?? [])],
     traits: [...hero.stats.traits, ...cl.traits],
-    actions: [...hero.stats.actions, ...(cl.actions ?? [])],
+    actions: [...hero.stats.actions, ...(cl.actions?.(hero.stats) ?? [])],
     spellSlots: cl.spellSlots ?? hero.stats.spellSlots,
   };
   const next: Hero = {

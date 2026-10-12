@@ -1,6 +1,9 @@
 import { parseDice, rollTerms, withAdvantage, type Term } from "../domain/dice";
-import { ABILITY_NAMES, abilityMod, saveBonus, type Ability } from "../domain/statblock";
+import { ABILITY_NAMES, abilityMod, saveBonus } from "../domain/statblock";
+import type { ContentEntry } from "../content/srd";
 import { mulberry32, randomSeed } from "./rng";
+import { SKILL_ABILITY, type Skill } from "./skills";
+import type { Adventure, Choice, Effect, Outcome } from "../domain/adventure";
 import { ITEMS, XP_FOR_LEVEL, applyFight, createParty, gainXp, longRest, shortRest, type Hero, type LevelUpReport, type Party } from "./party";
 import type { GameState } from "./state";
 
@@ -11,89 +14,8 @@ import type { GameState } from "./state";
  * next step (a scene, a fight, or the end). Pure and seeded like the engine.
  */
 
-export const SKILL_ABILITY: Record<string, Ability> = {
-  Athletics: "str",
-  Acrobatics: "dex",
-  "Sleight of Hand": "dex",
-  Stealth: "dex",
-  Arcana: "int",
-  History: "int",
-  Investigation: "int",
-  Nature: "int",
-  Religion: "int",
-  "Animal Handling": "wis",
-  Insight: "wis",
-  Medicine: "wis",
-  Perception: "wis",
-  Survival: "wis",
-  Deception: "cha",
-  Intimidation: "cha",
-  Performance: "cha",
-  Persuasion: "cha",
-};
-export type Skill = keyof typeof SKILL_ABILITY;
-
-export type Effect =
-  | { type: "xp"; amount: number }
-  /** Milestone levelling: brings everyone up to at least this level. */
-  | { type: "milestone"; level: number }
-  | { type: "gold"; amount: number }
-  | { type: "item"; id: string; count?: number }
-  | { type: "flag"; name: string }
-  /** Each living hero takes damage; a save halves it. Traps leave at least 1 HP. */
-  | { type: "damage"; dice: string; damageType: string; save?: { ability: Ability; dc: number } }
-  | { type: "rest"; kind: "short" | "long" };
-
-export type Next =
-  | { scene: string }
-  | { fight: { scenarioId: string; surprised?: "party" | "enemy" }; victory: string; defeat?: string }
-  | { end: "victory" | "defeat" };
-
-export interface Outcome {
-  text?: string;
-  effects?: Effect[];
-  next: Next;
-}
-
-export interface Check {
-  skill: Skill;
-  dc: number;
-  /** "choose": you pick who tries. "group": everyone rolls, half must succeed. */
-  mode: "choose" | "group";
-}
-
-export interface Choice {
-  id: string;
-  label: string;
-  /** Only shown once this flag is set / until it's set. */
-  requiresFlag?: string;
-  hideIfFlag?: string;
-  /** Needs this much gold (and spends it). */
-  costGold?: number;
-  /** Disappears after being picked once. */
-  once?: boolean;
-  check?: Check;
-  success: Outcome;
-  failure?: Outcome;
-}
-
-export interface Scene {
-  id: string;
-  title: string;
-  text: string;
-  /** Applied the first time the party arrives here. */
-  onEnter?: Effect[];
-  choices: Choice[];
-}
-
-export interface Adventure {
-  id: string;
-  title: string;
-  blurb: string;
-  start: string;
-  startingGold: number;
-  scenes: Record<string, Scene>;
-}
+export { SKILL_ABILITY, type Skill } from "./skills";
+export type { Adventure, Check, Choice, Effect, Next, Outcome, Scene } from "../domain/adventure";
 
 export type Pending =
   | { kind: "levelup"; reports: LevelUpReport[] }
@@ -144,11 +66,11 @@ export function visibleChoices(state: CampaignState, adv: Adventure): Choice[] {
 
 // --- Running ---------------------------------------------------------------------------
 
-export function startAdventure(adv: Adventure, seed = randomSeed()): CampaignState {
+export function startAdventure(adv: Adventure, seed = randomSeed(), members?: ContentEntry[]): CampaignState {
   const s: CampaignState = {
     adventureId: adv.id,
     sceneId: adv.start,
-    party: { ...createParty(), gold: adv.startingGold },
+    party: { ...createParty(members), gold: adv.startingGold },
     flags: [],
     usedChoices: [],
     story: [],

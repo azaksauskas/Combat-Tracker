@@ -1,3 +1,4 @@
+import { chosenParty } from "./party-store";
 import { toast } from "sonner";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -97,7 +98,7 @@ export function runAi() {
 }
 
 export function startGame(scenario: Scenario & { custom?: UnitSetup[] }) {
-  const { board, units } = setupFor(scenario);
+  const { board, units } = setupFor(scenario, chosenParty());
   startBattle(scenario, board, units, {}, "skirmish");
 }
 

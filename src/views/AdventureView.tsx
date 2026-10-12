@@ -6,6 +6,7 @@ import { checkChance, skillBonus, visibleChoices, type CampaignState, type Choic
 import {
   abandonAdventure,
   adventureOf,
+  findScenario,
   completeShortRest,
   dismissLevelUp,
   equipItem,
@@ -14,11 +15,13 @@ import {
   unequipItem,
 } from "../game/campaign-store";
 import { ITEMS, MAX_LEVEL, XP_FOR_LEVEL, type Hero, type Party } from "../game/party";
-import { SCENARIOS } from "../game/scenarios";
 import { abilityMod, formatMod } from "../domain/statblock";
+import { useGame } from "../store/game";
 
 /** The story side of an adventure: party, scene, choices, rests and level-ups. */
 export function AdventureView({ state }: { state: CampaignState }) {
+  // Re-render when the DM edits their adventures (playtesting while editing).
+  useGame((s) => s.library.adventures);
   const adv = adventureOf(state);
   if (!adv) return <p className="text-danger">This adventure no longer exists.</p>;
   const scene = adv.scenes[state.sceneId];
@@ -270,7 +273,7 @@ function Choices({ state }: { state: CampaignState }) {
 }
 
 function FightPrompt({ fight }: { fight: Extract<CampaignState["pending"][number], { kind: "fight" }> }) {
-  const sc = SCENARIOS.find((s) => s.id === fight.scenarioId);
+  const sc = findScenario(fight.scenarioId);
   return (
     <div className="text-center">
       <h3 className="text-xl font-bold text-danger">⚔ {sc?.name ?? "Battle"}</h3>

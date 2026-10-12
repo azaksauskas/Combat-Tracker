@@ -1,7 +1,6 @@
 import clsx from "clsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HpBar } from "../components/HpBar";
-import { PARTY } from "../content/srd";
 import { actionDamage, describeAction, formatMod, type StatAction } from "../domain/statblock";
 import { averageDamage, hitChance } from "../game/ai";
 import { canAct, checkTarget, currentUnit } from "../game/engine";
@@ -15,6 +14,12 @@ import { beginAdventure, returnFromBattle, useCampaign } from "../game/campaign-
 import { POTIONS } from "../game/engine";
 import { distanceFt } from "../game/board";
 import { AdventureView } from "./AdventureView";
+import { CharacterBuilder } from "../components/CharacterBuilder";
+import type { CharacterSpec } from "../domain/character";
+import { newId } from "../domain/combat";
+import { characterKey, suggestedSpec } from "../game/builder";
+import { MAX_PARTY, availableMembers, togglePick, usePartyPicks } from "../game/party-store";
+import { update } from "../store/game";
 
 /** Solo skirmish: your four heroes against an encounter, monsters run by the computer. */
 export function PlayView() {
@@ -31,6 +36,8 @@ export function PlayView() {
 
 function ScenarioPicker() {
   const encounters = useGame((s) => s.library.encounters);
+  const custom = useGame((s) => s.library.adventures);
+  const adventures = [...ADVENTURES, ...custom];
   const playable = encounters
     .map((e) => encounterScenario(e.name, e.combatants))
     .filter((sc) => sc.custom.length > 0);
@@ -54,25 +61,15 @@ function ScenarioPicker() {
         <h2 className="text-3xl font-bold text-accent">Play</h2>
         <p className="text-sm text-muted">A solo skirmish with the 2024 rules. You command the party; the monsters fight back.</p>
       </header>
-      <section>
-        <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">Your party</h3>
-        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {PARTY.map((p) => (
-            <li key={p.key} className="rounded-md border border-line bg-surface-2 p-3 text-sm">
-              <div className="font-bold text-strong">{p.label}</div>
-              <div className="text-xs text-faint">{p.subtitle}</div>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <PartyPicker />
       <section>
         <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">Adventures</h3>
         <ul className="grid gap-3 md:grid-cols-2">
-          {ADVENTURES.map((a) => (
+          {adventures.map((a) => (
             <li key={a.id} className="flex flex-col rounded-lg border-2 border-accent/60 bg-surface p-4 shadow">
               <h3 className="text-xl font-bold text-accent">{a.title}</h3>
               <p className="mt-1 flex-1 text-sm text-muted">{a.blurb}</p>
-              <p className="mt-2 text-xs text-faint">Story, skill checks, three possible battles, loot, rests and levelling to 3.</p>
+              <p className="mt-2 text-xs text-faint">{ADVENTURES.includes(a) ? "Built in" : "Your adventure"} · {Object.keys(a.scenes).length} scenes</p>
               <button className="btn btn-primary mt-3 font-display" onClick={() => beginAdventure(a)}>
                 Begin the adventure
               </button>
@@ -92,6 +89,66 @@ function ScenarioPicker() {
         </section>
       )}
     </div>
+  );
+}
+
+/** Choose up to four heroes from the ready-made party and the characters you built. */
+function PartyPicker() {
+  const characters = useGame((s) => s.library.characters);
+  const picks = usePartyPicks((s) => s.picks);
+  const [editing, setEditing] = useState<CharacterSpec | null>(null);
+  const members = availableMembers(characters);
+  const custom = new Map(characters.map((c) => [characterKey(c), c]));
+  return (
+    <section>
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-xs font-bold tracking-wider text-faint uppercase">
+          Your party · {picks.length}/{MAX_PARTY}
+        </h3>
+        <button className="btn px-2 text-xs" onClick={() => setEditing(suggestedSpec("Fighter", newId(), ""))}>
+          + Build a character
+        </button>
+      </div>
+      <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {members.map((p) => {
+          const on = picks.includes(p.key);
+          const spec = custom.get(p.key);
+          return (
+            <li key={p.key} className={clsx("flex items-start gap-2 rounded-md border p-3 text-sm", on ? "border-accent bg-accent/10" : "border-line bg-surface-2")}>
+              <label className="flex flex-1 cursor-pointer items-start gap-2">
+                <input type="checkbox" className="mt-1" checked={on} disabled={!on && picks.length >= MAX_PARTY} onChange={() => togglePick(p.key)} />
+                <span>
+                  <span className="block font-bold text-strong">{p.label}</span>
+                  <span className="block text-xs text-faint">{p.subtitle}</span>
+                </span>
+              </label>
+              {spec && (
+                <span className="flex flex-col gap-1">
+                  <button className="btn btn-ghost px-1.5 py-0.5 text-xs" onClick={() => setEditing(spec)} aria-label={`Edit ${p.label}`}>
+                    ✎
+                  </button>
+                  <button
+                    className="btn btn-ghost px-1.5 py-0.5 text-xs"
+                    aria-label={`Delete ${p.label}`}
+                    onClick={() => {
+                      if (!confirm(`Delete ${p.label}?`)) return;
+                      if (on) togglePick(p.key);
+                      update("library", (d) => {
+                        d.characters = d.characters.filter((c) => c.id !== spec.id);
+                      });
+                    }}
+                  >
+                    🗑
+                  </button>
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {picks.length === 0 && <p className="mt-1 text-xs text-danger">Pick at least one hero (the ready-made party goes otherwise).</p>}
+      <CharacterBuilder initial={editing} onClose={() => setEditing(null)} />
+    </section>
   );
 }
 

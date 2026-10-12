@@ -12,7 +12,7 @@ D&D 2024 rules (SRD 5.2), and the party grows between fights.
 | Rules | As close to 5e as practical, **2024 rules (SRD 5.2)** |
 | Mode | Solo; you control a party of 2–4 characters |
 | Platform | Desktop first |
-| Characters | 4 ready-made level-1 characters; the character builder comes in M5 together with the adventure editor. Level-up choices (M3) get a small "pick one" screen. |
+| Characters | 4 ready-made level-1 characters, or your own from the character builder (M5). |
 
 ## Gameplay
 
@@ -132,3 +132,29 @@ anything shared publicly. Your own homebrew comes from the roster.
     against the SRD 5.2 PDF), and a fourth skirmish, The Cult Cellar.
   - Not yet: monsters that cast spells, multiattack, cover, Hide, Help,
     grappling and shoving; the AI-controlled party doesn't heal or bless.
+- **M5 done:** character builder and adventure editor.
+  - Character builder (Play page → "Build a character"): Fighter, Rogue,
+    Cleric or Wizard; Human, Dwarf, Elf or Halfling; Acolyte, Criminal,
+    Sage or Soldier; the standard array (picking a taken score swaps the
+    two) and the background's +2 / +1. A live sheet shows AC, HP, skills,
+    attacks and spells, with to-hit and spell DCs from your scores.
+    Characters are saved in the synced library as choices, not results, so
+    rules fixes reach them; they also appear in the tracker's content picker.
+  - Pick 1–4 heroes for the next adventure or skirmish from the ready-made
+    party and your own (remembered per browser).
+  - Adventure editor (📖 Adventures in the DM menu): title, blurb, starting
+    gold and first scene; scenes with text and arrival effects; choices
+    with flags, gold costs, "only once", skill checks (one hero or a group)
+    and separate success / failure outcomes; effects (XP, milestone level,
+    gold, items, flags, traps with saves, rests); and where each outcome
+    leads: a scene ("+ New scene…" creates and links one), a fight (a
+    built-in skirmish or one of your saved encounters, with surprise), or
+    the end.
+  - Renaming a scene's id updates every link; a problems list explains
+    broken links, dead ends, unreachable scenes and missing endings, and
+    clicking one opens the scene.
+  - Autosaves to the synced library; export and import as JSON; copy a
+    built-in adventure to start from; playtest from the start or from any
+    scene. Your adventures appear on the Play page.
+  - Not yet: subclass and feat choices, levels above 3, Wizard spell
+    choices, images in scenes, and a visual scene graph.
