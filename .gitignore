@@ -1,6 +1,9 @@
 node_modules
 dist
-.env.local
+# Local config (may hold keys); .env.example stays tracked as the template
+.env
+.env.*
+!.env.example
 *.log
 .DS_Store
 *.tsbuildinfo
