@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 import { CELL, MAP_SIZE, type Point } from "./grid";
+import { abilityMod } from "./statblock";
 import type { Combatant, CombatDoc, Encounter, LibraryDoc } from "./types";
 
 /**
@@ -65,8 +66,13 @@ export function findFreeSpot(occupied: readonly Point[], p: Point): Point {
   return p;
 }
 
-export type CombatantInput = Omit<Combatant, "id" | "conditions" | "x" | "y"> &
-  Partial<Pick<Combatant, "conditions" | "x" | "y">>;
+export type CombatantInput = Omit<Combatant, "id" | "conditions" | "x" | "y" | "stats"> &
+  Partial<Pick<Combatant, "conditions" | "x" | "y" | "stats">>;
+
+/** d20 + Dexterity modifier when there's a stat block, plain d20 otherwise. */
+export function rollInitiative(c: Pick<CombatantInput, "stats">, rng: () => number = Math.random) {
+  return rollD20(rng) + (c.stats ? abilityMod(c.stats.abilities.dex) : 0);
+}
 
 /**
  * Prepares a stat block for the initiative order: fresh id, unique display
@@ -83,9 +89,10 @@ export function spawnCombatant(
     id: newId(),
     name: uniqueName(template.name, doc.combatants.map((x) => x.name)),
     conditions: [...(template.conditions ?? [])],
+    stats: template.stats ? structuredClone(template.stats) : null,
     ...spot,
   };
-  if (opts.rollInitiative) c.initiative = rollD20(opts.rng);
+  if (opts.rollInitiative) c.initiative = rollInitiative(c, opts.rng);
   insertByInitiative(doc.combatants, c);
   return c;
 }

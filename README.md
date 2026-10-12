@@ -72,3 +72,11 @@ Display preferences (theme, custom colours, sidebar, map layout) are stored per 
 - **No roles yet.** Anyone with the URL can open `#/admin`, as before. Firebase Auth with DM/player roles and matching Firestore rules is the next step toward a game.
 - **Last write wins.** Each document is written whole. That's fine for one DM, but simultaneous editors should move to per-combatant documents or transactions.
 - **Portraits are stored inline** as small JPEG data URLs (Firestore caps a document at 1 MiB). Firebase Storage would remove that limit.
+
+## Game
+
+A solo 5e (2024 rules) adventure is being built on top of the tracker; see [docs/game-design.md](docs/game-design.md) for the plan and milestones.
+
+## Credits
+
+This work includes material from the System Reference Document 5.2 ("SRD 5.2") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.

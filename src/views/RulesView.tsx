@@ -1,3 +1,5 @@
+import { SRD_ATTRIBUTION } from "../content/srd";
+
 const CONDITION_RULES: [string, string][] = [
   ["Blinded", "Can't see; auto-fails sight checks. Attacks against it have advantage, its attacks have disadvantage."],
   ["Charmed", "Can't attack the charmer; the charmer has advantage on social checks against it."],
@@ -31,6 +33,7 @@ export function RulesView() {
           ))}
         </dl>
       </section>
+      <p className="mt-6 text-xs text-faint">{SRD_ATTRIBUTION}</p>
     </div>
   );
 }

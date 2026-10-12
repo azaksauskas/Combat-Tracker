@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { StatBlockSchema } from "./statblock";
 
 /**
  * Data model shared by every client. Schemas double as validators for
@@ -55,6 +56,8 @@ export const CombatantSchema = z.object({
   actions: str,
   notes: str,
   conditions: z.array(z.string()).catch([]),
+  /** Structured 2024 stat block; null for quick free-text combatants. */
+  stats: StatBlockSchema.nullable().catch(null),
   /** Map position in world pixels (token centre). */
   x: z.number().catch(1000),
   y: z.number().catch(1000),

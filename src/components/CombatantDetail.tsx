@@ -8,6 +8,7 @@ import { Avatar } from "./Avatar";
 import { ConditionEditor } from "./Conditions";
 import { HpControl } from "./HpControl";
 import { RichText } from "./RichText";
+import { StatBlockView } from "./StatBlockView";
 
 interface Props {
   combatant: Combatant;
@@ -66,6 +67,12 @@ export function CombatantDetail({ combatant: c, ring, active, pinned, onEdit }: 
           </dl>
           <div className="mt-1 flex flex-wrap gap-1 text-[10px] tracking-wider text-muted uppercase">
             <span className="rounded bg-surface-3 px-1.5">{size}</span>
+            {c.stats?.cr && <span className="rounded bg-surface-3 px-1.5">CR {c.stats.cr}</span>}
+            {c.stats?.className && (
+              <span className="rounded bg-surface-3 px-1.5">
+                {c.stats.className} {c.stats.level ?? ""}
+              </span>
+            )}
             {c.group && <span className="rounded bg-surface-3 px-1.5">{c.group}</span>}
           </div>
         </div>
@@ -95,6 +102,8 @@ export function CombatantDetail({ combatant: c, ring, active, pinned, onEdit }: 
         <ConditionEditor combatant={c} />
       </section>
 
+      {c.stats && <StatBlockView combatant={c} stats={c.stats} onRoll={onRoll} />}
+
       {(c.attributes || c.saves) && (
         <section className="space-y-1 text-sm">
           {c.attributes && (
@@ -120,7 +129,7 @@ export function CombatantDetail({ combatant: c, ring, active, pinned, onEdit }: 
       )}
       {c.notes && (
         <section className="text-sm">
-          <h4 className="text-xs font-bold tracking-wider text-faint uppercase">Notes</h4>
+          <h4 className="text-xs font-bold tracking-wider text-faint uppercase">{c.stats ? "Traits & notes" : "Notes"}</h4>
           <RichText html={c.notes} onRoll={onRoll} />
         </section>
       )}

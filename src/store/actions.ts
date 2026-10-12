@@ -1,5 +1,7 @@
 import * as rules from "../domain/combat";
-import { describeRoll, parseDice, rollTerms, withAdvantage } from "../domain/dice";
+import { resolveAttack, resolveSave, type Advantage, type DamageResult } from "../domain/attack";
+import { describeRoll, parseDice, rollTerms, withAdvantage, type RollResult } from "../domain/dice";
+import { ABILITY_NAMES } from "../domain/statblock";
 import { snapToGrid } from "../domain/grid";
 import { MAX_ROLL_LOG, type Combatant, type GridType, type MapLine, type MapShape, type RollEntry } from "../domain/types";
 import { update, useGame } from "./game";
@@ -16,12 +18,12 @@ const spawnPoint = () => snapToGrid(useUi.getState().mapCenter, useGame.getState
 
 // --- Initiative & turns ----------------------------------------------------
 
-export const addToCombat = (template: CombatantDraft, opts: { rollIfMonster?: boolean } = {}) => {
+export const addToCombat = (template: CombatantDraft, opts: { rollIfMonster?: boolean; rollInitiative?: boolean } = {}) => {
   let added: Combatant | undefined;
   update("combat", (d) => {
     added = rules.spawnCombatant(d, template, {
       position: spawnPoint(),
-      rollInitiative: opts.rollIfMonster && template.isMonster,
+      rollInitiative: opts.rollInitiative || (opts.rollIfMonster && template.isMonster),
     });
   });
   return added;
@@ -85,6 +87,7 @@ export const addToRoster = (template: CombatantDraft) =>
       id: rules.newId(),
       name: rules.baseName(template.name),
       conditions: [],
+      stats: template.stats ?? null,
       x: 1000,
       y: 1000,
     });
@@ -218,3 +221,78 @@ export const clearRolls = () =>
   update("combat", (d) => {
     d.rolls = [];
   });
+
+// --- Structured actions (one-click attacks) -----------------------------------
+
+const toEntry = (r: RollResult, label: string, shown: boolean): RollEntry => ({
+  id: rules.newId(),
+  at: Date.now(),
+  label,
+  expression: r.expression,
+  breakdown: describeRoll(r),
+  total: r.total,
+  natural: r.natural ?? null,
+  shown,
+});
+
+const damageText = (d: DamageResult[]) =>
+  d.map((x) => `${x.amount} ${x.type}${x.adjustment ? ` (${x.adjustment})` : ""}`).join(" + ");
+
+export interface ActionReport {
+  title: string;
+  detail: string;
+  /** Restores the target's HP if the DM wants to take it back. */
+  undo: (() => void) | null;
+}
+
+/**
+ * Runs a structured action from `attackerId` against `targetId`: rolls the
+ * attack (or the target's saving throw), applies damage with resistances,
+ * and logs every roll. Returns a summary for a toast.
+ */
+export function performAction(
+  attackerId: string,
+  actionId: string,
+  targetId: string,
+  opts: { advantage?: Advantage; shown?: boolean } = {},
+): ActionReport | null {
+  const { combatants } = useGame.getState().combat;
+  const attacker = combatants.find((c) => c.id === attackerId);
+  const target = combatants.find((c) => c.id === targetId);
+  const action = attacker?.stats?.actions.find((a) => a.id === actionId);
+  if (!attacker || !target || !action) return null;
+  const shown = opts.shown ?? false;
+  const who = `${attacker.name} → ${target.name}: ${action.name}`;
+  const before = { hpCurrent: target.hpCurrent, hpTemp: target.hpTemp };
+  const entries: RollEntry[] = [];
+  let title: string;
+  let detail: string;
+  let total = 0;
+
+  if (action.kind === "attack") {
+    const r = resolveAttack(action, { ac: target.ac, stats: target.stats }, { advantage: opts.advantage });
+    entries.push(toEntry(r.attack, `${who} (to hit)`, shown));
+    r.damage.forEach((d) => entries.push(toEntry(d.roll, `${who} (${d.type})`, shown)));
+    total = r.total;
+    title = r.crit
+      ? `💥 Critical hit! ${target.name} takes ${r.total}`
+      : r.hit
+        ? `${action.name} hits ${target.name} for ${r.total}`
+        : `${action.name} misses ${target.name}`;
+    detail = `${r.attack.total} vs AC ${target.ac}${r.attack.natural ? ` (natural ${r.attack.natural})` : ""}${r.hit ? ` · ${damageText(r.damage)}` : ""}`;
+  } else {
+    const r = resolveSave(action, { ac: target.ac, stats: target.stats }, { advantage: opts.advantage });
+    entries.push(toEntry(r.save, `${target.name}: ${ABILITY_NAMES[action.save]} save vs ${action.name}`, shown));
+    r.damage.forEach((d) => entries.push(toEntry(d.roll, `${who} (${d.type})`, shown)));
+    total = r.total;
+    title = `${target.name} ${r.success ? "succeeds" : "fails"} the DC ${action.dc} save and takes ${r.total}`;
+    detail = `Save ${r.save.total} vs DC ${action.dc} · ${damageText(r.damage) || "no damage"}`;
+  }
+
+  update("combat", (d) => {
+    if (total > 0) rules.applyDamage(d, targetId, total);
+    d.rolls = [...entries.reverse(), ...d.rolls].slice(0, MAX_ROLL_LOG);
+  });
+  const undo = total > 0 ? () => updateCombatant(targetId, before) : null;
+  return { title, detail, undo };
+}

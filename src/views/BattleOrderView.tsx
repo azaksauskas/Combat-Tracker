@@ -3,6 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { CombatantDetail } from "../components/CombatantDetail";
 import { CombatantForm } from "../components/CombatantForm";
+import { ContentPicker } from "../components/ContentPicker";
 import { Dialog } from "../components/Dialog";
 import { EditCombatantDialog, type EditTarget } from "../components/EditCombatantDialog";
 import { InitiativeList } from "../components/InitiativeList";
@@ -22,6 +23,7 @@ export function BattleOrderView() {
   const { pinnedId, combatTab, dockMap, set } = useUi();
   const [editing, setEditing] = useState<EditTarget>(null);
   const [creating, setCreating] = useState(false);
+  const [addTab, setAddTab] = useState<"new" | "library">("library");
 
   const pinned = combatants.find((c) => c.id === pinnedId);
   const shown = pinned ?? combatants.find((c) => c.id === activeId);
@@ -147,18 +149,40 @@ export function BattleOrderView() {
       </div>
 
       <Dialog open={creating} onClose={() => setCreating(false)} title="Add combatant">
-        <CombatantForm
-          mode="create"
-          onSubmit={(draft, intent, initiativeBlank) => {
-            if (intent === "roster") {
-              actions.addToRoster(draft);
-              toast.success(`${draft.name} saved to the roster`);
-            } else {
-              const added = actions.addToCombat(draft, { rollIfMonster: initiativeBlank });
-              if (added) toast.success(`${added.name} joins the fight (init ${added.initiative})`);
-            }
-          }}
-        />
+        <div className="mb-4 flex rounded-md border border-line bg-surface-2 p-0.5 text-sm" role="tablist">
+          {(
+            [
+              ["library", "Monsters & party"],
+              ["new", "Create new"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={addTab === id}
+              onClick={() => setAddTab(id)}
+              className={clsx("flex-1 rounded px-3 py-1.5", addTab === id ? "bg-surface-3 font-semibold text-strong" : "text-muted")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {addTab === "library" ? (
+          <ContentPicker />
+        ) : (
+          <CombatantForm
+            mode="create"
+            onSubmit={(draft, intent, initiativeBlank) => {
+              if (intent === "roster") {
+                actions.addToRoster(draft);
+                toast.success(`${draft.name} saved to the roster`);
+              } else {
+                const added = actions.addToCombat(draft, { rollIfMonster: initiativeBlank });
+                if (added) toast.success(`${added.name} joins the fight (init ${added.initiative})`);
+              }
+            }}
+          />
+        )}
       </Dialog>
       <EditCombatantDialog target={editing} onClose={() => setEditing(null)} />
     </div>

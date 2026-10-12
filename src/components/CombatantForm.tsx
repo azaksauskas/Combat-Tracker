@@ -5,6 +5,7 @@ import { resizeImage } from "../lib/image";
 import type { CombatantDraft } from "../store/actions";
 import { Avatar } from "./Avatar";
 import { RichTextEditor } from "./RichTextEditor";
+import { StatBlockEditor, emptyStatBlock } from "./StatBlockEditor";
 
 const NUMBER_FIELDS = ["initiative", "ac", "speed", "hpMax", "hpCurrent", "hpTemp"] as const;
 type NumberField = (typeof NUMBER_FIELDS)[number];
@@ -28,6 +29,7 @@ export const blankCombatant = (): CombatantDraft => ({
   saves: "",
   actions: "",
   notes: "",
+  stats: null,
 });
 
 const toForm = (c: CombatantDraft, blankInitiative: boolean): FormState => ({
@@ -154,7 +156,26 @@ export function CombatantForm({ mode, initial, onSubmit }: Props) {
         Monster / NPC
       </label>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <section className="rounded-md border border-line p-3">
+        <label className="flex items-center gap-2 text-sm font-semibold text-strong">
+          <input
+            type="checkbox"
+            className="size-4 accent-accent"
+            checked={!!form.stats}
+            onChange={(e) => set("stats", e.target.checked ? emptyStatBlock() : null)}
+          />
+          Structured stat block
+          <span className="font-normal text-faint">(one-click attacks, saves & resistances)</span>
+        </label>
+        {form.stats && (
+          <div className="mt-3">
+            <StatBlockEditor value={form.stats} onChange={(v) => set("stats", v)} />
+          </div>
+        )}
+      </section>
+
+      {/* Free-text fallbacks, for quick homebrew without a structured block. */}
+      <div className={form.stats ? "hidden" : "grid gap-3 sm:grid-cols-2"}>
         <label>
           <span className="field-label">Attributes</span>
           <input className="field" value={form.attributes} placeholder="STR 16 (+3), DEX 14 (+2)…" onChange={(e) => set("attributes", e.target.value)} />
