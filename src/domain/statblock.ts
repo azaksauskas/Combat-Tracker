@@ -45,6 +45,17 @@ export const DamagePartSchema = z.object({
 });
 export type DamagePart = z.infer<typeof DamagePartSchema>;
 
+/** 2024 weapon mastery properties the engine implements. */
+export const MASTERIES = ["graze", "sap", "slow", "vex"] as const;
+export type Mastery = (typeof MASTERIES)[number];
+
+/**
+ * Rules features the game engine knows how to apply. Anything else stays a
+ * descriptive trait.
+ */
+export const FEATURES = ["pack-tactics", "sneak-attack", "undead-fortitude", "nimble-escape", "second-wind"] as const;
+export type Feature = (typeof FEATURES)[number];
+
 /** "Melee Attack Roll: +4, reach 5 ft. Hit: 5 (1d6 + 2) Slashing damage." */
 export const AttackActionSchema = z.object({
   id,
@@ -58,6 +69,13 @@ export const AttackActionSchema = z.object({
   range: z.tuple([z.number(), z.number()]).nullable().catch(null),
   damage: z.array(DamagePartSchema).catch([]),
   notes: str,
+  /** Finesse or ranged weapon: qualifies for Sneak Attack. */
+  finesse: z.boolean().optional(),
+  mastery: z.enum(MASTERIES).optional(),
+  /** e.g. Goblin Warrior: +1d4 if the attack roll had Advantage. */
+  extraDamageOnAdvantage: z.array(DamagePartSchema).optional(),
+  /** Condition applied on a hit, e.g. the Wolf's bite knocks Prone. */
+  onHitCondition: z.string().optional(),
 });
 export type AttackAction = z.infer<typeof AttackActionSchema>;
 
@@ -103,6 +121,7 @@ export const StatBlockSchema = z.object({
   level: z.number().nullable().catch(null),
   actions: z.array(ActionSchema).catch([]),
   traits: z.array(TraitSchema).catch([]),
+  features: z.array(z.enum(FEATURES)).catch([]),
 });
 export type StatBlock = z.infer<typeof StatBlockSchema>;
 

@@ -59,7 +59,7 @@ export function adjustDamage(amount: number, type: DamageType, stats?: StatBlock
   return { amount: result, adjustment };
 }
 
-function rollDamage(parts: readonly DamagePart[], defender: Defender, rng: Rng, crit: boolean): DamageResult[] {
+export function rollDamage(parts: readonly DamagePart[], defender: Defender, rng: Rng, crit: boolean): DamageResult[] {
   return parts.map((p) => {
     const terms = parseDice(p.dice);
     const roll = rollTerms(crit ? critTerms(terms) : terms, rng);
@@ -83,7 +83,10 @@ export function resolveAttack(
   const attack = rollTerms(withAdvantage(terms, opts.advantage ?? "normal"), rng);
   const crit = attack.natural === 20;
   const hit = crit || (attack.natural !== 1 && attack.total >= defender.ac);
-  const damage = hit ? rollDamage(action.damage, defender, rng, crit) : [];
+  // An attack "had Advantage" only if two d20s were rolled and the higher kept.
+  const hadAdvantage = (opts.advantage ?? "normal") === "adv";
+  const parts = hadAdvantage && action.extraDamageOnAdvantage ? [...action.damage, ...action.extraDamageOnAdvantage] : action.damage;
+  const damage = hit ? rollDamage(parts, defender, rng, crit) : [];
   return { attack, hit, crit, damage, total: sum(damage) };
 }
 

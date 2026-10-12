@@ -61,3 +61,26 @@ anything shared publicly. Your own homebrew comes from the roster.
 | **M3** | RPG layer: scenes, choices, skill checks, rests, items, XP, levels 2–3 |
 | **M4** | Spells and conditions with full effects; more classes and monsters |
 | **M5** | Character builder and adventure editor in the DM app |
+
+## Status
+
+- **M0 done:** structured stat blocks, SRD content, one-click attacks in the tracker.
+- **M1 done (engine, no screen yet):** `src/game/`. Implemented:
+  - initiative (d20 + Dex), rounds, and per-turn action / bonus action /
+    movement / reaction
+  - grid movement with walls, difficult terrain and no corner-cutting;
+    allies can be passed, enemies can't
+  - line of sight and range, including long-range Disadvantage
+  - attacks: the 2024 condition effects on Advantage and Disadvantage,
+    natural 1 / 20, automatic crits on Paralyzed or Unconscious targets
+    within 5 ft
+  - saves: Str / Dex saves auto-fail while Paralyzed, Stunned or
+    Unconscious
+  - opportunity attacks; Dash, Disengage, Dodge, standing up from Prone
+  - 0 HP: monsters die; characters fall Unconscious, make death saves,
+    fail them when damaged, and die from massive damage
+  - features: Pack Tactics, extra damage on Advantage, knock Prone on hit,
+    Sneak Attack, Undead Fortitude, Nimble Escape, Second Wind, and the
+    Graze / Vex / Slow / Sap masteries
+  - Not yet: cover, area effects, spells and spell slots, Hide, Help,
+    grappling and shoving. These come in M4.

@@ -65,13 +65,14 @@ export const SRD_MONSTERS: ContentEntry[] = [
           cr: "1/4",
           skills: { Stealth: 6 },
           actions: [
-            attack({ name: "Scimitar", attackType: "melee", toHit: 4, damage: [{ dice: "1d6+2", type: "slashing" }], notes: "+1d4 slashing if the attack roll had Advantage" }),
-            attack({ name: "Shortbow", attackType: "ranged", toHit: 4, range: [80, 320], damage: [{ dice: "1d6+2", type: "piercing" }], notes: "+1d4 piercing if the attack roll had Advantage" }),
+            attack({ name: "Scimitar", attackType: "melee", toHit: 4, finesse: true, damage: [{ dice: "1d6+2", type: "slashing" }], extraDamageOnAdvantage: [{ dice: "1d4", type: "slashing" }], notes: "+1d4 slashing if the attack roll had Advantage" }),
+            attack({ name: "Shortbow", attackType: "ranged", toHit: 4, range: [80, 320], damage: [{ dice: "1d6+2", type: "piercing" }], extraDamageOnAdvantage: [{ dice: "1d4", type: "piercing" }], notes: "+1d4 piercing if the attack roll had Advantage" }),
           ],
           traits: [
             { name: "Darkvision", text: "60 ft." },
             { name: "Nimble Escape (Bonus Action)", text: "The goblin takes the Disengage or Hide action." },
           ],
+          features: ["nimble-escape"],
         }),
       ),
   },
@@ -87,7 +88,8 @@ export const SRD_MONSTERS: ContentEntry[] = [
           proficiency: 2,
           cr: "1/4",
           skills: { Perception: 5, Stealth: 4 },
-          actions: [attack({ name: "Bite", attackType: "melee", toHit: 4, damage: [{ dice: "1d6+2", type: "piercing" }], notes: "A Medium or smaller target has the Prone condition" })],
+          actions: [attack({ name: "Bite", attackType: "melee", toHit: 4, damage: [{ dice: "1d6+2", type: "piercing" }], onHitCondition: "Prone", notes: "A Medium or smaller target has the Prone condition" })],
+          features: ["pack-tactics"],
           traits: [{ name: "Pack Tactics", text: "Advantage on attack rolls against a creature if an ally is within 5 ft. of it and isn't Incapacitated." }],
         }),
       ),
@@ -129,6 +131,7 @@ export const SRD_MONSTERS: ContentEntry[] = [
           immunities: ["poison"],
           conditionImmunities: ["Exhaustion", "Poisoned"],
           actions: [attack({ name: "Slam", attackType: "melee", toHit: 3, damage: [{ dice: "1d8+1", type: "bludgeoning" }] })],
+          features: ["undead-fortitude"],
           traits: [
             {
               name: "Undead Fortitude",
@@ -178,8 +181,8 @@ export const PARTY: ContentEntry[] = [
           saveProficiencies: ["str", "con"],
           skills: { Athletics: 5, Intimidation: 2, Perception: 3 },
           actions: [
-            attack({ name: "Greatsword", attackType: "melee", toHit: 5, damage: [{ dice: "2d6+3", type: "slashing" }], notes: "Mastery: Graze — on a miss, deal 3 slashing damage" }),
-            attack({ name: "Javelin", attackType: "ranged", toHit: 5, range: [30, 120], damage: [{ dice: "1d6+3", type: "piercing" }], notes: "Mastery: Slow — on a hit, speed −10 ft. until your next turn" }),
+            attack({ name: "Greatsword", attackType: "melee", toHit: 5, damage: [{ dice: "2d6+3", type: "slashing" }], mastery: "graze", notes: "Mastery: Graze — on a miss, deal 3 slashing damage" }),
+            attack({ name: "Javelin", attackType: "ranged", toHit: 5, range: [30, 120], damage: [{ dice: "1d6+3", type: "piercing" }], mastery: "slow", notes: "Mastery: Slow — on a hit, speed −10 ft. until your next turn" }),
           ],
           traits: [
             { name: "Fighting Style: Defense", text: "+1 AC while wearing armor (included: Chain Mail 16 + 1)." },
@@ -187,6 +190,7 @@ export const PARTY: ContentEntry[] = [
             { name: "Weapon Mastery", text: "Greatsword (Graze), Javelin (Slow), Flail (Sap)." },
             { name: "Savage Attacker", text: "Once per turn, roll a weapon's damage dice twice and use either roll." },
           ],
+          features: ["second-wind"],
         }),
       ),
   },
@@ -206,8 +210,8 @@ export const PARTY: ContentEntry[] = [
           saveProficiencies: ["dex", "int"],
           skills: { Stealth: 7, "Sleight of Hand": 7, Acrobatics: 5, Perception: 3 },
           actions: [
-            attack({ name: "Shortsword", attackType: "melee", toHit: 5, damage: [{ dice: "1d6+3", type: "piercing" }], notes: "Mastery: Vex — on a hit, Advantage on your next attack against that target" }),
-            attack({ name: "Shortbow", attackType: "ranged", toHit: 5, range: [80, 320], damage: [{ dice: "1d6+3", type: "piercing" }], notes: "Mastery: Vex" }),
+            attack({ name: "Shortsword", attackType: "melee", toHit: 5, finesse: true, mastery: "vex", damage: [{ dice: "1d6+3", type: "piercing" }], notes: "Mastery: Vex — on a hit, Advantage on your next attack against that target" }),
+            attack({ name: "Shortbow", attackType: "ranged", toHit: 5, range: [80, 320], finesse: true, mastery: "vex", damage: [{ dice: "1d6+3", type: "piercing" }], notes: "Mastery: Vex" }),
           ],
           traits: [
             { name: "Sneak Attack", text: "Once per turn, +1d6 damage to a Finesse or Ranged weapon hit if you have Advantage, or an ally is within 5 ft. of the target." },
@@ -215,6 +219,7 @@ export const PARTY: ContentEntry[] = [
             { name: "Luck", text: "Reroll a 1 on a d20 Test." },
             { name: "Alert", text: "Add your Proficiency Bonus to Initiative." },
           ],
+          features: ["sneak-attack"],
         }),
       ),
   },
