@@ -23,14 +23,20 @@ interface Props {
   combatant: Combatant;
   ring: string;
   active: boolean;
+  /** Shown in the details panel. */
+  selected: boolean;
+  /** Hovered here or in the initiative list. */
+  hovered: boolean;
   draggable: boolean;
+  onSelect: (c: Combatant) => void;
+  onHover: (c: Combatant, on: boolean) => void;
   onDragStart: (c: Combatant) => void;
   onDragMove: (c: Combatant, pos: { x: number; y: number }) => void;
   onDragEnd: (c: Combatant, node: Konva.Group) => void;
   onInspect: (c: Combatant) => void;
 }
 
-export function Token({ combatant: c, ring, active, draggable, onDragStart, onDragMove, onDragEnd, onInspect }: Props) {
+export function Token({ combatant: c, ring, active, selected, hovered, draggable, onSelect, onHover, onDragStart, onDragMove, onDragEnd, onInspect }: Props) {
   const img = useImage(c.image);
   const r = (CELL * c.size) / 2 - 2;
   const down = c.hpCurrent <= 0;
@@ -44,17 +50,30 @@ export function Token({ combatant: c, ring, active, draggable, onDragStart, onDr
       onDragStart={() => onDragStart(c)}
       onDragMove={(e) => onDragMove(c, e.currentTarget.position())}
       onDragEnd={(e) => onDragEnd(c, e.currentTarget as Konva.Group)}
+      onClick={() => onSelect(c)}
+      onTap={() => onSelect(c)}
       onDblClick={() => onInspect(c)}
       onDblTap={() => onInspect(c)}
       onMouseEnter={(e) => {
+        onHover(c, true);
         const stage = e.target.getStage();
-        if (stage && draggable) stage.container().style.cursor = "grab";
+        if (stage) stage.container().style.cursor = draggable ? "grab" : "pointer";
       }}
       onMouseLeave={(e) => {
+        onHover(c, false);
         const stage = e.target.getStage();
         if (stage) stage.container().style.cursor = "";
       }}
     >
+      {(selected || hovered) && (
+        <Circle
+          radius={r + (active ? 11 : 6)}
+          stroke="#facc15"
+          strokeWidth={selected ? 3 : 2}
+          dash={selected ? undefined : [6, 4]}
+          listening={false}
+        />
+      )}
       {active && <Circle radius={r + 6} stroke="#ef4444" strokeWidth={3} shadowColor="#ef4444" shadowBlur={16} />}
       <Circle radius={r} fill={c.isMonster ? "#7f1d1d" : "#1e3a8a"} shadowColor="black" shadowBlur={6} shadowOpacity={0.5} />
       {img && (

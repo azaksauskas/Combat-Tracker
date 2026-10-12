@@ -5,7 +5,7 @@ import clsx from "clsx";
 import { tokenColor } from "../domain/combat";
 import type { Combatant } from "../domain/types";
 import * as actions from "../store/actions";
-import { useUi } from "../store/ui";
+import { setHover, useUi } from "../store/ui";
 import { Avatar } from "./Avatar";
 import { HpBar } from "./HpBar";
 
@@ -51,7 +51,6 @@ export function InitiativeList({ combatants, activeId, shownId, onSelect }: Prop
 function Row({ combatant: c, ring, active, shown, onSelect }: { combatant: Combatant; ring: string; active: boolean; shown: boolean; onSelect: () => void }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: c.id });
   const hovered = useUi((s) => s.hoverId === c.id);
-  const setUi = useUi((s) => s.set);
   const down = c.hpCurrent <= 0;
 
   return (
@@ -62,12 +61,12 @@ function Row({ combatant: c, ring, active, shown, onSelect }: { combatant: Comba
         "group relative flex items-center gap-2 rounded-md border py-1.5 pr-2 pl-1 transition-colors",
         active ? "border-accent bg-accent/10" : "border-transparent",
         shown && !active && "border-line bg-surface-3/60",
-        hovered && !active && !shown && "bg-surface-3/40",
+        hovered && !active && !shown && "border-line bg-surface-3/50",
         isDragging && "z-20 bg-surface shadow-lg",
         down && "opacity-55",
       )}
-      onMouseEnter={() => setUi({ hoverId: c.id })}
-      onMouseLeave={() => setUi({ hoverId: null })}
+      onMouseEnter={() => setHover(c.id, true)}
+      onMouseLeave={() => setHover(c.id, false)}
       aria-current={active ? "step" : undefined}
     >
       <button

@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { useEffect } from "react";
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useLocation } from "react-router";
 import { MapWindow } from "../map/MapWindow";
 import { useGame } from "../store/game";
 import { useUi } from "../store/ui";
@@ -28,8 +28,22 @@ function ThemeButton({ className }: { className?: string }) {
   );
 }
 
-function MapButton({ className }: { className?: string }) {
-  const { mapOpen, mapMinimized, set } = useUi();
+/** On the battle order page the map is docked, so the floating window steps aside. */
+function useMapDocked() {
+  const onCombatPage = useLocation().pathname === "/admin";
+  return useUi((s) => onCombatPage && s.dockMap);
+}
+
+function MapButton({ className, dockable }: { className?: string; dockable?: boolean }) {
+  const { mapOpen, mapMinimized, dockMap, set } = useUi();
+  const onCombatPage = useLocation().pathname === "/admin";
+  if (dockable && onCombatPage) {
+    return (
+      <button className={clsx(className, dockMap && "text-accent")} aria-pressed={dockMap} onClick={() => set({ dockMap: !dockMap })}>
+        🗺️ Battle map
+      </button>
+    );
+  }
   return (
     <button
       className={clsx(className, mapOpen && "text-accent")}
@@ -69,9 +83,10 @@ const navItem = "btn justify-start w-full";
 /** DM screens: sidebar on desktop, collapsible top bar on mobile. */
 export function DmLayout() {
   useThemeAttribute();
+  const mapDocked = useMapDocked();
   const nav = (
     <>
-      <MapButton className={navItem} />
+      <MapButton className={navItem} dockable />
       {NAV.map((n) => (
         <NavLink key={n.to} to={n.to} className={({ isActive }) => clsx(navItem, isActive && "border-accent text-accent")}>
           {n.label}
@@ -105,7 +120,7 @@ export function DmLayout() {
           <Outlet />
         </ConnectionGate>
       </main>
-      <MapWindow editable />
+      {!mapDocked && <MapWindow editable />}
     </div>
   );
 }

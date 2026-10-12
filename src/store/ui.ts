@@ -19,6 +19,8 @@ interface UiState {
   pinnedId: string | null;
   /** Combatant hovered in the list or on the map, highlighted in both. */
   hoverId: string | null;
+  /** Area template with rotate/scale handles showing. */
+  selectedShapeId: string | null;
   mapOpen: boolean;
   mapMinimized: boolean;
   mapRect: { x: number; y: number; width: number; height: number };
@@ -30,6 +32,13 @@ interface UiState {
   set: (patch: Partial<Omit<UiState, "set">>) => void;
 }
 
+/** Hover in from the list or the map; only clears if it's still the hovered one. */
+export function setHover(id: string, on: boolean) {
+  const { hoverId, set } = useUi.getState();
+  if (on) set({ hoverId: id });
+  else if (hoverId === id) set({ hoverId: null });
+}
+
 export const useUi = create<UiState>()(
   persist(
     (set) => ({
@@ -38,6 +47,7 @@ export const useUi = create<UiState>()(
       combatTab: "order",
       pinnedId: null,
       hoverId: null,
+      selectedShapeId: null,
       mapOpen: false,
       mapMinimized: false,
       mapRect: { x: 80, y: 80, width: 820, height: 600 },
@@ -51,7 +61,7 @@ export const useUi = create<UiState>()(
       name: "combat-tracker:ui",
       storage: createJSONStorage(() => localStorage),
       // Transient selection state isn't worth restoring after a reload.
-      partialize: ({ set: _set, mapTool: _tool, pinnedId: _pin, hoverId: _hover, combatTab: _tab, ...rest }) => rest,
+      partialize: ({ set: _set, mapTool: _tool, pinnedId: _pin, hoverId: _hover, combatTab: _tab, selectedShapeId: _shape, ...rest }) => rest,
     },
   ),
 );

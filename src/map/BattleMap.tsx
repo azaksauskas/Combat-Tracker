@@ -7,7 +7,7 @@ import { MAP_SIZE, clamp, distanceFeet, hitsPolyline, snapToGrid, type Point } f
 import type { Combatant } from "../domain/types";
 import * as actions from "../store/actions";
 import { useGame } from "../store/game";
-import { useUi } from "../store/ui";
+import { setHover, useUi } from "../store/ui";
 import { GridLayer } from "./GridLayer";
 import { MapShapeNode } from "./MapShapeNode";
 import { Token } from "./Token";
@@ -15,9 +15,10 @@ import { Token } from "./Token";
 interface Props {
   /** DM: full editing. Players: may move their own (non-monster) tokens only. */
   editable: boolean;
-  selectedShapeId: string | null;
-  onSelectShape: (id: string | null) => void;
-  onInspect: (id: string | null) => void;
+  /** Double-click / double-tap on a token. */
+  onInspect?: (id: string) => void;
+  /** Click on empty map. */
+  onBackgroundClick?: () => void;
 }
 
 interface View {
@@ -53,9 +54,10 @@ function useCanvasColors(theme: string) {
   }, [theme]);
 }
 
-export function BattleMap({ editable, selectedShapeId, onSelectShape, onInspect }: Props) {
+export function BattleMap({ editable, onInspect, onBackgroundClick }: Props) {
   const { combatants, activeId, map } = useGame((s) => s.combat);
-  const { mapTool, drawColor, snapToGrid: snap, theme, mapCenter, set: setUi } = useUi();
+  const { mapTool, drawColor, snapToGrid: snap, theme, mapCenter, pinnedId, hoverId, selectedShapeId, set: setUi } = useUi();
+  const selectShape = (id: string | null) => setUi({ selectedShapeId: id });
   const tool = editable ? mapTool : "select";
   const colors = useCanvasColors(theme);
   const [containerRef, size] = useSize<HTMLDivElement>();
@@ -72,6 +74,18 @@ export function BattleMap({ editable, selectedShapeId, onSelectShape, onInspect 
   useEffect(() => {
     if (!view && size.width > 0) setView({ x: size.width / 2 - mapCenter.x, y: size.height / 2 - mapCenter.y, scale: 1 });
   }, [size, view, mapCenter]);
+
+  // When the map area is resized (sidebar, window, docking), keep the same
+  // spot in the middle instead of anchoring to the top-left corner. Hidden
+  // panes report 0×0, so only real sizes count.
+  const lastSize = useRef(size);
+  useEffect(() => {
+    const prev = lastSize.current;
+    if (!size.width || !size.height) return;
+    lastSize.current = size;
+    if (!prev.width || !prev.height || (prev.width === size.width && prev.height === size.height)) return;
+    setView((v) => v && { ...v, x: v.x + (size.width - prev.width) / 2, y: v.y + (size.height - prev.height) / 2 });
+  }, [size]);
 
   // Remember where we're looking: new combatants spawn there.
   useEffect(() => {
@@ -94,6 +108,20 @@ export function BattleMap({ editable, selectedShapeId, onSelectShape, onInspect 
     tr?.nodes(node ? [node] : []);
   }, [selectedShapeId, map.shapes]);
 
+  // Delete / Backspace removes the selected template.
+  useEffect(() => {
+    if (!editable || !selectedShapeId) return;
+    const onKey = (e: KeyboardEvent) => {
+      const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable]");
+      if ((e.key === "Delete" || e.key === "Backspace") && !typing) {
+        actions.removeShape(selectedShapeId);
+        setUi({ selectedShapeId: null });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editable, selectedShapeId, setUi]);
+
   const worldPointer = (): Point | null => stageRef.current?.getRelativePointerPosition() ?? null;
 
   const onWheel = (e: KonvaEventObject<WheelEvent>) => {
@@ -115,8 +143,8 @@ export function BattleMap({ editable, selectedShapeId, onSelectShape, onInspect 
     const stage = stageRef.current;
     const onEmpty = e.target === stage;
     if (onEmpty) {
-      onSelectShape(null);
-      onInspect(null);
+      selectShape(null);
+      onBackgroundClick?.();
     }
     if (!editable) return;
     const p = worldPointer();
@@ -215,7 +243,7 @@ export function BattleMap({ editable, selectedShapeId, onSelectShape, onInspect 
                 key={s.id}
                 shape={s}
                 editable={editable && tool === "select"}
-                onSelect={() => onSelectShape(s.id)}
+                onSelect={() => selectShape(s.id)}
                 onChange={(patch) => actions.updateShape(s.id, patch)}
               />
             ))}
@@ -237,11 +265,15 @@ export function BattleMap({ editable, selectedShapeId, onSelectShape, onInspect 
                 combatant={c}
                 ring={tokenColor(c, combatants)}
                 active={c.id === activeId}
+                selected={c.id === pinnedId}
+                hovered={c.id === hoverId}
                 draggable={canMove(c)}
+                onSelect={(c) => setUi({ pinnedId: c.id })}
+                onHover={(c, on) => setHover(c.id, on)}
                 onDragStart={(c) => setRuler({ from: { x: c.x, y: c.y }, to: { x: c.x, y: c.y } })}
                 onDragMove={(_, to) => setRuler((r) => r && { ...r, to })}
                 onDragEnd={onTokenDragEnd}
-                onInspect={(c) => onInspect(c.id)}
+                onInspect={(c) => onInspect?.(c.id)}
               />
             ))}
             {ruler && (
