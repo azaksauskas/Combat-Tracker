@@ -42,14 +42,16 @@ export interface Unit {
   reaction: boolean;
   /** Took the Dodge action; lasts until the start of its next turn. */
   dodging: boolean;
-  /** Limited-use features, e.g. { "second-wind": 2 }. */
+  /** Limited-use features and spell slots, e.g. { "second-wind": 2, slot1: 3 }. */
   resources: Record<string, number>;
+  /** Name of the spell this creature is concentrating on. */
+  concentration?: string | null;
 }
 
 /** Temporary effects from weapon masteries etc. */
 export interface Effect {
   id: string;
-  kind: "vex" | "sap" | "slow";
+  kind: "vex" | "sap" | "slow" | "guided" | "bless" | "shield";
   source: string;
   target: string;
   /**

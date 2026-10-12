@@ -105,8 +105,10 @@ export function rollTerms(terms: readonly Term[], rng: Rng = secureRng): RollRes
 
   const dice = rolled.filter((t): t is RolledDice => t.kind === "dice");
   let natural: RollResult["natural"];
-  if (dice.length === 1 && dice[0]!.sides === 20) {
-    const keptRolls = dice[0]!.rolls.filter((_, i) => dice[0]!.kept[i]);
+  // A natural 20/1 needs exactly one d20 term (extra dice like Bless's 1d4 are fine).
+  const d20s = dice.filter((d) => d.sides === 20);
+  if (d20s.length === 1) {
+    const keptRolls = d20s[0]!.rolls.filter((_, i) => d20s[0]!.kept[i]);
     if (keptRolls.length === 1 && (keptRolls[0] === 20 || keptRolls[0] === 1)) natural = keptRolls[0];
   }
   return { expression: formatTerms(terms), terms: rolled, total, natural };

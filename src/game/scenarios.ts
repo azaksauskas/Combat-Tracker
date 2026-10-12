@@ -76,6 +76,25 @@ export const SCENARIOS: Scenario[] = [
     monsters: ["bandit", "bandit", "bandit", "bandit", "bandit", "bandit"],
     difficulty: "Low",
   },
+  {
+    id: "cult-cellar",
+    name: "The Cult Cellar",
+    blurb: "Candles, chanting and a nest of rats under the temple. The cultists stay back while the rats swarm.",
+    map: [
+      "################",
+      "#P.....#.......#",
+      "#P..~~.#..1....#",
+      "#P..~~....#..4.#",
+      "#P.......2#....#",
+      "#....#.......5.#",
+      "#....#..3......#",
+      "#.......#....6.#",
+      "################",
+    ],
+    // 6 × CR 1/8 = 150 XP: Low, but Pack Tactics makes the rats bite above their weight.
+    monsters: ["giant-rat", "giant-rat", "giant-rat", "cultist", "giant-rat", "cultist"],
+    difficulty: "Low",
+  },
 ];
 
 function starts(map: string[], ch: (c: string) => boolean): Cell[] {

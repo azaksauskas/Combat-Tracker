@@ -2,7 +2,7 @@ import clsx from "clsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HpBar } from "../components/HpBar";
 import { PARTY } from "../content/srd";
-import { describeAction, formatMod } from "../domain/statblock";
+import { actionDamage, describeAction, formatMod, type StatAction } from "../domain/statblock";
 import { averageDamage, hitChance } from "../game/ai";
 import { canAct, checkTarget, currentUnit } from "../game/engine";
 import { GameBoard, type BoardMode } from "../game/GameBoard";
@@ -103,7 +103,7 @@ function Battle({ game }: { game: GameState }) {
   const heroTurn = !aiRunning && !game.outcome && active?.side === "party" && canAct(active);
 
   // Back to moving whenever the turn changes or an action is used.
-  useEffect(() => setMode({ kind: "move" }), [active?.id, active?.turn.action]);
+  useEffect(() => setMode({ kind: "move" }), [active?.id, active?.turn.action, active?.turn.bonusAction]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -149,7 +149,19 @@ function Battle({ game }: { game: GameState }) {
             fx={fx}
             onMove={(to) => active && dispatch({ type: "move", unitId: active.id, to })}
             onTarget={(targetId) => {
-              if (active && mode.kind === "target") dispatch({ type: "action", unitId: active.id, actionId: mode.actionId, targetId });
+              if (!active || mode.kind !== "target") return;
+              const action = active.stats.actions.find((a) => a.id === mode.actionId);
+              if (action?.kind === "buff" && action.targets > 1) {
+                // Several targets: collect them, then confirm in the side panel.
+                const picked = mode.picked ?? [];
+                const next = picked.includes(targetId) ? picked.filter((x) => x !== targetId) : [...picked, targetId].slice(-action.targets);
+                setMode({ ...mode, picked: next });
+                return;
+              }
+              dispatch({ type: "action", unitId: active.id, actionId: mode.actionId, targetId });
+            }}
+            onArea={(point) => {
+              if (active && mode.kind === "area") dispatch({ type: "action", unitId: active.id, actionId: mode.actionId, point });
             }}
             onHoverUnit={setHoverId}
           />
@@ -241,28 +253,33 @@ function HeroPanel({
             <Pip on={u.reaction} label="Reaction" />
             <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-semibold text-strong">{u.turn.movement} ft</span>
           </div>
+          <SpellSlots unit={u} />
+          {u.concentration && <p className="text-xs text-highlight">Concentrating on {u.concentration}</p>}
 
           <div className="space-y-1.5">
-            {u.stats.actions.map((a) => (
-              <button
-                key={a.id}
-                disabled={!heroTurn || !u.turn.action}
-                onClick={() => setMode(mode.kind === "target" && mode.actionId === a.id ? { kind: "move" } : { kind: "target", actionId: a.id })}
-                aria-pressed={mode.kind === "target" && mode.actionId === a.id}
-                className={clsx(
-                  "w-full rounded-md border p-2 text-left text-sm transition disabled:opacity-40",
-                  mode.kind === "target" && mode.actionId === a.id ? "border-accent bg-accent/10" : "border-line bg-surface-2 hover:border-accent",
-                )}
-              >
-                <div className="font-semibold text-strong">{a.name}</div>
-                <div className="text-xs text-muted">{describeAction(a)}</div>
-              </button>
-            ))}
+            {u.stats.actions.map((a) => {
+              const selected = mode.kind !== "move" && mode.actionId === a.id;
+              const noSlot = !!a.slot && (u.resources[`slot${a.slot}`] ?? 0) <= 0;
+              return (
+                <button
+                  key={a.id}
+                  disabled={!heroTurn || !u.turn[a.bonusAction ? "bonusAction" : "action"] || noSlot}
+                  onClick={() => setMode(selected ? { kind: "move" } : isArea(a) ? { kind: "area", actionId: a.id } : { kind: "target", actionId: a.id })}
+                  aria-pressed={selected}
+                  className={clsx(
+                    "w-full rounded-md border p-2 text-left text-sm transition disabled:opacity-40",
+                    selected ? "border-accent bg-accent/10" : "border-line bg-surface-2 hover:border-accent",
+                  )}
+                >
+                  <div className="font-semibold text-strong">{a.name}</div>
+                  <div className="text-xs text-muted">{describeAction(a)}</div>
+                </button>
+              );
+            })}
           </div>
 
-          {mode.kind === "target" && (
-            <TargetPreview game={game} attacker={u} actionId={mode.actionId} target={target} />
-          )}
+          {mode.kind === "target" && <TargetPreview game={game} attacker={u} actionId={mode.actionId} target={target} />}
+          {mode.kind === "target" && <PickedTargets game={game} unit={u} mode={mode} />}
 
           <div className="grid grid-cols-3 gap-1">
             <button className="btn px-1 text-xs" disabled={!heroTurn || !u.turn.action} onClick={() => send({ type: "dash", unitId: u.id })} title="Double your movement this turn">
@@ -327,7 +344,11 @@ function HeroPanel({
             End turn
           </button>
           <p className="text-[11px] text-faint">
-            {mode.kind === "target" ? "Click a highlighted creature to attack · Esc to cancel" : "Click a lit square to move · pick an action to attack"}
+            {mode.kind === "target"
+              ? "Click a highlighted creature · Esc to cancel"
+              : mode.kind === "area"
+                ? "Hover to aim, click a square to cast · Esc to cancel"
+                : "Click a lit square to move · pick an action to attack"}
           </p>
         </>
       ) : (
@@ -337,22 +358,85 @@ function HeroPanel({
   );
 }
 
+const isArea = (a: StatAction) => a.kind === "save" && !!a.area;
+
+function SpellSlots({ unit: u }: { unit: Unit }) {
+  const levels = u.stats.spellSlots.map((max, i) => ({ level: i + 1, max, left: u.resources[`slot${i + 1}`] ?? 0 })).filter((x) => x.max > 0);
+  if (levels.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-xs text-muted" aria-label="Spell slots">
+      {levels.map((l) => (
+        <span key={l.level} className="flex items-center gap-1" title={`Level ${l.level} spell slots: ${l.left} of ${l.max}`}>
+          <span>{ordinalShort(l.level)}</span>
+          {Array.from({ length: l.max }, (_, i) => (
+            <span key={i} className={clsx("inline-block h-2.5 w-2.5 rotate-45 border border-accent", i < l.left ? "bg-accent" : "bg-transparent")} />
+          ))}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+const ordinalShort = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
+
+/** Bless and friends: the creatures picked so far, and a button to cast. */
+function PickedTargets({ game, unit: u, mode }: { game: GameState; unit: Unit; mode: Extract<BoardMode, { kind: "target" }> }) {
+  const action = u.stats.actions.find((a) => a.id === mode.actionId);
+  if (action?.kind !== "buff" || action.targets <= 1) return null;
+  const picked = mode.picked ?? [];
+  return (
+    <div className="space-y-1 rounded-md border border-line bg-surface-2/60 p-2 text-xs">
+      <div className="text-muted">
+        Pick up to {action.targets}: {picked.length ? picked.map((id) => game.units.find((x) => x.id === id)?.name).join(", ") : "nobody yet"}
+      </div>
+      <button
+        className="btn btn-primary w-full text-xs"
+        disabled={picked.length === 0}
+        onClick={() => dispatch({ type: "action", unitId: u.id, actionId: action.id, targetIds: picked })}
+      >
+        Cast {action.name} on {picked.length}
+      </button>
+    </div>
+  );
+}
+
 function TargetPreview({ game, attacker, actionId, target }: { game: GameState; attacker: Unit; actionId: string; target: Unit | undefined }) {
   const action = attacker.stats.actions.find((a) => a.id === actionId);
   if (!action) return null;
-  if (!target || target.id === attacker.id || target.dead) return <p className="text-xs text-muted italic">Hover a creature to see your odds.</p>;
+  const friendly = action.kind === "heal" || action.kind === "buff";
+  if (!target || (target.id === attacker.id && !friendly) || target.dead) return <p className="text-xs text-muted italic">Hover a creature to see your odds.</p>;
   const check = checkTarget(game, attacker.id, actionId, target.id);
   if (!check.ok) return <p className="text-xs text-danger">{check.reason}</p>;
-  const odds =
-    action.kind === "attack"
-      ? `${Math.round(hitChance(action.toHit, target.ac, check.advantage) * 100)}% to hit (${formatMod(action.toHit)} vs AC ${target.ac})`
-      : `DC ${action.dc} ${action.save.toUpperCase()} save`;
+  let odds: string;
+  let effect: string;
+  switch (action.kind) {
+    case "attack":
+      odds = `${Math.round(hitChance(action.toHit, target.ac, check.advantage) * 100)}% to hit (${formatMod(action.toHit)} vs AC ${target.ac})`;
+      effect = `≈ ${averageDamage(action.damage).toFixed(1)} damage on a hit`;
+      break;
+    case "save":
+      odds = `DC ${action.dc} ${action.save.toUpperCase()} save`;
+      effect = `≈ ${averageDamage(action.damage).toFixed(1)} damage on a failed save`;
+      break;
+    case "missile":
+      odds = `${action.darts} darts, always hit`;
+      effect = `≈ ${averageDamage(actionDamage(action)).toFixed(1)} damage`;
+      break;
+    case "heal":
+      odds = `${target.hp}/${target.hpMax} HP`;
+      effect = `heals ${action.dice}${action.ability ? ` + ${action.ability.toUpperCase()}` : ""}`;
+      break;
+    case "buff":
+      odds = action.buff === "bless" ? "+1d4 to attacks and saves" : "+5 max HP";
+      effect = action.concentration ? "concentration" : "until the end of the fight";
+      break;
+  }
   return (
     <div className="rounded-md border border-line bg-surface-2/60 p-2 text-xs">
       <div className="font-semibold text-strong">
         {target.name}: {odds}
       </div>
-      <div className="text-muted">≈ {averageDamage(action.damage).toFixed(1)} damage on a hit</div>
+      <div className="text-muted">{effect}</div>
       {check.reasons.length > 0 && (
         <ul className="mt-1 space-y-0.5">
           {check.reasons.map((r) => (

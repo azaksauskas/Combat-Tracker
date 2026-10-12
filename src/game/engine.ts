@@ -1,7 +1,17 @@
 import { produce, type Draft } from "immer";
 import { adjustDamage, rollDamage, type Advantage } from "../domain/attack";
 import { parseDice, rollTerms, withAdvantage, type Rng, type Term } from "../domain/dice";
-import { ABILITY_NAMES, abilityMod, saveBonus, type AttackAction, type SaveAction, type StatAction } from "../domain/statblock";
+import {
+  ABILITY_NAMES,
+  abilityMod,
+  saveBonus,
+  type AttackAction,
+  type BuffAction,
+  type HealAction,
+  type MissileAction,
+  type SaveAction,
+  type StatAction,
+} from "../domain/statblock";
 import { FEET_PER_CELL, distanceFt, findPath, lineOfSight, makeBoardIndex, reachableCells, sameCell, type Board, type Cell } from "./board";
 import { mulberry32 } from "./rng";
 import { GameError, type Effect, type GameEvent, type GameState, type Side, type Unit } from "./state";
@@ -15,7 +25,12 @@ import { GameError, type Effect, type GameEvent, type GameState, type Side, type
 
 export type Command =
   | { type: "move"; unitId: string; to: Cell }
-  | { type: "action"; unitId: string; actionId: string; targetId: string }
+  /**
+   * Use an action from the stat block. Single-target actions take
+   * `targetId`; buffs may take several `targetIds`; area spells take a
+   * `point` to aim at.
+   */
+  | { type: "action"; unitId: string; actionId: string; targetId?: string; targetIds?: string[]; point?: Cell }
   | { type: "dash"; unitId: string; bonus?: boolean }
   | { type: "action-surge"; unitId: string }
   | { type: "turn-undead"; unitId: string }
@@ -85,13 +100,22 @@ export function checkTarget(s: GameState, attackerId: string, actionId: string, 
   const no = (reason: string): TargetCheck => ({ ok: false, reason, advantage: "normal", reasons: [] });
   if (!a || !t || !action) return no("Unknown creature or action");
   if (t.dead) return no(`${t.name} is dead`);
-  if (a.id === t.id) return no("Can't target yourself");
+  if (action.slot && (a.resources[`slot${action.slot}`] ?? 0) <= 0) return no(`No level ${action.slot} spell slots left`);
+  const friendly = action.kind === "heal" || action.kind === "buff";
+  if (friendly && t.side !== a.side) return no(`${action.name} is for your allies`);
+  if (!friendly && a.id === t.id) return no("Can't target yourself");
+  if (action.kind === "save" && action.area) return no("Aim it at a square");
   const dist = distanceFt(a.pos, t.pos);
-  if (action.kind === "attack") {
-    const max = action.attackType === "melee" ? action.reach : (action.range?.[1] ?? 5);
-    if (dist > max) return no(`${t.name} is out of range (${dist} ft, max ${max} ft)`);
-  }
-  if (!lineOfSight(s.board, a.pos, t.pos)) return no(`No line of sight to ${t.name}`);
+  const max =
+    action.kind === "attack"
+      ? action.attackType === "melee"
+        ? action.reach
+        : (action.range?.[1] ?? 5)
+      : action.kind === "save"
+        ? (action.range ?? 60)
+        : action.range;
+  if (dist > max) return no(`${t.name} is out of range (${dist} ft, max ${max} ft)`);
+  if (a.id !== t.id && !lineOfSight(s.board, a.pos, t.pos)) return no(`No line of sight to ${t.name}`);
   const { advantage, reasons } = action.kind === "attack" ? attackAdvantage(s, a, t, action) : { advantage: "normal" as Advantage, reasons: [] };
   return { ok: true, advantage, reasons };
 }
@@ -122,6 +146,7 @@ function attackAdvantage(s: GameState, a: Unit, t: Unit, action: AttackAction): 
     if (e.kind === "sap" && e.target === a.id) dis.push("Sapped");
   }
   if (a.stats.features.includes("pack-tactics") && allyNear(s, a, t)) adv.push("Pack Tactics");
+  if (s.effects.some((e) => e.kind === "guided" && e.target === t.id)) adv.push("Guiding Bolt");
 
   const advantage: Advantage = adv.length && !dis.length ? "adv" : dis.length && !adv.length ? "dis" : "normal";
   return { advantage, reasons: [...adv.map((r) => `+ ${r}`), ...dis.map((r) => `− ${r}`)] };
@@ -145,8 +170,12 @@ const unit = (ctx: Ctx, id: string) => {
   return u as Unit;
 };
 
-function d20(ctx: Ctx, bonus: number, advantage: Advantage = "normal") {
+/** Bless adds 1d4 to the attack rolls and saving throws of its targets. */
+const blessed = (ctx: Ctx, u: Unit) => ctx.s.effects.some((e) => e.kind === "bless" && e.target === u.id);
+
+function d20(ctx: Ctx, bonus: number, advantage: Advantage = "normal", bless = false) {
   const terms: Term[] = [{ kind: "dice", sign: 1, count: 1, sides: 20 }];
+  if (bless) terms.push({ kind: "dice", sign: 1, count: 1, sides: 4 });
   if (bonus) terms.push({ kind: "mod", sign: bonus < 0 ? -1 : 1, value: Math.abs(bonus) });
   return rollTerms(withAdvantage(terms, advantage), ctx.rng);
 }
@@ -188,6 +217,14 @@ function takeDamage(ctx: Ctx, u: Unit, amount: number, detail: string, opts: { c
   if (amount <= 0 || u.dead) return;
   // Turned undead snap out of it when they take damage.
   if (has(u, "Turned")) removeCondition(ctx, u, "Turned");
+  // Concentration: Con save DC 10 or half the damage, whichever is higher.
+  if (u.concentration && u.hp > amount) {
+    const dc = Math.max(10, Math.floor(amount / 2));
+    const roll = d20(ctx, saveBonus(u.stats, "con"), "normal", blessed(ctx, u));
+    const kept = roll.total >= dc;
+    ctx.events.push({ type: "save", targetId: u.id, action: `Concentration (${u.concentration})`, ability: "Constitution", dc, roll, success: kept });
+    if (!kept) dropConcentration(ctx, u);
+  } else if (u.concentration) dropConcentration(ctx, u);
   const absorbed = Math.min(u.tempHp, amount);
   u.tempHp -= absorbed;
   let rest = amount - absorbed;
@@ -230,6 +267,13 @@ function takeDamage(ctx: Ctx, u: Unit, amount: number, detail: string, opts: { c
   addCondition(ctx, u, "Prone");
 }
 
+function dropConcentration(ctx: Ctx, u: Unit) {
+  if (!u.concentration) return;
+  ctx.events.push({ type: "feature", unitId: u.id, name: "Concentration lost", detail: u.concentration });
+  u.concentration = null;
+  ctx.s.effects = ctx.s.effects.filter((e) => !(e.kind === "bless" && e.source === u.id));
+}
+
 function heal(ctx: Ctx, u: Unit, amount: number) {
   if (u.dead || amount <= 0) return;
   const wasDown = u.hp <= 0;
@@ -263,11 +307,17 @@ const describeDamage = (d: { amount: number; type: string; adjustment: string | 
 /** Rolls one attack and applies everything that follows from it. */
 function makeAttack(ctx: Ctx, a: Unit, t: Unit, action: AttackAction, opts: { opportunity?: boolean } = {}) {
   const { advantage, reasons } = attackAdvantage(ctx.s as GameState, a, t, action);
-  const roll = d20(ctx, action.toHit, advantage);
+  const roll = d20(ctx, action.toHit, advantage, blessed(ctx, a));
   const dist = distanceFt(a.pos, t.pos);
   const autoCrit = dist <= 5 && AUTO_CRIT_WITHIN_5.some((c) => has(t, c));
   const natural = roll.natural;
-  const hit = natural === 20 || (natural !== 1 && roll.total >= t.ac);
+  let ac = t.ac + (ctx.s.effects.some((e) => e.kind === "shield" && e.target === t.id) ? 5 : 0);
+  let hit = natural === 20 || (natural !== 1 && roll.total >= ac);
+  // Shield (reaction): +5 AC until the caster's next turn, if that turns the hit into a miss.
+  if (hit && natural !== 20 && roll.total < ac + 5 && castShield(ctx, t)) {
+    ac += 5;
+    hit = false;
+  }
   // Champion's Improved Critical: a 19 on the kept d20 also crits.
   const kept = roll.terms[0]?.kind === "dice" ? roll.terms[0].rolls.find((_, i) => (roll.terms[0] as { kept: boolean[] }).kept[i]) : undefined;
   const critRange = a.stats.features.includes("improved-critical") ? 19 : 20;
@@ -275,9 +325,22 @@ function makeAttack(ctx: Ctx, a: Unit, t: Unit, action: AttackAction, opts: { op
   ctx.events.push({ type: "attack", attackerId: a.id, targetId: t.id, action: action.name, roll, advantage, reasons, hit, crit, opportunity: opts.opportunity });
 
   // Advantage/disadvantage effects are used up by the attack.
-  ctx.s.effects = ctx.s.effects.filter((e) => !(e.kind === "vex" && e.source === a.id && e.target === t.id) && !(e.kind === "sap" && e.target === a.id));
+  ctx.s.effects = ctx.s.effects.filter(
+    (e) => !(e.kind === "vex" && e.source === a.id && e.target === t.id) && !(e.kind === "sap" && e.target === a.id) && !(e.kind === "guided" && e.target === t.id),
+  );
 
   if (!hit) {
+    // Evoker's Potent Cantrip: a missed cantrip still deals half damage.
+    if (action.cantrip && a.stats.features.includes("potent-cantrip")) {
+      const damage = rollDamage(action.damage, { ac: t.ac, stats: t.stats }, ctx.rng, false).map((d) => ({
+        ...d,
+        ...adjustDamage(Math.floor(d.roll.total / 2), d.type, t.stats),
+      }));
+      const total = damage.reduce((n, d) => n + d.amount, 0);
+      ctx.events.push({ type: "feature", unitId: a.id, name: "Potent Cantrip", detail: `half damage on a miss` });
+      takeDamage(ctx, t, total, describeDamage(damage), { types: damage.map((d) => d.type) });
+      return;
+    }
     // Graze: on a miss, deal damage equal to the attack's ability modifier.
     if (action.mastery === "graze" && action.damage[0]) {
       const mod = Math.max(0, action.toHit - a.stats.proficiency);
@@ -315,6 +378,7 @@ function makeAttack(ctx: Ctx, a: Unit, t: Unit, action: AttackAction, opts: { op
   takeDamage(ctx, t, total, describeDamage(damage), { crit, types: damage.map((d) => d.type) });
 
   if (action.onHitCondition && !t.dead && t.hp > 0) addCondition(ctx, t, action.onHitCondition);
+  if (action.onHitEffect === "guided" && !t.dead) addEffect(ctx, { kind: "guided", source: a.id, target: t.id, expires: { unit: a.id, at: "end", turns: 2 } });
 
   // Weapon masteries that trigger on a hit.
   if (action.mastery === "vex" && total > 0) addEffect(ctx, { kind: "vex", source: a.id, target: t.id, expires: { unit: a.id, at: "end", turns: 2 } });
@@ -323,13 +387,14 @@ function makeAttack(ctx: Ctx, a: Unit, t: Unit, action: AttackAction, opts: { op
   checkOutcome(ctx);
 }
 
-function forceSave(ctx: Ctx, t: Unit, action: SaveAction) {
+function forceSave(ctx: Ctx, t: Unit, action: SaveAction, rolled?: ReturnType<typeof rollDamage>) {
   const autoFail = (action.save === "str" || action.save === "dex") && AUTO_FAIL_STR_DEX.some((c) => has(t, c));
   const disadvantage: Advantage = action.save === "dex" && has(t, "Restrained") ? "dis" : t.dodging && action.save === "dex" && canAct(t) ? "adv" : "normal";
-  const roll = d20(ctx, saveBonus(t.stats, action.save), disadvantage);
+  const roll = d20(ctx, saveBonus(t.stats, action.save), disadvantage, blessed(ctx, t));
   const success = !autoFail && roll.total >= action.dc;
   ctx.events.push({ type: "save", targetId: t.id, action: action.name, ability: ABILITY_NAMES[action.save], dc: action.dc, roll, success, autoFail });
-  const raw = rollDamage(action.damage, { ac: t.ac, stats: null }, ctx.rng, false);
+  // Area spells roll their damage once for everyone caught in them.
+  const raw = rolled ?? rollDamage(action.damage, { ac: t.ac, stats: null }, ctx.rng, false);
   const damage = raw.map((d) => {
     const base = success ? (action.onSuccess === "half" ? Math.floor(d.roll.total / 2) : 0) : d.roll.total;
     return { ...d, ...adjustDamage(base, d.type, t.stats) };
@@ -337,6 +402,100 @@ function forceSave(ctx: Ctx, t: Unit, action: SaveAction) {
   const total = damage.reduce((n, d) => n + d.amount, 0);
   takeDamage(ctx, t, total, describeDamage(damage), { types: damage.map((d) => d.type) });
   checkOutcome(ctx);
+}
+
+/** Shield: a reaction for creatures that know it, using a 1st-level slot. */
+function castShield(ctx: Ctx, t: Unit): boolean {
+  if (!t.stats.features.includes("shield-spell") || !t.reaction || !canAct(t) || (t.resources.slot1 ?? 0) <= 0) return false;
+  t.reaction = false;
+  t.resources.slot1! -= 1;
+  addEffect(ctx, { kind: "shield", source: t.id, target: t.id, expires: { unit: t.id, at: "start", turns: 1 } });
+  ctx.events.push({ type: "feature", unitId: t.id, name: "Shield", detail: "+5 AC until its next turn (reaction, 1st-level slot)" });
+  return true;
+}
+
+/** Disciple of Life (Life Domain): healing spells restore 2 + the slot level extra. */
+function castHeal(ctx: Ctx, caster: Unit, t: Unit, action: HealAction) {
+  const roll = rollTerms(parseDice(action.dice), ctx.rng);
+  const mod = action.ability ? abilityMod(caster.stats.abilities[action.ability]) : 0;
+  const bonus = action.slot && caster.stats.features.includes("disciple-of-life") ? 2 + action.slot : 0;
+  const amount = Math.max(1, roll.total + mod + bonus);
+  ctx.events.push({ type: "feature", unitId: caster.id, name: action.name, detail: `${t.id === caster.id ? "self" : t.name}: ${roll.total}${mod ? ` + ${mod}` : ""}${bonus ? ` + ${bonus} (Disciple of Life)` : ""} = ${amount}` });
+  heal(ctx, t, amount);
+}
+
+function castBuff(ctx: Ctx, caster: Unit, targets: Unit[], action: BuffAction) {
+  if (action.concentration) {
+    dropConcentration(ctx, caster);
+    caster.concentration = action.name;
+  }
+  for (const t of targets) {
+    if (action.buff === "bless") {
+      ctx.s.effects.push({ id: `e${ctx.s.nextId++}`, kind: "bless", source: caster.id, target: t.id, expires: { unit: caster.id, at: "start", turns: 10 } });
+      ctx.events.push({ type: "effect", effect: "bless", source: caster.id, target: t.id });
+    } else {
+      t.hpMax += 5;
+      ctx.events.push({ type: "feature", unitId: t.id, name: action.name, detail: "+5 max HP" });
+      heal(ctx, t, 5);
+    }
+  }
+}
+
+function castMissile(ctx: Ctx, caster: Unit, t: Unit, action: MissileAction) {
+  if (castShield(ctx, t)) {
+    ctx.events.push({ type: "feature", unitId: t.id, name: "Shield", detail: `blocks ${action.name}` });
+    return;
+  }
+  const parts = Array.from({ length: action.darts }, () => ({ dice: action.dice, type: action.damageType }));
+  const damage = rollDamage(parts, { ac: t.ac, stats: t.stats }, ctx.rng, false);
+  const total = damage.reduce((n, d) => n + d.amount, 0);
+  ctx.events.push({ type: "feature", unitId: caster.id, name: action.name, detail: `${action.darts} darts hit ${t.name}` });
+  takeDamage(ctx, t, total, describeDamage(damage), { types: [action.damageType] });
+  checkOutcome(ctx);
+}
+
+/** Squares covered by an area spell aimed at `point`. */
+export function areaCells(s: GameState, casterId: string, action: StatAction, point: Cell): Cell[] {
+  const caster = s.units.find((u) => u.id === casterId);
+  if (!caster || action.kind !== "save" || !action.area) return [];
+  const { shape, size } = action.area;
+  const cells: Cell[] = [];
+  if (shape === "cone") {
+    // The cone starts at the caster; its width at any distance equals that distance.
+    const dx = point.x - caster.pos.x;
+    const dy = point.y - caster.pos.y;
+    const len = Math.hypot(dx, dy);
+    if (len === 0) return [];
+    for (let y = 0; y < s.board.height; y++)
+      for (let x = 0; x < s.board.width; x++) {
+        const vx = x - caster.pos.x;
+        const vy = y - caster.pos.y;
+        const d = Math.hypot(vx, vy);
+        if (d === 0 || distanceFt(caster.pos, { x, y }) > size) continue;
+        const cos = (vx * dx + vy * dy) / (d * len);
+        if (cos >= Math.cos(Math.atan(0.5)) - 0.02 && lineOfSight(s.board, caster.pos, { x, y })) cells.push({ x, y });
+      }
+  } else {
+    for (let y = 0; y < s.board.height; y++)
+      for (let x = 0; x < s.board.width; x++)
+        if (distanceFt(point, { x, y }) <= size && lineOfSight(s.board, point, { x, y })) cells.push({ x, y });
+  }
+  return cells.filter((c) => !s.board.walls.includes(`${c.x},${c.y}`));
+}
+
+/** Can the caster aim this area spell here? */
+export function checkArea(s: GameState, casterId: string, actionId: string, point: Cell): { ok: boolean; reason?: string } {
+  const caster = s.units.find((u) => u.id === casterId);
+  const action = caster?.stats.actions.find((a) => a.id === actionId);
+  if (!caster || !action || action.kind !== "save" || !action.area) return { ok: false, reason: "Not an area spell" };
+  if (action.slot && (caster.resources[`slot${action.slot}`] ?? 0) <= 0) return { ok: false, reason: `No level ${action.slot} spell slots left` };
+  if (sameCell(point, caster.pos)) return { ok: false, reason: "Aim away from yourself" };
+  if (action.area.shape === "sphere") {
+    const range = action.range ?? 60;
+    if (distanceFt(caster.pos, point) > range) return { ok: false, reason: `Out of range (max ${range} ft)` };
+    if (!lineOfSight(s.board, caster.pos, point)) return { ok: false, reason: "No line of sight to that spot" };
+  }
+  return { ok: true };
 }
 
 /** The melee attack a creature uses for opportunity attacks: highest average damage. */
@@ -461,6 +620,11 @@ function advance(ctx: Ctx) {
   }
 }
 
+function spendSpell(u: Unit, action: StatAction, cost: "action" | "bonusAction") {
+  u.turn[cost] = false;
+  if (action.slot) u.resources[`slot${action.slot}`]! -= 1;
+}
+
 function spend(u: Unit, kind: "action" | "bonusAction") {
   if (!u.turn[kind]) throw new GameError(kind === "action" ? `${u.name} has already used their action` : `${u.name} has already used their bonus action`);
   u.turn[kind] = false;
@@ -480,12 +644,47 @@ function run(ctx: Ctx, cmd: Command) {
     case "action": {
       const action: StatAction | undefined = u.stats.actions.find((a) => a.id === cmd.actionId);
       if (!action) throw new GameError("Unknown action");
+      const cost = action.bonusAction ? "bonusAction" : "action";
+      if (!u.turn[cost]) throw new GameError(`${u.name} has already used their ${action.bonusAction ? "bonus action" : "action"}`);
+      if (action.slot && (u.resources[`slot${action.slot}`] ?? 0) <= 0) throw new GameError(`No level ${action.slot} spell slots left`);
+
+      if (action.kind === "save" && action.area) {
+        if (!cmd.point) throw new GameError("Pick a square to aim at");
+        const ok = checkArea(s as GameState, u.id, action.id, cmd.point);
+        if (!ok.ok) throw new GameError(ok.reason);
+        const cells = areaCells(s as GameState, u.id, action, cmd.point);
+        spendSpell(u, action, cost);
+        ctx.events.push({ type: "feature", unitId: u.id, name: action.name, detail: `${action.area.size}-ft ${action.area.shape}` });
+        const rolled = rollDamage(action.damage, { ac: 10, stats: null }, ctx.rng, false);
+        for (const t of ctx.s.units as Unit[]) {
+          if (t.dead || t.id === u.id || !cells.some((c) => sameCell(c, t.pos))) continue;
+          forceSave(ctx, t, action, rolled);
+        }
+        return;
+      }
+
+      if (action.kind === "buff") {
+        const ids = cmd.targetIds ?? (cmd.targetId ? [cmd.targetId] : []);
+        if (ids.length === 0) throw new GameError("Choose who to help");
+        if (ids.length > action.targets) throw new GameError(`${action.name} affects at most ${action.targets} creatures`);
+        for (const id of ids) {
+          const check = checkTarget(s as GameState, u.id, action.id, id);
+          if (!check.ok) throw new GameError(check.reason);
+        }
+        spendSpell(u, action, cost);
+        castBuff(ctx, u, ids.map((id) => unit(ctx, id)), action);
+        return;
+      }
+
+      if (!cmd.targetId) throw new GameError("Choose a target");
       const check = checkTarget(s as GameState, u.id, cmd.actionId, cmd.targetId);
       if (!check.ok) throw new GameError(check.reason);
-      spend(u, "action");
+      spendSpell(u, action, cost);
       const t = unit(ctx, cmd.targetId);
       if (action.kind === "attack") makeAttack(ctx, u, t, action);
-      else forceSave(ctx, t, action);
+      else if (action.kind === "save") forceSave(ctx, t, action);
+      else if (action.kind === "heal") castHeal(ctx, u, t, action);
+      else if (action.kind === "missile") castMissile(ctx, u, t, action);
       return;
     }
     case "dash":
@@ -618,6 +817,10 @@ export function defaultResources(stats: Unit["stats"]): Record<string, number> {
   if (stats.features.includes("second-wind")) r["second-wind"] = 2;
   if (stats.features.includes("action-surge")) r["action-surge"] = 1;
   if (stats.features.includes("turn-undead")) r["channel-divinity"] = 2;
+  if (stats.features.includes("arcane-recovery")) r["arcane-recovery"] = 1;
+  stats.spellSlots.forEach((n, i) => {
+    if (n > 0) r[`slot${i + 1}`] = n;
+  });
   return r;
 }
 
@@ -656,6 +859,7 @@ export function createGame(board: Board, setups: UnitSetup[], seed: number, opts
       turn: { movement: x.speed, action: true, bonusAction: true, disengaged: false, sneakAttackUsed: false },
       reaction: true,
       dodging: false,
+      concentration: null,
       resources: { ...defaultResources(x.stats), ...x.resources },
     };
   });

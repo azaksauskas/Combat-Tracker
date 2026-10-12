@@ -5,11 +5,16 @@ import { initials } from "../domain/combat";
 import { useThemeColors } from "../store/ui";
 import { GRID_ALPHA, withAlpha, type ThemeColors } from "../theme/themes";
 import { findPath, fromKey, key, type Cell } from "./board";
-import { checkTarget, currentUnit, reachable } from "./engine";
+import { areaCells, checkArea, checkTarget, currentUnit, reachable } from "./engine";
 import type { GameState, Unit } from "./state";
 import type { Fx } from "./store";
 
-export type BoardMode = { kind: "move" } | { kind: "target"; actionId: string };
+export type BoardMode =
+  | { kind: "move" }
+  /** Pick a creature; `picked` collects several for spells like Bless. */
+  | { kind: "target"; actionId: string; picked?: string[] }
+  /** Aim an area spell at a square. */
+  | { kind: "area"; actionId: string };
 
 interface Props {
   game: GameState;
@@ -19,6 +24,7 @@ interface Props {
   fx: Fx[];
   onMove: (to: Cell) => void;
   onTarget: (unitId: string) => void;
+  onArea: (point: Cell) => void;
   onHoverUnit: (unitId: string | null) => void;
 }
 
@@ -36,7 +42,7 @@ function useSize() {
 }
 
 /** Tile-based battle board for the game (fixed grid, click to move/target). */
-export function GameBoard({ game, mode, interactive, fx, onMove, onTarget, onHoverUnit }: Props) {
+export function GameBoard({ game, mode, interactive, fx, onMove, onTarget, onArea, onHoverUnit }: Props) {
   const colors = useThemeColors();
   const [ref, size] = useSize();
   const { board } = game;
@@ -61,8 +67,24 @@ export function GameBoard({ game, mode, interactive, fx, onMove, onTarget, onHov
 
   const targets = useMemo(() => {
     if (!heroTurn || mode.kind !== "target" || !active) return new Map<string, boolean>();
-    return new Map(game.units.filter((u) => !u.dead && u.id !== active.id).map((u) => [u.id, checkTarget(game, active.id, mode.actionId, u.id).ok]));
+    const result = new Map<string, boolean>();
+    for (const u of game.units) {
+      if (u.dead) continue;
+      const ok = checkTarget(game, active.id, mode.actionId, u.id).ok;
+      // Only ring yourself when the spell can be cast on you.
+      if (u.id !== active.id || ok) result.set(u.id, ok);
+    }
+    return result;
   }, [game, heroTurn, mode, active]);
+
+  const area = useMemo(() => {
+    if (!heroTurn || mode.kind !== "area" || !active || !hover) return null;
+    const check = checkArea(game, active.id, mode.actionId, hover);
+    const action = active.stats.actions.find((a) => a.id === mode.actionId);
+    if (!action) return null;
+    return { ok: check.ok, reason: check.reason, cells: check.ok ? areaCells(game, active.id, action, hover) : [] };
+  }, [game, heroTurn, mode, active, hover]);
+  const picked = mode.kind === "target" ? (mode.picked ?? []) : [];
 
   const center = (c: Cell) => ({ x: c.x * cell + cell / 2, y: c.y * cell + cell / 2 });
   const walls = useMemo(() => new Set(board.walls), [board]);
@@ -80,13 +102,17 @@ export function GameBoard({ game, mode, interactive, fx, onMove, onTarget, onHov
             if (p) setHover({ x: Math.floor(p.x / cell), y: Math.floor(p.y / cell) });
           }}
           onClick={(e) => {
-            if (!heroTurn || mode.kind !== "move") return;
+            if (!heroTurn || mode.kind === "target") return;
             const p = e.target.getStage()?.getPointerPosition();
             if (!p) return;
             const c = { x: Math.floor(p.x / cell), y: Math.floor(p.y / cell) };
+            if (mode.kind === "area") {
+              if (checkArea(game, active!.id, mode.actionId, c).ok) onArea(c);
+              return;
+            }
             if (reach.has(key(c)) && key(c) !== key(active!.pos)) onMove(c);
           }}
-          style={{ cursor: heroTurn ? (mode.kind === "target" ? "crosshair" : "pointer") : "wait" }}
+          style={{ cursor: heroTurn ? (mode.kind === "move" ? "pointer" : "crosshair") : "wait" }}
         >
           <Layer listening={false}>
             <Rect width={width} height={height} fill={colors["map-bg"]} />
@@ -118,6 +144,12 @@ export function GameBoard({ game, mode, interactive, fx, onMove, onTarget, onHov
               const c = fromKey(k);
               return <Rect key={k} x={c.x * cell + 1} y={c.y * cell + 1} width={cell - 2} height={cell - 2} fill={withAlpha(colors.accent, 0.13)} cornerRadius={3} />;
             })}
+            {area?.cells.map((c) => (
+              <Rect key={`a${c.x},${c.y}`} x={c.x * cell} y={c.y * cell} width={cell} height={cell} fill={withAlpha(colors.danger, 0.3)} stroke={withAlpha(colors.danger, 0.6)} strokeWidth={1} />
+            ))}
+            {area && !area.ok && hover && (
+              <Rect x={hover.x * cell + 2} y={hover.y * cell + 2} width={cell - 4} height={cell - 4} stroke={colors.faint} strokeWidth={2} dash={[4, 4]} />
+            )}
             {path && active && (
               <>
                 <Line
@@ -154,6 +186,8 @@ export function GameBoard({ game, mode, interactive, fx, onMove, onTarget, onHov
                   colors={colors}
                   active={u.id === active?.id}
                   targetable={targets.get(u.id)}
+                  picked={picked.includes(u.id)}
+                  inArea={!!area?.cells.some((c) => c.x === u.pos.x && c.y === u.pos.y)}
                   onClick={() => targets.get(u.id) && onTarget(u.id)}
                   onHover={(on) => onHoverUnit(on ? u.id : null)}
                 />
@@ -181,6 +215,8 @@ function UnitToken({
   colors,
   active,
   targetable,
+  picked,
+  inArea,
   onClick,
   onHover,
 }: {
@@ -189,6 +225,8 @@ function UnitToken({
   colors: ThemeColors;
   active: boolean;
   targetable: boolean | undefined;
+  picked: boolean;
+  inArea: boolean;
   onClick: () => void;
   onHover: (on: boolean) => void;
 }) {
@@ -225,6 +263,8 @@ function UnitToken({
       {targetable !== undefined && (
         <Circle radius={r + 6} stroke={targetable ? colors.highlight : colors.faint} strokeWidth={targetable ? 3 : 1} dash={targetable ? undefined : [4, 4]} />
       )}
+      {picked && <Circle radius={r + 9} stroke={colors.heal} strokeWidth={4} />}
+      {inArea && <Circle radius={r + 7} stroke={colors.danger} strokeWidth={4} dash={[6, 3]} />}
       {active && <Circle radius={r + 4} stroke={colors.accent} strokeWidth={3} shadowColor={colors.accent} shadowBlur={12} />}
       <Circle radius={r} fill={u.side === "enemy" ? colors["token-monster"] : colors["token-player"]} stroke={u.side === "enemy" ? colors.danger : colors.temp} strokeWidth={2} />
       <Text text={initials(u.name)} width={r * 2} height={r * 2} x={-r} y={-r} align="center" verticalAlign="middle" fontStyle="bold" fontSize={r * 0.9} fill="white" listening={false} />

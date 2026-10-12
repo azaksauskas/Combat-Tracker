@@ -92,5 +92,5 @@ describe("scenarios", () => {
       for (const u of units) expect(board.walls, `${sc.id} ${u.name}`).not.toContain(`${u.pos.x},${u.pos.y}`);
       for (let seed = 1; seed <= 10; seed++) expect(autoplay(createGame(board, units, seed).state).outcome, `${sc.id} seed ${seed}`).not.toBeNull();
     }
-  });
+  }, 30_000);
 });

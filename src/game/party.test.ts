@@ -53,7 +53,7 @@ describe("party progression", () => {
     const ezra = party.heroes.find((h) => h.key === "wizard")!;
     const actions = heroStats(ezra).actions;
     expect(actions.find((a) => a.name.startsWith("Dagger"))).toMatchObject({ name: "Dagger +1", toHit: 4 });
-    expect(actions.find((a) => a.name.startsWith("Fire Bolt"))!.name).toBe("Fire Bolt (cantrip)");
+    expect(actions.find((a) => a.name.startsWith("Fire Bolt"))!.name).toBe("Fire Bolt");
     expect(party.items["weapon-plus-1"]).toBe(0);
     expect(unequip(party, "wizard", "weapon-plus-1").items["weapon-plus-1"]).toBe(1);
   });

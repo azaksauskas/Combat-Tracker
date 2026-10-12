@@ -7,6 +7,7 @@ import {
   StatBlockSchema,
   abilityMod,
   formatMod,
+  describeAction,
   type Ability,
   type AttackAction,
   type DamageType,
@@ -158,6 +159,19 @@ export function StatBlockEditor({ value, onChange }: { value: StatBlock; onChang
 }
 
 function ActionRow({ action: a, onChange, onRemove }: { action: StatAction; onChange: (a: StatAction) => void; onRemove: () => void }) {
+  // Spells (healing, buffs, Magic Missile) come from built-in content and are shown read-only.
+  if (a.kind !== "attack" && a.kind !== "save")
+    return (
+      <li className="flex items-start gap-2 rounded-md border border-line bg-surface-2/50 p-2 text-sm">
+        <div className="flex-1">
+          <div className="font-semibold">{a.name}</div>
+          <div className="text-xs text-muted">{describeAction(a)}</div>
+        </div>
+        <button type="button" className="btn btn-ghost px-2 hover:text-danger" onClick={onRemove} aria-label={`Remove ${a.name}`}>
+          ✕
+        </button>
+      </li>
+    );
   const kindValue = a.kind === "save" ? "save" : a.attackType;
   const setKind = (k: string) => {
     if (k === "save" && a.kind !== "save")

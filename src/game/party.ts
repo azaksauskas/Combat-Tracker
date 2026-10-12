@@ -1,6 +1,6 @@
 import { PARTY } from "../content/srd";
 import { secureRng, type Rng } from "../domain/dice";
-import { abilityMod, type Feature, type StatBlock } from "../domain/statblock";
+import { ActionSchema, abilityMod, type Feature, type StatAction, type StatBlock } from "../domain/statblock";
 import type { Cell } from "./board";
 import { defaultResources, type UnitSetup } from "./engine";
 import type { GameState } from "./state";
@@ -89,7 +89,15 @@ export function createParty(): Party {
 interface ClassLevel {
   features?: Feature[];
   traits: { name: string; text: string }[];
+  /** Spell slots at this level (replaces the previous table row). */
+  spellSlots?: number[];
+  /** New spells or attacks. */
+  actions?: StatAction[];
 }
+
+/** A spell learned on level-up, with a stable id. */
+const spell = (a: Record<string, unknown> & { kind: StatAction["kind"]; name: string }): StatAction =>
+  ActionSchema.parse({ id: `spell-${a.name.toLowerCase()}`, notes: "", ...a });
 
 /** What each class gains at levels 2 and 3 (2024; SRD subclasses at 3). */
 const CLASS_LEVELS: Record<string, Record<number, ClassLevel>> = {
@@ -107,13 +115,42 @@ const CLASS_LEVELS: Record<string, Record<number, ClassLevel>> = {
   Cleric: {
     2: {
       features: ["turn-undead"],
+      spellSlots: [3],
       traits: [{ name: "Channel Divinity: Turn Undead (2/Long Rest, 1 back on a Short Rest)", text: "Undead within 30 ft make a Wisdom save or are Frightened and Incapacitated until they take damage." }],
     },
-    3: { traits: [{ name: "Life Domain: Disciple of Life", text: "Healing spells restore extra HP (arrives with spellcasting in a later update)." }] },
+    3: {
+      features: ["disciple-of-life"],
+      spellSlots: [4, 2],
+      actions: [spell({ kind: "buff", name: "Aid", buff: "aid", range: 30, targets: 3, slot: 2, notes: "+5 max HP and current HP until the end of the adventure day" })],
+      traits: [
+        { name: "Life Domain: Disciple of Life", text: "Healing spells that use a slot restore an extra 2 + the slot's level HP." },
+        { name: "2nd-level spells", text: "Aid. Spell slots: four 1st, two 2nd." },
+      ],
+    },
   },
   Wizard: {
-    2: { traits: [{ name: "Scholar", text: "Expertise in one of Arcana, History, Investigation, Medicine, Nature or Religion." }] },
-    3: { traits: [{ name: "Evoker: Potent Cantrip", text: "Your damaging cantrips deal half damage on a miss or a successful save (arrives with spellcasting)." }] },
+    2: { spellSlots: [3], traits: [{ name: "Scholar", text: "Expertise in one of Arcana, History, Investigation, Medicine, Nature or Religion." }] },
+    3: {
+      features: ["potent-cantrip"],
+      spellSlots: [4, 2],
+      actions: [
+        spell({
+          kind: "save",
+          name: "Shatter",
+          save: "con",
+          dc: 13,
+          range: 60,
+          area: { shape: "sphere", size: 10 },
+          slot: 2,
+          damage: [{ dice: "3d8", type: "thunder" }],
+          onSuccess: "half",
+        }),
+      ],
+      traits: [
+        { name: "Evoker: Potent Cantrip", text: "Your damaging cantrips deal half damage on a miss." },
+        { name: "2nd-level spells", text: "Shatter. Spell slots: four 1st, two 2nd." },
+      ],
+    },
   },
 };
 
@@ -134,6 +171,8 @@ export function levelUp(hero: Hero): LevelUpReport {
     level,
     features: [...hero.stats.features, ...(cl.features ?? [])],
     traits: [...hero.stats.traits, ...cl.traits],
+    actions: [...hero.stats.actions, ...(cl.actions ?? [])],
+    spellSlots: cl.spellSlots ?? hero.stats.spellSlots,
   };
   const next: Hero = {
     ...hero,
@@ -146,7 +185,14 @@ export function levelUp(hero: Hero): LevelUpReport {
   };
   // A newly gained feature starts with full uses.
   for (const [k, v] of Object.entries(defaultResources(stats))) if (!(k in hero.resources)) next.resources[k] = v;
-  return { hero: next, level, hpGain, gains: [`+${hpGain} max HP`, ...cl.traits.map((t) => t.name)] };
+  // New spell slots arrive ready to use.
+  stats.spellSlots.forEach((max, i) => {
+    const k = `slot${i + 1}`;
+    const gained = max - (hero.stats.spellSlots[i] ?? 0);
+    if (gained > 0 && k in hero.resources) next.resources[k] = hero.resources[k]! + gained;
+  });
+  const slots = cl.spellSlots ? [`Spell slots: ${cl.spellSlots.map((n, i) => `${n} × level ${i + 1}`).join(", ")}`] : [];
+  return { hero: next, level, hpGain, gains: [`+${hpGain} max HP`, ...slots, ...cl.traits.map((t) => t.name)] };
 }
 
 /** Adds XP and levels everyone up as far as it goes. */
@@ -198,9 +244,26 @@ export function shortRest(party: Party, spend: Record<string, number>, rng: Rng 
     if ("second-wind" in full) resources["second-wind"] = Math.min(full["second-wind"]!, (resources["second-wind"] ?? 0) + 1);
     if ("channel-divinity" in full) resources["channel-divinity"] = Math.min(full["channel-divinity"]!, (resources["channel-divinity"] ?? 0) + 1);
     if ("action-surge" in full) resources["action-surge"] = full["action-surge"]!;
+    // Arcane Recovery: slot levels worth up to half the wizard's level, highest first.
+    if ((resources["arcane-recovery"] ?? 0) > 0) {
+      let budget = Math.ceil(h.level / 2);
+      const recovered: number[] = [];
+      for (let lvl = h.stats.spellSlots.length; lvl >= 1; lvl--) {
+        const k = `slot${lvl}`;
+        while (lvl <= budget && (resources[k] ?? 0) < (full[k] ?? 0)) {
+          resources[k] = (resources[k] ?? 0) + 1;
+          budget -= lvl;
+          recovered.push(lvl);
+        }
+      }
+      if (recovered.length) {
+        resources["arcane-recovery"] = 0;
+        lines.push(`${h.name} uses Arcane Recovery: ${recovered.map((l) => `level ${l}`).join(", ")} slot back.`);
+      }
+    }
     return { ...h, hp, hitDice: dice, resources };
   });
-  lines.push("Limited features recover (Second Wind, Action Surge, Channel Divinity).");
+  lines.push("Limited features recover (Second Wind, Action Surge, Channel Divinity). Spell slots come back after a long rest.");
   return { party: { ...party, heroes }, lines };
 }
 
@@ -218,7 +281,7 @@ export function heroStats(hero: Hero): StatBlock {
   return {
     ...hero.stats,
     actions: hero.stats.actions.map((a) =>
-      a.kind === "attack" && !/cantrip|slot/i.test(a.name)
+      a.kind === "attack" && !a.cantrip && !a.slot
         ? { ...a, name: `${a.name} +1`, toHit: a.toHit + 1, damage: a.damage.map((d, i) => (i === 0 ? { ...d, dice: `${d.dice}+1` } : d)) }
         : a,
     ),
@@ -286,7 +349,9 @@ export function applyFight(party: Party, game: GameState): FightResult {
       fallen.push(h.name);
       return { ...h, hp: 0, dead: true };
     }
-    return { ...h, hp: u.hp > 0 ? u.hp : game.outcome === "victory" ? 1 : 0, resources: { ...u.resources } };
+    // Aid's extra HP ends with the fight; current HP can't exceed the hero's max.
+    const hp = Math.min(h.hpMax, u.hp);
+    return { ...h, hp: hp > 0 ? hp : game.outcome === "victory" ? 1 : 0, resources: { ...u.resources } };
   });
   const monsterXp = game.units
     .filter((u) => u.side === "enemy" && u.dead)

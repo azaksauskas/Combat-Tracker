@@ -260,7 +260,8 @@ export function performAction(
   const attacker = combatants.find((c) => c.id === attackerId);
   const target = combatants.find((c) => c.id === targetId);
   const action = attacker?.stats?.actions.find((a) => a.id === actionId);
-  if (!attacker || !target || !action) return null;
+  // The tracker resolves attacks and saves; spells like healing are run in Play.
+  if (!attacker || !target || !action || (action.kind !== "attack" && action.kind !== "save")) return null;
   const shown = opts.shown ?? false;
   const who = `${attacker.name} → ${target.name}: ${action.name}`;
   const before = { hpCurrent: target.hpCurrent, hpTemp: target.hpTemp };

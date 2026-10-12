@@ -17,6 +17,10 @@ type SaveInput = Omit<Extract<StatAction, { kind: "save" }>, "id" | "kind" | "no
 
 const attack = (a: ActionInput): StatAction => ({ id: newId(), kind: "attack", reach: 5, range: null, notes: "", ...a });
 const save = (a: SaveInput): StatAction => ({ id: newId(), kind: "save", notes: "", ...a });
+type Spell<K extends StatAction["kind"]> = Omit<Extract<StatAction, { kind: K }>, "id" | "kind" | "notes"> & { notes?: string };
+const heal = (a: Spell<"heal">): StatAction => ({ id: newId(), kind: "heal", notes: "", ...a });
+const buff = (a: Spell<"buff">): StatAction => ({ id: newId(), kind: "buff", notes: "", ...a });
+const missile = (a: Spell<"missile">): StatAction => ({ id: newId(), kind: "missile", notes: "", ...a });
 const stats = (s: Partial<StatBlock> & Pick<StatBlock, "abilities">): StatBlock => StatBlockSchema.parse(s);
 
 const plainText = (traits: StatBlock["traits"]) => traits.map((t) => `<p><strong>${t.name}.</strong> ${t.text}</p>`).join("");
@@ -162,6 +166,49 @@ export const SRD_MONSTERS: ContentEntry[] = [
         }),
       ),
   },
+  // Added in M4; transcribed from the SRD 5.2 from memory — check against the PDF.
+  {
+    key: "giant-rat",
+    label: "Giant Rat",
+    subtitle: "CR 1/8 · Small beast",
+    build: () =>
+      creature(
+        { name: "Giant Rat", isMonster: true, ac: 13, hpMax: 7, speed: 30 },
+        stats({
+          abilities: { str: 7, dex: 15, con: 11, int: 2, wis: 10, cha: 4 },
+          proficiency: 2,
+          cr: "1/8",
+          skills: { Perception: 2 },
+          creatureType: "beast",
+          actions: [attack({ name: "Bite", attackType: "melee", toHit: 4, damage: [{ dice: "1d4+2", type: "piercing" }] })],
+          features: ["pack-tactics"],
+          traits: [
+            { name: "Pack Tactics", text: "Advantage on attack rolls against a creature if an ally is within 5 ft. of it and isn't Incapacitated." },
+            { name: "Darkvision", text: "60 ft." },
+          ],
+        }),
+      ),
+  },
+  {
+    key: "cultist",
+    label: "Cultist",
+    subtitle: "CR 1/8 · Medium humanoid",
+    build: () =>
+      creature(
+        { name: "Cultist", isMonster: true, ac: 12, hpMax: 9, speed: 30 },
+        stats({
+          abilities: { str: 11, dex: 12, con: 10, int: 10, wis: 11, cha: 10 },
+          proficiency: 2,
+          cr: "1/8",
+          skills: { Deception: 2, Religion: 2 },
+          creatureType: "humanoid",
+          actions: [
+            attack({ name: "Ritual Sickle", attackType: "melee", toHit: 3, damage: [{ dice: "1d4+1", type: "slashing" }, { dice: "1", type: "necrotic" }] }),
+          ],
+          traits: [],
+        }),
+      ),
+  },
 ];
 
 // --- Ready-made party (level 1, 2024 rules) -----------------------------------
@@ -243,11 +290,24 @@ export const PARTY: ContentEntry[] = [
           resistances: ["poison"],
           actions: [
             attack({ name: "Mace", attackType: "melee", toHit: 3, damage: [{ dice: "1d6+1", type: "bludgeoning" }] }),
-            save({ name: "Sacred Flame (cantrip, 60 ft.)", save: "dex", dc: 13, damage: [{ dice: "1d8", type: "radiant" }], onSuccess: "none" }),
-            attack({ name: "Guiding Bolt (1st-level slot)", attackType: "ranged", toHit: 5, range: [120, 120], damage: [{ dice: "4d6", type: "radiant" }], notes: "Next attack against the target before your next turn has Advantage" }),
+            save({ name: "Sacred Flame", save: "dex", dc: 13, range: 60, cantrip: true, damage: [{ dice: "1d8", type: "radiant" }], onSuccess: "none" }),
+            attack({
+              name: "Guiding Bolt",
+              attackType: "ranged",
+              toHit: 5,
+              range: [120, 120],
+              slot: 1,
+              onHitEffect: "guided",
+              damage: [{ dice: "4d6", type: "radiant" }],
+              notes: "Next attack against the target before your next turn has Advantage",
+            }),
+            heal({ name: "Cure Wounds", dice: "2d8", ability: "wis", range: 5, slot: 1 }),
+            heal({ name: "Healing Word", dice: "2d4", ability: "wis", range: 60, slot: 1, bonusAction: true }),
+            buff({ name: "Bless", buff: "bless", range: 30, targets: 3, concentration: true, slot: 1, notes: "+1d4 to attack rolls and saving throws" }),
           ],
+          spellSlots: [2],
           traits: [
-            { name: "Spellcasting", text: "Spell save DC 13, spell attack +5. Two 1st-level slots. Prepared: Bless, Cure Wounds (2d8 + 3), Guiding Bolt, Healing Word (2d4 + 3)." },
+            { name: "Spellcasting", text: "Spell save DC 13, spell attack +5. Prepared: Bless, Cure Wounds, Guiding Bolt, Healing Word." },
             { name: "Divine Order: Protector", text: "Martial weapons and Heavy armor." },
             { name: "Dwarven Resilience", text: "Resistance to Poison damage; Advantage on saves against Poisoned." },
             { name: "Dwarven Toughness", text: "+1 HP per level (included)." },
@@ -271,12 +331,25 @@ export const PARTY: ContentEntry[] = [
           saveProficiencies: ["int", "wis"],
           skills: { Arcana: 5, History: 5, Perception: 3 },
           actions: [
-            attack({ name: "Fire Bolt (cantrip)", attackType: "ranged", toHit: 5, range: [120, 120], damage: [{ dice: "1d10", type: "fire" }] }),
-            save({ name: "Burning Hands (1st-level slot, 15-ft. cone)", save: "dex", dc: 13, damage: [{ dice: "3d6", type: "fire" }], onSuccess: "half" }),
-            attack({ name: "Dagger", attackType: "melee", toHit: 3, damage: [{ dice: "1d4+1", type: "piercing" }] }),
+            attack({ name: "Fire Bolt", attackType: "ranged", toHit: 5, range: [120, 120], cantrip: true, damage: [{ dice: "1d10", type: "fire" }] }),
+            missile({ name: "Magic Missile", darts: 3, dice: "1d4+1", damageType: "force", range: 120, slot: 1 }),
+            save({
+              name: "Burning Hands",
+              save: "dex",
+              dc: 13,
+              range: 15,
+              area: { shape: "cone", size: 15 },
+              slot: 1,
+              damage: [{ dice: "3d6", type: "fire" }],
+              onSuccess: "half",
+            }),
+            attack({ name: "Dagger", attackType: "melee", toHit: 3, finesse: true, damage: [{ dice: "1d4+1", type: "piercing" }] }),
           ],
+          spellSlots: [2],
+          features: ["shield-spell", "arcane-recovery"],
           traits: [
-            { name: "Spellcasting", text: "Spell save DC 13, spell attack +5. Two 1st-level slots. Prepared: Burning Hands, Magic Missile (3 × 1d4 + 1 force, auto-hit), Shield, Mage Armor (AC 14)." },
+            { name: "Spellcasting", text: "Spell save DC 13, spell attack +5. Prepared: Burning Hands, Magic Missile, Shield (reaction: +5 AC when hit, cast automatically), Detect Magic." },
+            { name: "Arcane Recovery", text: "Once per long rest, a short rest restores expended spell slots worth up to half your level (rounded up)." },
             { name: "Fey Ancestry", text: "Advantage on saves against Charmed." },
             { name: "Darkvision", text: "60 ft." },
           ],

@@ -111,6 +111,24 @@ anything shared publicly. Your own homebrew comes from the roster.
   - First adventure, "The Goblin Trail": two routes, three possible
     battles, milestone levels 2 and 3. Automated playthroughs with the AI
     finish on both routes.
-  - Not yet: spells and spell slots (Cure Wounds, Magic Missile…), level-3
-    subclass choices beyond the SRD's one per class, shops, the adventure
-    editor (M5).
+  - Not yet: level-3 subclass choices beyond the SRD's one per class,
+    shops, the adventure editor (M5).
+- **M4 done:** spells.
+  - Spell slots (pips in the side panel), recovered on a long rest; the
+    Wizard's Arcane Recovery on one short rest per day.
+  - Cleric: Sacred Flame, Guiding Bolt (next attack has Advantage), Cure
+    Wounds, Healing Word (bonus action, revives the fallen), Bless
+    (concentration, +1d4 to attacks and saves, pick up to 3 allies), and at
+    level 3 Aid and Disciple of Life.
+  - Wizard: Fire Bolt, Magic Missile (always hits), Burning Hands (15-ft
+    cone, aimed at a square, hits friends too), Shield (cast automatically
+    as a reaction when +5 AC turns a hit into a miss), and at level 3
+    Shatter (10-ft sphere) and Potent Cantrip.
+  - Concentration: Con save when damaged (DC 10 or half the damage), lost
+    when a new concentration spell is cast or at 0 HP.
+  - Area spells show the squares and creatures they would hit before you
+    click.
+  - New monsters: Giant Rat and Cultist (transcribed from memory — check
+    against the SRD 5.2 PDF), and a fourth skirmish, The Cult Cellar.
+  - Not yet: monsters that cast spells, multiattack, cover, Hide, Help,
+    grappling and shoving; the AI-controlled party doesn't heal or bless.

@@ -154,9 +154,11 @@ function ActionList({ combatant: c, stats }: { combatant: Combatant; stats: Stat
               <div className="text-xs text-muted">{describeAction(a)}</div>
               {a.notes && <div className="text-xs text-faint italic">{a.notes}</div>}
             </div>
-            <button className="btn btn-primary shrink-0 px-2 py-1 text-xs" onClick={() => run(a.id)}>
-              {a.kind === "attack" ? "Attack" : "Force save"}
-            </button>
+            {(a.kind === "attack" || a.kind === "save") && (
+              <button className="btn btn-primary shrink-0 px-2 py-1 text-xs" onClick={() => run(a.id)}>
+                {a.kind === "attack" ? "Attack" : "Force save"}
+              </button>
+            )}
           </li>
         ))}
       </ul>

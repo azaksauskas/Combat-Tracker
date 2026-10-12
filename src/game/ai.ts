@@ -1,6 +1,6 @@
 import type { Advantage } from "../domain/attack";
 import { parseDice } from "../domain/dice";
-import type { DamagePart, StatAction } from "../domain/statblock";
+import { actionDamage, type DamagePart, type StatAction } from "../domain/statblock";
 import { distanceFt, fromKey, key, lineOfSight, type Cell } from "./board";
 import { canAct, checkTarget, currentUnit, reachable, type Command } from "./engine";
 import type { GameState, Unit } from "./state";
@@ -34,10 +34,13 @@ export function hitChance(toHit: number, ac: number, advantage: Advantage = "nor
 const foesOf = (s: GameState, u: Unit) => s.units.filter((x) => x.side !== u.side && !x.dead && x.hp > 0);
 
 function expected(s: GameState, u: Unit, action: StatAction, target: Unit): number {
+  // The AI doesn't aim area spells or cast support spells, and saves its slots.
+  if (action.kind === "heal" || action.kind === "buff" || (action.kind === "save" && action.area)) return -1;
+  if (action.slot && (u.resources[`slot${action.slot}`] ?? 0) <= 0) return -1;
   const check = checkTarget(s, u.id, action.id, target.id);
   if (!check.ok) return -1;
-  const dmg = averageDamage(action.damage);
-  const value = action.kind === "attack" ? dmg * hitChance(action.toHit, target.ac, check.advantage) : dmg * 0.6;
+  const dmg = averageDamage(actionDamage(action));
+  const value = action.kind === "attack" ? dmg * hitChance(action.toHit, target.ac, check.advantage) : action.kind === "missile" ? dmg : dmg * 0.6;
   // Prefer finishing off a wounded foe.
   return value + (dmg >= target.hp ? 3 : 0);
 }
@@ -45,14 +48,21 @@ function expected(s: GameState, u: Unit, action: StatAction, target: Unit): numb
 /** Does this creature fight better up close or at range? */
 function prefersRanged(u: Unit): boolean {
   const best = (melee: boolean) =>
-    Math.max(0, ...u.stats.actions.filter((a) => (a.kind === "attack" ? (a.attackType === "melee") === melee : !melee)).map((a) => averageDamage(a.damage)));
+    Math.max(
+      0,
+      ...u.stats.actions
+        .filter((a) => !a.slot && (a.kind === "attack" ? (a.attackType === "melee") === melee : a.kind !== "heal" && a.kind !== "buff" && !melee))
+        .map((a) => averageDamage(actionDamage(a))),
+    );
   return best(false) > best(true);
 }
 
 function canStrikeFrom(s: GameState, u: Unit, from: Cell, ranged: boolean): boolean {
   return foesOf(s, u).some((f) =>
     u.stats.actions.some((a) => {
-      if (a.kind === "save") return ranged && distanceFt(from, f.pos) <= 60 && lineOfSight(s.board, from, f.pos);
+      if (a.kind === "heal" || a.kind === "buff" || a.slot) return false;
+      if (a.kind === "save") return ranged && !a.area && distanceFt(from, f.pos) <= (a.range ?? 60) && lineOfSight(s.board, from, f.pos);
+      if (a.kind === "missile") return ranged && distanceFt(from, f.pos) <= a.range && lineOfSight(s.board, from, f.pos);
       if (a.attackType === "melee") return !ranged && distanceFt(from, f.pos) <= a.reach && lineOfSight(s.board, from, f.pos);
       return ranged && distanceFt(from, f.pos) <= (a.range?.[0] ?? 0) && lineOfSight(s.board, from, f.pos);
     }),
