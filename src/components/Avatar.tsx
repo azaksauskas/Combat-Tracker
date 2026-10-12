@@ -5,17 +5,17 @@ import type { Combatant } from "../domain/types";
 interface Props {
   combatant: Pick<Combatant, "name" | "image" | "isMonster">;
   ring?: string;
-  size?: "sm" | "md" | "lg";
+  size?: "xs" | "sm" | "md" | "lg";
   active?: boolean;
 }
 
-const SIZES = { sm: "size-10 text-base", md: "size-14 text-xl", lg: "size-16 text-2xl" };
+const SIZES = { xs: "size-8 text-sm", sm: "size-10 text-base", md: "size-14 text-xl", lg: "size-16 text-2xl" };
 
 export function Avatar({ combatant, ring, size = "md", active }: Props) {
   return (
     <div className={clsx("relative shrink-0", SIZES[size])}>
       <div
-        className="flex size-full items-center justify-center rounded-full border-[3px] bg-cover bg-center font-bold text-white"
+        className={clsx("flex size-full items-center justify-center rounded-full bg-cover bg-center font-bold text-white", size === "xs" ? "border-2" : "border-[3px]")}
         style={{
           borderColor: ring ?? "var(--line)",
           backgroundColor: combatant.isMonster ? "#7f1d1d" : "#1e3a8a",

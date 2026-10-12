@@ -209,6 +209,21 @@ export function addToEncounter(library: LibraryDoc, encounterId: string, templat
   });
 }
 
+export type HpChange = { kind: "damage" | "heal" | "temp"; amount: number };
+
+/**
+ * Quick HP entry: "7" or "-7" deals damage, "+5" heals, "t5" grants
+ * temporary HP. Returns null for anything else.
+ */
+export function parseHpInput(input: string): HpChange | null {
+  const m = /^\s*([-+]|t\s*)?\s*(\d+)\s*$/i.exec(input);
+  if (!m) return null;
+  const amount = Number(m[2]);
+  if (!(amount > 0)) return null;
+  const sign = (m[1] ?? "").trim().toLowerCase();
+  return { kind: sign === "+" ? "heal" : sign === "t" ? "temp" : "damage", amount };
+}
+
 /** Health band a player is allowed to see for an enemy. */
 export function healthStatus(c: Combatant): "healthy" | "bloodied" | "down" {
   if (c.hpCurrent <= 0) return "down";

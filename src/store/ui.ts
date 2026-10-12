@@ -4,14 +4,21 @@ import { CELL, MAP_SIZE } from "../domain/grid";
 
 /**
  * Per-device preferences. Unlike the original app these are NOT synced, so
- * the DM switching to card view no longer flips every player's screen.
+ * the DM changing their layout no longer flips every player's screen.
  */
 export type MapTool = "select" | "draw" | "erase";
+export type CombatTab = "order" | "map" | "details";
 
 interface UiState {
   theme: "light" | "dark";
-  viewMode: "rows" | "cards";
-  showCreate: boolean;
+  /** Battle order page: show the map docked between the list and details. */
+  dockMap: boolean;
+  /** Battle order page on narrow screens: which pane is showing. */
+  combatTab: CombatTab;
+  /** Combatant pinned in the details panel; null = follow the active turn. */
+  pinnedId: string | null;
+  /** Combatant hovered in the list or on the map, highlighted in both. */
+  hoverId: string | null;
   mapOpen: boolean;
   mapMinimized: boolean;
   mapRect: { x: number; y: number; width: number; height: number };
@@ -27,8 +34,10 @@ export const useUi = create<UiState>()(
   persist(
     (set) => ({
       theme: "light",
-      viewMode: "rows",
-      showCreate: true,
+      dockMap: true,
+      combatTab: "order",
+      pinnedId: null,
+      hoverId: null,
       mapOpen: false,
       mapMinimized: false,
       mapRect: { x: 80, y: 80, width: 820, height: 600 },
@@ -41,7 +50,8 @@ export const useUi = create<UiState>()(
     {
       name: "combat-tracker:ui",
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ set: _set, mapTool: _tool, ...rest }) => rest,
+      // Transient selection state isn't worth restoring after a reload.
+      partialize: ({ set: _set, mapTool: _tool, pinnedId: _pin, hoverId: _hover, combatTab: _tab, ...rest }) => rest,
     },
   ),
 );

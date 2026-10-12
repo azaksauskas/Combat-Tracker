@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   addToEncounter,
   findFreeSpot,
+  parseHpInput,
   applyDamage,
   applyHealing,
   grantTempHp,
@@ -76,6 +77,18 @@ describe("hit points", () => {
     grantTempHp(doc, "c0", 6);
     grantTempHp(doc, "c0", 3);
     expect(doc.combatants[0]!.hpTemp).toBe(6);
+  });
+});
+
+describe("quick HP entry", () => {
+  it("parses damage, healing and temp HP shorthand", () => {
+    expect(parseHpInput("7")).toEqual({ kind: "damage", amount: 7 });
+    expect(parseHpInput(" -12 ")).toEqual({ kind: "damage", amount: 12 });
+    expect(parseHpInput("+5")).toEqual({ kind: "heal", amount: 5 });
+    expect(parseHpInput("T 8")).toEqual({ kind: "temp", amount: 8 });
+    expect(parseHpInput("")).toBeNull();
+    expect(parseHpInput("0")).toBeNull();
+    expect(parseHpInput("5+3")).toBeNull();
   });
 });
 

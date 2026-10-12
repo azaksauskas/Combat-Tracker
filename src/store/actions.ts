@@ -36,15 +36,36 @@ export const removeCombatant = (id: string) => update("combat", (d) => rules.rem
 export const moveCombatant = (fromId: string, toId: string) =>
   update("combat", (d) => rules.moveCombatant(d.combatants, fromId, toId));
 export const sortInitiative = () => update("combat", (d) => rules.sortByInitiative(d.combatants));
-export const setActive = (id: string | null) => update("combat", (d) => rules.setActive(d, id));
-export const nextTurn = () => update("combat", rules.nextTurn);
-export const previousTurn = () => update("combat", rules.previousTurn);
+// Changing turns un-pins the details panel so it follows the new active turn.
+const followTurn = () => useUi.getState().set({ pinnedId: null });
+
+export const setActive = (id: string | null) => {
+  update("combat", (d) => rules.setActive(d, id));
+  followTurn();
+};
+export const nextTurn = () => {
+  update("combat", rules.nextTurn);
+  followTurn();
+};
+export const previousTurn = () => {
+  update("combat", rules.previousTurn);
+  followTurn();
+};
 export const endCombat = () => update("combat", rules.endCombat);
 export const clearCombat = () =>
   update("combat", (d) => {
     d.combatants = [];
     rules.endCombat(d);
   });
+
+/** Applies quick-entry text ("7", "+5", "t5"). Returns false if it didn't parse. */
+export const applyHpInput = (id: string, text: string) => {
+  const change = rules.parseHpInput(text);
+  if (!change) return false;
+  const fn = { damage: rules.applyDamage, heal: rules.applyHealing, temp: rules.grantTempHp }[change.kind];
+  update("combat", (d) => fn(d, id, change.amount));
+  return true;
+};
 
 export const applyDamage = (id: string, n: number) => update("combat", (d) => rules.applyDamage(d, id, n));
 export const applyHealing = (id: string, n: number) => update("combat", (d) => rules.applyHealing(d, id, n));
