@@ -126,7 +126,7 @@ function Inspector({ id, full, onClose }: { id: string; full: boolean; onClose: 
         </button>
       </div>
       {full || !c.isMonster ? (
-        <div className={clsx("mb-2 font-bold", c.hpCurrent <= 0 ? "text-red-500" : "text-strong")}>
+        <div className={clsx("mb-2 font-bold", c.hpCurrent <= 0 ? "text-danger" : "text-strong")}>
           HP {c.hpCurrent} / {c.hpMax}
           {c.hpTemp > 0 && <span className="text-temp"> +{c.hpTemp}</span>} · AC {c.ac} · {c.speed} ft
         </div>

@@ -71,7 +71,7 @@ export function CombatantDetail({ combatant: c, ring, active, pinned, onEdit }: 
           ✎ Edit
         </button>
         <button
-          className="btn btn-ghost ml-auto hover:text-red-500"
+          className="btn btn-ghost ml-auto hover:text-danger"
           onClick={() => confirm(`Remove ${c.name} from combat?`) && removeCombatant(c.id)}
         >
           Remove

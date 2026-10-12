@@ -32,7 +32,7 @@ export function PlayerView() {
               {c.isMonster && status !== "healthy" && <ConditionChip label={status === "down" ? "Down" : "Bloodied"} />}
               {!c.isMonster && c.hpCurrent <= 0 && <ConditionChip label="Down" />}
               {c.hpTemp > 0 && (
-                <span className="rounded border border-blue-900/50 bg-black/30 px-2 py-0.5 text-xs font-bold text-temp uppercase">
+                <span className="rounded border border-temp/40 bg-surface-2 px-2 py-0.5 text-xs font-bold text-temp uppercase">
                   +{c.hpTemp} temp
                 </span>
               )}

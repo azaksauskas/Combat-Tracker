@@ -26,7 +26,7 @@ export function HpControl({ combatant: c }: { combatant: Combatant }) {
   return (
     <div className="space-y-2">
       <div className="flex items-baseline justify-between">
-        <span className={`text-3xl font-black ${c.hpCurrent <= 0 ? "text-red-600" : "text-strong"}`}>
+        <span className={`text-3xl font-black ${c.hpCurrent <= 0 ? "text-danger" : "text-strong"}`}>
           {c.hpCurrent}
           <span className="text-base font-normal text-faint"> / {c.hpMax}</span>
         </span>

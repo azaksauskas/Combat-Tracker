@@ -153,7 +153,7 @@ function EncounterCard({ encounter: e }: { encounter: Encounter }) {
                     HP {c.hpCurrent}/{c.hpMax} · AC {c.ac}
                   </div>
                   <button
-                    className="absolute top-1 right-1 text-faint opacity-0 group-hover:opacity-100 hover:text-red-500 focus:opacity-100"
+                    className="absolute top-1 right-1 text-faint opacity-0 group-hover:opacity-100 hover:text-danger focus:opacity-100"
                     aria-label={`Remove ${c.name} from encounter`}
                     onClick={() => actions.removeFromEncounter(e.id, c.id)}
                   >

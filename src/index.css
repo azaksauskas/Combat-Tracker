@@ -1,66 +1,11 @@
 @import "tailwindcss";
 
 /*
- * Design tokens. Components only use the semantic colour names below
- * (bg-surface, text-muted, border-line, ...), so a theme is just a new set
- * of variables — no per-class overrides like the original needed.
+ * Design tokens. Every colour is a CSS variable written by
+ * src/theme/themes.ts (applyTheme), which holds the presets and the user's
+ * customisations. Components only use the semantic names below
+ * (bg-surface, text-muted, border-line, ...).
  */
-:root,
-[data-theme="dark"] {
-  --bg: #0f0f13;
-  --surface: #1e1e24;
-  --surface-2: #16161a;
-  --surface-3: #2a2a32;
-  --line: #3f3f46;
-  --text: #e4e4e7;
-  --text-strong: #ffffff;
-  --muted: #a1a1aa;
-  --faint: #71717a;
-  --accent: #ef4444;
-  --accent-strong: #dc2626;
-  --accent-fg: #ffffff;
-  --danger: #b91c1c;
-  --heal: #15803d;
-  --temp: #60a5fa;
-  --glow: rgb(239 68 68 / 0.4);
-  --card-player: linear-gradient(145deg, #222226 0%, #16161a 100%);
-  --card-monster: linear-gradient(145deg, #3a1515 0%, #1d0909 100%);
-  --monster-line: #7f1d1d;
-  --grid-line: rgb(255 255 255 / 0.12);
-  --map-bg: #16161a;
-  --shadow: 0 10px 25px rgb(0 0 0 / 0.45);
-  --body-pattern:
-    radial-gradient(circle at 50% 0%, rgb(42 26 26 / 0.5) 0%, transparent 100%),
-    url('data:image/svg+xml,%3Csvg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="%231a1c23" fill-opacity="0.5"%3E%3Ccircle cx="3" cy="3" r="3"/%3E%3Ccircle cx="13" cy="13" r="3"/%3E%3C/g%3E%3C/svg%3E');
-  color-scheme: dark;
-}
-
-[data-theme="light"] {
-  --bg: #f4ebd8;
-  --surface: #eee2cd;
-  --surface-2: #e5d6bc;
-  --surface-3: #dcc8a8;
-  --line: #cbb38e;
-  --text: #382410;
-  --text-strong: #261605;
-  --muted: #5c4325;
-  --faint: #8c7355;
-  --accent: #7a2e1f;
-  --accent-strong: #5c2216;
-  --accent-fg: #fff8ee;
-  --danger: #8b1a1a;
-  --heal: #2f6b2f;
-  --temp: #1d4ed8;
-  --glow: rgb(122 46 31 / 0.3);
-  --card-player: linear-gradient(145deg, #fbf7f0 0%, #f4ebd8 100%);
-  --card-monster: linear-gradient(145deg, #ecd6ca 0%, #ddbcaa 100%);
-  --monster-line: #a55a5a;
-  --grid-line: rgb(0 0 0 / 0.12);
-  --map-bg: #efe4cf;
-  --shadow: 0 8px 20px rgb(0 0 0 / 0.1);
-  --body-pattern: none;
-  color-scheme: light;
-}
 
 @theme inline {
   --color-bg: var(--bg);
@@ -78,6 +23,10 @@
   --color-danger: var(--danger);
   --color-heal: var(--heal);
   --color-temp: var(--temp);
+  --color-warn: var(--warn);
+  --color-highlight: var(--highlight);
+  --color-token-player: var(--token-player);
+  --color-token-monster: var(--token-monster);
   --color-monster-line: var(--monster-line);
   --font-display: "Cinzel", serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
@@ -86,7 +35,8 @@
 @layer base {
   body {
     background-color: var(--bg);
-    background-image: var(--body-pattern);
+    background-image: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--accent) 8%, transparent) 0%, transparent 70%);
+    background-attachment: fixed;
     color: var(--text);
     font-family: var(--font-sans);
     min-height: 100vh;
@@ -121,12 +71,12 @@
 
 @layer components {
   .card-player {
-    background: var(--card-player);
+    background: var(--card-player-bg);
     border: 1px solid var(--line);
     box-shadow: var(--shadow);
   }
   .card-monster {
-    background: var(--card-monster);
+    background: var(--card-monster-bg);
     border: 1px solid var(--monster-line);
     box-shadow: var(--shadow);
   }

@@ -36,7 +36,7 @@ export function MapWindow({ editable }: { editable: boolean }) {
         <button className="btn btn-ghost px-2" onClick={() => set({ mapMinimized: !mapMinimized })} aria-label={mapMinimized ? "Restore map" : "Minimise map"}>
           {mapMinimized ? "▢" : "_"}
         </button>
-        <button className="btn btn-ghost px-2 hover:text-red-500" onClick={() => set({ mapOpen: false })} aria-label="Close map">
+        <button className="btn btn-ghost px-2 hover:text-danger" onClick={() => set({ mapOpen: false })} aria-label="Close map">
           ✕
         </button>
       </div>

@@ -6,7 +6,7 @@ export function HpBar({ combatant: c, className }: { combatant: Combatant; class
   const max = Math.max(1, c.hpMax);
   const pct = Math.min(100, (Math.max(0, c.hpCurrent) / max) * 100);
   const tempPct = Math.min(100 - pct, (c.hpTemp / max) * 100);
-  const color = c.hpCurrent <= 0 ? "bg-transparent" : pct <= 50 ? "bg-amber-500" : "bg-green-600";
+  const color = c.hpCurrent <= 0 ? "bg-transparent" : pct <= 50 ? "bg-warn" : "bg-heal";
   return (
     <div
       className={clsx("flex h-1.5 overflow-hidden rounded-full bg-surface-3", className)}

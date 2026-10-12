@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { useMemo } from "react";
 import { CELL, MAP_SIZE } from "../domain/grid";
+import { applyTheme, resolveTheme, type BaseTheme, type ThemeOverrides } from "../theme/themes";
 
 /**
  * Per-device preferences. Unlike the original app these are NOT synced, so
@@ -10,7 +12,12 @@ export type MapTool = "select" | "draw" | "erase";
 export type CombatTab = "order" | "map" | "details";
 
 interface UiState {
-  theme: "light" | "dark";
+  theme: BaseTheme;
+  /** The user's colour picks, kept separately for each base theme. */
+  themeOverrides: Record<BaseTheme, ThemeOverrides>;
+  themeEditorOpen: boolean;
+  /** DM sidebar shown (desktop) / menu expanded (mobile). */
+  sidebarOpen: boolean;
   /** Battle order page: show the map docked between the list and details. */
   dockMap: boolean;
   /** Battle order page on narrow screens: which pane is showing. */
@@ -43,6 +50,9 @@ export const useUi = create<UiState>()(
   persist(
     (set) => ({
       theme: "light",
+      themeOverrides: { light: {}, dark: {} },
+      themeEditorOpen: false,
+      sidebarOpen: true,
       dockMap: true,
       combatTab: "order",
       pinnedId: null,
@@ -61,7 +71,27 @@ export const useUi = create<UiState>()(
       name: "combat-tracker:ui",
       storage: createJSONStorage(() => localStorage),
       // Transient selection state isn't worth restoring after a reload.
-      partialize: ({ set: _set, mapTool: _tool, pinnedId: _pin, hoverId: _hover, combatTab: _tab, selectedShapeId: _shape, ...rest }) => rest,
+      partialize: ({ set: _set, mapTool: _tool, pinnedId: _pin, hoverId: _hover, combatTab: _tab, selectedShapeId: _shape, themeEditorOpen: _editor, ...rest }) => rest,
     },
   ),
 );
+
+/** Resolved colours of the current theme, for code that can't use CSS (the map canvas). */
+export function useThemeColors() {
+  const theme = useUi((s) => s.theme);
+  const overrides = useUi((s) => s.themeOverrides[s.theme]);
+  return useMemo(() => resolveTheme(theme, overrides), [theme, overrides]);
+}
+
+/**
+ * Keeps the page's CSS variables in step with the store. The subscription
+ * runs synchronously inside `set`, before React re-renders, so CSS and the
+ * canvas always switch together.
+ */
+export function syncThemeToDocument() {
+  const apply = ({ theme, themeOverrides }: UiState) => applyTheme(theme, resolveTheme(theme, themeOverrides[theme]));
+  apply(useUi.getState());
+  return useUi.subscribe((state, prev) => {
+    if (state.theme !== prev.theme || state.themeOverrides !== prev.themeOverrides) apply(state);
+  });
+}

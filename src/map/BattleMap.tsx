@@ -1,13 +1,14 @@
 import type Konva from "konva";
 import type { KonvaEventObject } from "konva/lib/Node";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Group, Label, Layer, Line, Stage, Tag, Text, Transformer } from "react-konva";
 import { tokenColor } from "../domain/combat";
 import { MAP_SIZE, clamp, distanceFeet, hitsPolyline, snapToGrid, type Point } from "../domain/grid";
 import type { Combatant } from "../domain/types";
 import * as actions from "../store/actions";
 import { useGame } from "../store/game";
-import { setHover, useUi } from "../store/ui";
+import { setHover, useThemeColors, useUi } from "../store/ui";
+import { GRID_ALPHA, withAlpha } from "../theme/themes";
 import { GridLayer } from "./GridLayer";
 import { MapShapeNode } from "./MapShapeNode";
 import { Token } from "./Token";
@@ -46,20 +47,14 @@ function useSize<T extends HTMLElement>() {
   return [ref, size] as const;
 }
 
-/** Reads theme colours from CSS so the canvas follows light/dark mode. */
-function useCanvasColors(theme: string) {
-  return useMemo(() => {
-    const css = getComputedStyle(document.documentElement);
-    return { bg: css.getPropertyValue("--map-bg").trim(), grid: css.getPropertyValue("--grid-line").trim() };
-  }, [theme]);
-}
-
 export function BattleMap({ editable, onInspect, onBackgroundClick }: Props) {
   const { combatants, activeId, map } = useGame((s) => s.combat);
-  const { mapTool, drawColor, snapToGrid: snap, theme, mapCenter, pinnedId, hoverId, selectedShapeId, set: setUi } = useUi();
+  const { mapTool, drawColor, snapToGrid: snap, mapCenter, pinnedId, hoverId, selectedShapeId, set: setUi } = useUi();
   const selectShape = (id: string | null) => setUi({ selectedShapeId: id });
   const tool = editable ? mapTool : "select";
-  const colors = useCanvasColors(theme);
+  // Read from the theme store, not from CSS: reading computed styles here
+  // raced the theme switch and lagged one click behind.
+  const colors = useThemeColors();
   const [containerRef, size] = useSize<HTMLDivElement>();
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
@@ -190,7 +185,7 @@ export function BattleMap({ editable, onInspect, onBackgroundClick }: Props) {
   const cursor = tool === "draw" ? "crosshair" : tool === "erase" ? "cell" : "default";
 
   return (
-    <div ref={containerRef} className="absolute inset-0 touch-none overflow-hidden" style={{ cursor, background: colors.bg }}>
+    <div ref={containerRef} className="absolute inset-0 touch-none overflow-hidden" style={{ cursor, background: colors["map-bg"] }}>
       {view && size.width > 0 && (
         <Stage
           ref={stageRef}
@@ -210,7 +205,7 @@ export function BattleMap({ editable, onInspect, onBackgroundClick }: Props) {
           onPointerUp={onPointerUp}
           onPointerLeave={onPointerUp}
         >
-          <GridLayer grid={map.grid} bounds={bounds} bg={colors.bg} line={colors.grid} />
+          <GridLayer grid={map.grid} bounds={bounds} bg={colors["map-bg"]} line={withAlpha(colors["grid-line"], GRID_ALPHA)} />
 
           <Layer listening={tool !== "draw"}>
             {map.lines
@@ -264,6 +259,7 @@ export function BattleMap({ editable, onInspect, onBackgroundClick }: Props) {
                 key={c.id}
                 combatant={c}
                 ring={tokenColor(c, combatants)}
+                colors={colors}
                 active={c.id === activeId}
                 selected={c.id === pinnedId}
                 hovered={c.id === hoverId}
@@ -278,10 +274,10 @@ export function BattleMap({ editable, onInspect, onBackgroundClick }: Props) {
             ))}
             {ruler && (
               <Group listening={false}>
-                <Line points={[ruler.from.x, ruler.from.y, ruler.to.x, ruler.to.y]} stroke="#facc15" strokeWidth={2} dash={[8, 6]} />
+                <Line points={[ruler.from.x, ruler.from.y, ruler.to.x, ruler.to.y]} stroke={colors.highlight} strokeWidth={2} dash={[8, 6]} />
                 <Label x={ruler.to.x + 18} y={ruler.to.y - 34}>
                   <Tag fill="rgba(0,0,0,0.75)" cornerRadius={4} />
-                  <Text text={`${distanceFeet(ruler.from, ruler.to, map.grid)} ft`} fill="#facc15" padding={4} fontStyle="bold" fontSize={14} />
+                  <Text text={`${distanceFeet(ruler.from, ruler.to, map.grid)} ft`} fill={colors.highlight} padding={4} fontStyle="bold" fontSize={14} />
                 </Label>
               </Group>
             )}

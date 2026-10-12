@@ -93,7 +93,7 @@ function Row({ combatant: c, ring, active, shown, onSelect }: { combatant: Comba
           {c.conditions.length > 0 && (
             <span className="mt-1 flex flex-wrap gap-0.5">
               {c.conditions.slice(0, 3).map((x) => (
-                <span key={x} title={x} className="rounded bg-red-950/70 px-1 text-[10px] leading-4 text-red-200">
+                <span key={x} title={x} className="rounded bg-danger px-1 text-[10px] leading-4 text-white">
                   {x.slice(0, 4)}
                 </span>
               ))}
@@ -102,7 +102,7 @@ function Row({ combatant: c, ring, active, shown, onSelect }: { combatant: Comba
           )}
         </span>
         <span className="shrink-0 text-right text-xs leading-tight tabular-nums">
-          <span className={clsx("block font-bold", down ? "text-red-600" : "text-strong")}>
+          <span className={clsx("block font-bold", down ? "text-danger" : "text-strong")}>
             {c.hpCurrent}
             {c.hpTemp > 0 && <span className="text-temp">+{c.hpTemp}</span>}
           </span>

@@ -150,7 +150,7 @@ export function CombatantForm({ mode, initial, onSubmit }: Props) {
       </div>
 
       <label className="flex items-center gap-2 font-bold uppercase text-muted">
-        <input type="checkbox" className="size-5 accent-red-600" checked={form.isMonster} onChange={(e) => set("isMonster", e.target.checked)} />
+        <input type="checkbox" className="size-5 accent-accent" checked={form.isMonster} onChange={(e) => set("isMonster", e.target.checked)} />
         Monster / NPC
       </label>
 

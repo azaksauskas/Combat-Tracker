@@ -1,9 +1,11 @@
 import clsx from "clsx";
-import { useEffect } from "react";
+import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import { MapWindow } from "../map/MapWindow";
 import { useGame } from "../store/game";
 import { useUi } from "../store/ui";
+import { DragonMenuIcon } from "./DragonMenuIcon";
+import { ThemeEditor } from "./ThemeEditor";
 
 const NAV = [
   { to: "/admin", label: "🛡️ Battle order" },
@@ -11,13 +13,6 @@ const NAV = [
   { to: "/campaign", label: "📜 Campaign notes" },
   { to: "/info", label: "📕 Rules & notes" },
 ];
-
-function useThemeAttribute() {
-  const theme = useUi((s) => s.theme);
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
-}
 
 function ThemeButton({ className }: { className?: string }) {
   const { theme, set } = useUi();
@@ -81,9 +76,25 @@ function ConnectionGate({ children }: { children: React.ReactNode }) {
 const navItem = "btn justify-start w-full";
 
 /** DM screens: sidebar on desktop, collapsible top bar on mobile. */
+function MenuButton({ open, onClick, className }: { open: boolean; onClick: () => void; className?: string }) {
+  return (
+    <button
+      className={clsx("rounded-md p-1 text-accent transition hover:bg-surface-3 hover:brightness-110", className)}
+      onClick={onClick}
+      aria-expanded={open}
+      aria-label={open ? "Hide menu" : "Show menu"}
+      title={open ? "Hide menu" : "Show menu"}
+    >
+      <DragonMenuIcon />
+    </button>
+  );
+}
+
+/** DM screens: hideable sidebar on desktop, dropdown menu on mobile. */
 export function DmLayout() {
-  useThemeAttribute();
   const mapDocked = useMapDocked();
+  const { sidebarOpen, set } = useUi();
+  const [mobileOpen, setMobileOpen] = useState(false);
   const nav = (
     <>
       <MapButton className={navItem} dockable />
@@ -93,6 +104,9 @@ export function DmLayout() {
         </NavLink>
       ))}
       <ThemeButton className={clsx(navItem, "mt-4")} />
+      <button className={navItem} onClick={() => set({ themeEditorOpen: true })}>
+        🎨 Customise colours
+      </button>
       <NavLink to="/" className={clsx(navItem, "justify-center font-display")}>
         Player view
       </NavLink>
@@ -101,33 +115,49 @@ export function DmLayout() {
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      <aside className="sticky top-0 z-40 hidden h-screen w-64 shrink-0 flex-col gap-3 overflow-y-auto border-r border-line bg-surface-2/70 p-4 backdrop-blur md:flex">
-        <div className="mb-4">
-          <h1 className="text-3xl font-bold tracking-wider text-accent">Combat Tracker</h1>
-          <p className="mt-1 text-xs font-bold tracking-widest text-muted uppercase">Dungeon Master</p>
-        </div>
-        {nav}
-      </aside>
-      <details className="group sticky top-0 z-40 border-b border-line bg-surface-2/90 backdrop-blur md:hidden">
-        <summary className="flex cursor-pointer list-none items-center justify-between p-4">
+      {sidebarOpen ? (
+        <aside className="sticky top-0 z-40 hidden h-screen w-64 shrink-0 flex-col gap-3 overflow-y-auto border-r border-line bg-surface-2/70 p-4 backdrop-blur md:flex">
+          <div className="mb-4 flex items-start gap-2">
+            <MenuButton open onClick={() => set({ sidebarOpen: false })} className="-ml-1" />
+            <div>
+              <h1 className="text-2xl leading-tight font-bold tracking-wider text-accent">Combat Tracker</h1>
+              <p className="mt-1 text-xs font-bold tracking-widest text-muted uppercase">Dungeon Master</p>
+            </div>
+          </div>
+          <nav className="flex flex-col gap-3">{nav}</nav>
+        </aside>
+      ) : (
+        <MenuButton
+          open={false}
+          onClick={() => set({ sidebarOpen: true })}
+          className="fixed top-3 left-3 z-40 hidden border border-line bg-surface shadow-lg md:block"
+        />
+      )}
+      <div className="sticky top-0 z-40 border-b border-line bg-surface-2/90 backdrop-blur md:hidden">
+        <div className="flex items-center justify-between p-3">
           <span className="font-display text-xl font-bold text-accent">Combat Tracker</span>
-          <span className="text-muted">☰</span>
-        </summary>
-        <nav className="flex flex-col gap-2 px-4 pb-4">{nav}</nav>
-      </details>
-      <main className="w-full min-w-0 flex-1 px-4 pt-8 pb-12 md:px-8 md:pt-12">
+          <MenuButton open={mobileOpen} onClick={() => setMobileOpen(!mobileOpen)} />
+        </div>
+        {mobileOpen && (
+          // Close the menu after picking something.
+          <nav className="flex flex-col gap-2 px-4 pb-4" onClick={(e) => (e.target as HTMLElement).closest("a, button") && setMobileOpen(false)}>
+            {nav}
+          </nav>
+        )}
+      </div>
+      <main className={clsx("w-full min-w-0 flex-1 px-4 pt-8 pb-12 md:px-8 md:pt-12", !sidebarOpen && "md:pl-20")}>
         <ConnectionGate>
           <Outlet />
         </ConnectionGate>
       </main>
       {!mapDocked && <MapWindow editable />}
+      <ThemeEditor />
     </div>
   );
 }
 
 /** Table-facing screen: minimal chrome that fades until hovered. */
 export function PlayerLayout() {
-  useThemeAttribute();
   const ctl = "btn bg-surface shadow-lg";
   return (
     <div className="min-h-screen px-4 pt-8 pb-12 md:px-8">

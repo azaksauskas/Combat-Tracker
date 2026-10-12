@@ -3,10 +3,10 @@ import { CONDITIONS, type Combatant } from "../domain/types";
 import { addCondition, removeCondition } from "../store/actions";
 
 export function ConditionChip({ label, onRemove }: { label: string; onRemove?: () => void }) {
-  const cls = "inline-flex items-center gap-1 rounded-full border border-red-900/50 bg-red-950/60 px-2 py-0.5 text-xs text-red-200";
+  const cls = "inline-flex items-center gap-1 rounded-full border border-transparent bg-danger px-2 py-0.5 text-xs text-white";
   if (!onRemove) return <span className={cls}>{label}</span>;
   return (
-    <button type="button" className={`${cls} hover:bg-red-900`} onClick={onRemove} title={`Remove ${label}`}>
+    <button type="button" className={`${cls} hover:brightness-125`} onClick={onRemove} title={`Remove ${label}`}>
       {label} <span aria-hidden>×</span>
     </button>
   );

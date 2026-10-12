@@ -18,7 +18,7 @@ export function Avatar({ combatant, ring, size = "md", active }: Props) {
         className={clsx("flex size-full items-center justify-center rounded-full bg-cover bg-center font-bold text-white", size === "xs" ? "border-2" : "border-[3px]")}
         style={{
           borderColor: ring ?? "var(--line)",
-          backgroundColor: combatant.isMonster ? "#7f1d1d" : "#1e3a8a",
+          backgroundColor: combatant.isMonster ? "var(--token-monster)" : "var(--token-player)",
           backgroundImage: combatant.image ? `url("${combatant.image}")` : undefined,
         }}
       >
@@ -27,7 +27,7 @@ export function Avatar({ combatant, ring, size = "md", active }: Props) {
       {active && (
         <span
           aria-label="Active turn"
-          className="absolute -right-1 -bottom-1 flex size-6 animate-pulse items-center justify-center rounded-full border-2 border-surface bg-red-600 text-[10px] shadow-[0_0_10px_#ef4444]"
+          className="absolute -right-1 -bottom-1 flex size-6 animate-pulse items-center justify-center rounded-full border-2 border-surface bg-accent text-[10px] shadow-[0_0_10px_var(--accent)]"
         >
           ⚔️
         </span>

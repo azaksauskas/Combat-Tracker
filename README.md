@@ -65,7 +65,7 @@ All game rules live in `domain/` and take plain data in and out. A future game c
 
 Shared state is split into three Firestore documents under the original path, `artifacts/{appId}/public/data/tracker/{combat|library|notes}`, so your existing security rules still apply. The first time the new app finds no data there, it imports the old `encounter/state` document automatically. The old document is left untouched.
 
-Display preferences (theme, rows/cards, map window position) are now stored per device instead of being synced, so a DM changing their layout no longer changes every player's screen.
+Display preferences (theme, custom colours, sidebar, map layout) are stored per device instead of being synced, so a DM changing their layout no longer changes every player's screen.
 
 ## Known limits / next steps
 

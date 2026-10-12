@@ -4,6 +4,7 @@ import { Circle, Group, Image as KImage, Text } from "react-konva";
 import { initials } from "../domain/combat";
 import { CELL } from "../domain/grid";
 import type { Combatant } from "../domain/types";
+import type { ThemeColors } from "../theme/themes";
 
 function useImage(src: string | null) {
   const [img, setImg] = useState<HTMLImageElement>();
@@ -22,6 +23,7 @@ function useImage(src: string | null) {
 interface Props {
   combatant: Combatant;
   ring: string;
+  colors: ThemeColors;
   active: boolean;
   /** Shown in the details panel. */
   selected: boolean;
@@ -36,7 +38,7 @@ interface Props {
   onInspect: (c: Combatant) => void;
 }
 
-export function Token({ combatant: c, ring, active, selected, hovered, draggable, onSelect, onHover, onDragStart, onDragMove, onDragEnd, onInspect }: Props) {
+export function Token({ combatant: c, ring, colors, active, selected, hovered, draggable, onSelect, onHover, onDragStart, onDragMove, onDragEnd, onInspect }: Props) {
   const img = useImage(c.image);
   const r = (CELL * c.size) / 2 - 2;
   const down = c.hpCurrent <= 0;
@@ -68,14 +70,14 @@ export function Token({ combatant: c, ring, active, selected, hovered, draggable
       {(selected || hovered) && (
         <Circle
           radius={r + (active ? 11 : 6)}
-          stroke="#facc15"
+          stroke={colors.highlight}
           strokeWidth={selected ? 3 : 2}
           dash={selected ? undefined : [6, 4]}
           listening={false}
         />
       )}
-      {active && <Circle radius={r + 6} stroke="#ef4444" strokeWidth={3} shadowColor="#ef4444" shadowBlur={16} />}
-      <Circle radius={r} fill={c.isMonster ? "#7f1d1d" : "#1e3a8a"} shadowColor="black" shadowBlur={6} shadowOpacity={0.5} />
+      {active && <Circle radius={r + 6} stroke={colors.accent} strokeWidth={3} shadowColor={colors.accent} shadowBlur={16} />}
+      <Circle radius={r} fill={c.isMonster ? colors["token-monster"] : colors["token-player"]} shadowColor="black" shadowBlur={6} shadowOpacity={0.5} />
       {img && (
         <Group clipFunc={(ctx) => ctx.arc(0, 0, r, 0, Math.PI * 2)}>
           <KImage image={img} x={-r} y={-r} width={r * 2} height={r * 2} />
@@ -97,7 +99,7 @@ export function Token({ combatant: c, ring, active, selected, hovered, draggable
         />
       )}
       <Circle radius={r} stroke={ring} strokeWidth={3} listening={false} />
-      {down && <Text text="✕" fontSize={r * 1.6} x={-r} y={-r} width={r * 2} height={r * 2} align="center" verticalAlign="middle" fill="#ef4444" listening={false} />}
+      {down && <Text text="✕" fontSize={r * 1.6} x={-r} y={-r} width={r * 2} height={r * 2} align="center" verticalAlign="middle" fill={colors.danger} listening={false} />}
     </Group>
   );
 }
