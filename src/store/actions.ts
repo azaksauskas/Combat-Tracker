@@ -96,17 +96,11 @@ export const deleteEncounter = (encounterId: string) =>
     d.encounters = d.encounters.filter((e) => e.id !== encounterId);
   });
 
-export const addRosterEntryToEncounter = (encounterId: string, rosterId: string) =>
-  update("library", (d) => {
-    const enc = d.encounters.find((e) => e.id === encounterId);
-    const src = d.roster.find((r) => r.id === rosterId);
-    if (!enc || !src) return;
-    enc.combatants.push({
-      ...structuredClone(src),
-      id: rules.newId(),
-      name: rules.uniqueName(src.name, enc.combatants.map((c) => c.name)),
-    });
-  });
+export const addRosterEntryToEncounter = (encounterId: string, rosterId: string) => {
+  // Read the template outside the update: it must be plain data, not a draft.
+  const template = useGame.getState().library.roster.find((r) => r.id === rosterId);
+  if (template) update("library", (d) => rules.addToEncounter(d, encounterId, template));
+};
 
 export const removeFromEncounter = (encounterId: string, combatantId: string) =>
   update("library", (d) => {

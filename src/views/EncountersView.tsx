@@ -1,4 +1,5 @@
-import { useState } from "react";
+import clsx from "clsx";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 import { Avatar } from "../components/Avatar";
 import { EditCombatantDialog, type EditTarget } from "../components/EditCombatantDialog";
@@ -53,7 +54,7 @@ export function EncountersView() {
             {roster.map((c) => (
               <li
                 key={c.id}
-                className={`flex flex-wrap items-center justify-between gap-3 rounded-md border border-line p-3 ${c.isMonster ? "bg-red-950/30" : "bg-surface-2"}`}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line bg-surface-2 p-3"
               >
                 <div className="flex items-center gap-3">
                   <Avatar combatant={c} size="sm" />
@@ -102,14 +103,25 @@ export function EncountersView() {
 function EncounterCard({ encounter: e }: { encounter: Encounter }) {
   const roster = useGame((s) => s.library.roster);
   const [pick, setPick] = useState("");
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
 
   return (
-    <article className="rounded-lg border border-line bg-surface p-4 shadow">
-      <div className="mb-3 flex items-center justify-between border-b border-line pb-2">
-        <h3 className="text-lg font-bold text-accent">
-          {e.name} <span className="text-sm text-faint">({e.combatants.length})</span>
-        </h3>
-        <div className="flex gap-2">
+    <article className="rounded-lg border border-line bg-surface shadow">
+      <div className="flex items-center justify-between gap-2 p-4">
+        <button
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          onClick={() => setOpen(!open)}
+        >
+          <span className={clsx("text-faint transition-transform", open && "rotate-90")} aria-hidden>
+            ▶
+          </span>
+          <h3 className="truncate text-lg font-bold text-accent">{e.name}</h3>
+          <span className="shrink-0 text-sm text-faint">({e.combatants.length})</span>
+        </button>
+        <div className="flex shrink-0 gap-2">
           <button
             className="btn btn-primary"
             onClick={() => confirm("Replace the current tracker with this encounter?") && actions.loadEncounter(e.id)}
@@ -125,43 +137,55 @@ function EncounterCard({ encounter: e }: { encounter: Encounter }) {
           </button>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-        {e.combatants.map((c) => (
-          <div key={c.id} className="group relative rounded border border-line bg-surface-2 p-2 text-xs">
-            <strong className={c.isMonster ? "text-red-400" : "text-blue-400"}>{c.name}</strong>
-            <div className="text-faint">
-              HP {c.hpCurrent}/{c.hpMax} · AC {c.ac}
+      {open && (
+        <div id={bodyId} className="border-t border-line p-4">
+          {e.combatants.length === 0 ? (
+            <p className="text-sm text-muted italic">No combatants yet.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+              {e.combatants.map((c) => (
+                <div key={c.id} className="group relative rounded border border-line bg-surface-2 p-2 text-xs">
+                  <strong className="text-strong">
+                    {c.name}
+                    {c.isMonster && " ☠"}
+                  </strong>
+                  <div className="text-faint">
+                    HP {c.hpCurrent}/{c.hpMax} · AC {c.ac}
+                  </div>
+                  <button
+                    className="absolute top-1 right-1 text-faint opacity-0 group-hover:opacity-100 hover:text-red-500 focus:opacity-100"
+                    aria-label={`Remove ${c.name} from encounter`}
+                    onClick={() => actions.removeFromEncounter(e.id, c.id)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
             </div>
-            <button
-              className="absolute top-1 right-1 hidden text-faint group-hover:block hover:text-red-500"
-              aria-label={`Remove ${c.name} from encounter`}
-              onClick={() => actions.removeFromEncounter(e.id, c.id)}
+          )}
+          {roster.length > 0 && (
+            <form
+              className="mt-3 flex gap-2"
+              onSubmit={(ev) => {
+                ev.preventDefault();
+                actions.addRosterEntryToEncounter(e.id, pick);
+                setPick("");
+              }}
             >
-              ✕
-            </button>
-          </div>
-        ))}
-      </div>
-      {roster.length > 0 && (
-        <div className="mt-3 flex gap-2">
-          <select className="field max-w-xs" value={pick} aria-label="Roster entry to add" onChange={(ev) => setPick(ev.target.value)}>
-            <option value="">Add from roster…</option>
-            {roster.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-          <button
-            className="btn"
-            disabled={!pick}
-            onClick={() => {
-              actions.addRosterEntryToEncounter(e.id, pick);
-              setPick("");
-            }}
-          >
-            + Add
-          </button>
+              <select className="field max-w-xs" value={pick} aria-label="Roster entry to add" onChange={(ev) => setPick(ev.target.value)}>
+                <option value="">Add from roster…</option>
+                {roster.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                    {r.isMonster && " ☠"}
+                  </option>
+                ))}
+              </select>
+              <button className="btn" disabled={!pick}>
+                + Add
+              </button>
+            </form>
+          )}
         </div>
       )}
     </article>

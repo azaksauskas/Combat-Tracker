@@ -194,6 +194,21 @@ export function loadEncounter(combat: CombatDoc, encounter: Encounter) {
   combat.round = 0;
 }
 
+/**
+ * Adds a copy of a stat block to a saved encounter. `template` must be plain
+ * data (not an Immer draft): structuredClone throws on drafts.
+ */
+export function addToEncounter(library: LibraryDoc, encounterId: string, template: Combatant) {
+  const enc = library.encounters.find((e) => e.id === encounterId);
+  if (!enc) return;
+  enc.combatants.push({
+    ...structuredClone(template),
+    id: newId(),
+    name: uniqueName(template.name, enc.combatants.map((c) => c.name)),
+    conditions: [],
+  });
+}
+
 /** Health band a player is allowed to see for an enemy. */
 export function healthStatus(c: Combatant): "healthy" | "bloodied" | "down" {
   if (c.hpCurrent <= 0) return "down";

@@ -1,5 +1,7 @@
+import { produce } from "immer";
 import { describe, expect, it } from "vitest";
 import {
+  addToEncounter,
   findFreeSpot,
   applyDamage,
   applyHealing,
@@ -109,6 +111,17 @@ describe("encounters", () => {
     loadEncounter(doc, enc);
     expect(doc.combatants.map((c) => c.name)).toEqual(["Goblin 2", "Hero"]);
     expect(doc.combatants[0]!.id).not.toBe("c0");
+  });
+
+  it("adds roster entries to a saved encounter (inside an Immer update, as the store does)", () => {
+    const library = parseDoc("library", {
+      roster: [{ id: "r", name: "Goblin", hpMax: 7, conditions: ["Prone"] }],
+      encounters: [{ id: "e", name: "Ambush", combatants: [{ id: "g", name: "Goblin" }] }],
+    });
+    const next = produce(library, (d) => addToEncounter(d, "e", library.roster[0]!));
+    const added = next.encounters[0]!.combatants[1]!;
+    expect(added).toMatchObject({ name: "Goblin 2", hpMax: 7, conditions: [] });
+    expect(added.id).not.toBe("r");
   });
 });
 

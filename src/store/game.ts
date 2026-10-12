@@ -25,7 +25,15 @@ let adapter: SyncAdapter | null = null;
 
 export function update<K extends DocKey>(key: K, recipe: (draft: Draft<Docs[K]>) => void) {
   const prev = useGame.getState()[key];
-  const next = produce(prev, recipe);
+  let next: Docs[K];
+  try {
+    next = produce(prev, recipe);
+  } catch (err) {
+    // Never fail silently: a click that "does nothing" is worse than an error.
+    console.error(`Updating "${key}" failed`, err);
+    toast.error("That didn't work", { description: String(err) });
+    return;
+  }
   if (next !== prev) commit(key, next);
 }
 
