@@ -1,0 +1,1378 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>D&D Combat Tracker</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              gray: {
+                100: 'var(--gray-100)',
+                200: 'var(--gray-200)',
+                300: 'var(--gray-300)',
+                400: 'var(--gray-400)',
+                500: 'var(--gray-500)',
+                600: 'var(--gray-600)',
+                700: 'var(--gray-700)',
+                800: 'var(--gray-800)',
+                900: 'var(--gray-900)',
+              },
+              amber: {
+                400: 'var(--accent-400)',
+                500: 'var(--accent-500)',
+                600: 'var(--accent-600)',
+                700: 'var(--accent-700)',
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      :root {
+        --bg-base: #0f0f13; 
+        --gray-900: #16161a; 
+        --gray-800: #1e1e24; 
+        --gray-700: #2a2a32; 
+        --gray-600: #3f3f46; 
+        --gray-500: #71717a; 
+        --gray-400: #a1a1aa;
+        --gray-300: #d4d4d8;
+        --gray-200: #e4e4e7;
+        --gray-100: #ffffff; 
+
+        --accent-400: #f87171;
+        --accent-500: #ef4444; 
+        --accent-600: #dc2626; 
+        --accent-700: #b91c1c; 
+
+        --card-player: linear-gradient(145deg, #222226 0%, #16161a 100%);
+        --card-monster: linear-gradient(145deg, #3a1515 0%, #1d0909 100%);
+        
+        --card-border: var(--gray-600);
+        --monster-border: #7f1d1d;
+        --active-border: #ef4444;
+        --active-glow: rgba(239, 68, 68, 0.4);
+      }
+
+      body.light-theme {
+        --bg-base: #f4ebd8; 
+        --gray-900: #e5d6bc; 
+        --gray-800: #eee2cd; 
+        --gray-700: #dcc8a8; 
+        --gray-600: #cbb38e; 
+        --gray-500: #8c7355; 
+        --gray-400: #5c4325;
+        --gray-300: #4a3319;
+        --gray-200: #382410;
+        --gray-100: #261605; 
+
+        --accent-400: #5d4037;
+        --accent-500: #3e2723;
+        --accent-600: #2e1f13;
+        --accent-700: #4e342e;
+
+        --card-player: linear-gradient(145deg, #fbf7f0 0%, #f4ebd8 100%);
+        --card-monster: linear-gradient(145deg, #e8d0c3 0%, #d8b4a2 100%);
+        
+        --card-border: var(--gray-600); 
+        --monster-border: #a55a5a;
+        --active-border: #3e2723;
+        --active-glow: rgba(62, 39, 35, 0.3);
+        
+        background-image: none; 
+      }
+
+      body {
+        background-color: var(--bg-base);
+        color: var(--gray-200);
+        font-family: "Inter", sans-serif;
+        background-image:
+          radial-gradient(circle at 50% 0%, rgba(42,26,26,0.5) 0%, transparent 100%),
+          url('data:image/svg+xml,%3Csvg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="%231a1c23" fill-opacity="0.5" fill-rule="evenodd"%3E%3Ccircle cx="3" cy="3" r="3"/%3E%3Ccircle cx="13" cy="13" r="3"/%3E%3C/g%3E%3C/svg%3E');
+        min-height: 100vh;
+        margin: 0;
+      }
+
+      h1, h2, h3, h4, h5, .cinzel { font-family: "Cinzel", serif; }
+
+      .card-player { background: var(--card-player); border: 1px solid var(--card-border); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4); }
+      .card-monster { background: var(--card-monster); border: 1px solid var(--monster-border); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5); }
+
+      body.light-theme .card-player,
+      body.light-theme .card-monster { box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1); }
+
+      .active-turn {
+        border-color: var(--active-border) !important;
+        border-width: 2px !important; 
+        box-shadow: 0 0 20px var(--active-glow), inset 0 0 20px var(--active-glow) !important;
+      }
+
+      input, select, textarea { background-color: var(--gray-900); border: 1px solid var(--gray-600); color: var(--gray-100); }
+      input:focus, select:focus, textarea:focus, [contenteditable="true"]:focus { outline: none; border-color: var(--accent-500); box-shadow: 0 0 5px var(--active-glow); }
+
+      details > summary { list-style: none; }
+      details > summary::-webkit-details-marker { display: none; }
+
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+      ::-webkit-scrollbar-thumb { background: var(--gray-600); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--accent-500); }
+
+      /* Fixed Map Grid System */
+      .map-grid-square {
+        background-size: 50px 50px;
+        background-image:
+          linear-gradient(to right, rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+      }
+      body.light-theme .map-grid-square {
+        background-image:
+          linear-gradient(to right, rgba(0, 0, 0, 0.1) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(0, 0, 0, 0.1) 1px, transparent 1px);
+      }
+      
+      .map-grid-hex {
+          background-size: 50px 86.6px;
+          background-image: url("data:image/svg+xml,%3Csvg width='50' height='86.6' viewBox='0 0 50 86.6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M25,0 L50,14.4 L50,43.3 L25,57.7 L0,43.3 L0,14.4 Z' fill='none' stroke='rgba(255,255,255,0.1)' stroke-width='1'/%3E%3Cpath d='M25,86.6 L50,72.2 L50,43.3 M0,72.2 L25,86.6' fill='none' stroke='rgba(255,255,255,0.1)' stroke-width='1'/%3E%3C/svg%3E");
+      }
+      body.light-theme .map-grid-hex {
+          background-image: url("data:image/svg+xml,%3Csvg width='50' height='86.6' viewBox='0 0 50 86.6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M25,0 L50,14.4 L50,43.3 L25,57.7 L0,43.3 L0,14.4 Z' fill='none' stroke='rgba(0,0,0,0.1)' stroke-width='1'/%3E%3Cpath d='M25,86.6 L50,72.2 L50,43.3 M0,72.2 L25,86.6' fill='none' stroke='rgba(0,0,0,0.1)' stroke-width='1'/%3E%3C/svg%3E");
+      }
+      
+      .drag-over { border-color: var(--accent-500) !important; border-width: 2px !important; transform: scale(1.02); }
+
+      [contenteditable="true"] ul { list-style-type: disc; padding-left: 1.5rem; margin: 0.25rem 0; line-height: 1.2; }
+      [contenteditable="true"] li { margin-bottom: 0.125rem; }
+      
+      /* Shape Rendering */
+      .shape-triangle { clip-path: polygon(50% 0%, 0% 100%, 100% 100%); }
+      .shape-circle { border-radius: 50%; }
+      .shape-handle {
+          position: absolute; width: 22px; height: 22px;
+          border-radius: 50%; pointer-events: auto; cursor: pointer; z-index: 50;
+          display: flex; align-items: center; justify-content: center; font-weight: bold;
+          font-size: 14px; box-shadow: 0 0 5px rgba(0,0,0,0.5); border: 2px solid white;
+      }
+      
+      .cursor-eraser {
+          cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30'%3E%3Ccircle cx='15' cy='15' r='14' stroke='black' stroke-width='2' fill='red' fill-opacity='0.5'/%3E%3C/svg%3E") 15 15, crosshair !important;
+      }
+      .player-map-controls { opacity: 0.1; transition: opacity 0.3s; }
+      .player-map-controls:hover { opacity: 1; }
+      
+      .active-badge { background: #ef4444; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid #1e1e24; box-shadow: 0 0 10px #ef4444; }
+      .text-shadow { text-shadow: 1px 1px 2px black, -1px -1px 2px black, 1px -1px 2px black, -1px 1px 2px black; }
+
+      .map-minimized {
+          height: 48px !important;
+          min-height: 48px !important;
+          resize: none !important;
+          overflow: hidden !important;
+      }
+
+      /* Theme Overrides */
+      body.light-theme .bg-black\/80 { background-color: rgba(244, 235, 216, 0.9) !important; }
+      body.light-theme .bg-black\/60 { background-color: rgba(244, 235, 216, 0.7) !important; }
+      body.light-theme .bg-black\/40 { background-color: rgba(229, 214, 188, 0.5) !important; border-color: var(--gray-600) !important; }
+      body.light-theme .bg-black\/20 { background-color: rgba(229, 214, 188, 0.3) !important; }
+      body.light-theme .text-white:not(button) { color: var(--gray-100) !important; }
+      body.light-theme .border-white\/5 { border-color: var(--gray-600) !important; }
+      body.light-theme .bg-red-900\/80 { background-color: rgba(139, 0, 0, 0.8) !important; color: #fff !important; }
+      body.light-theme .bg-green-900\/80 { background-color: rgba(0, 100, 0, 0.8) !important; color: #fff !important; }
+      body.light-theme .bg-red-950\/60 { background-color: rgba(139, 0, 0, 0.1) !important; color: #8b0000 !important; border-color: rgba(139, 0, 0, 0.3) !important; }
+      body.light-theme .text-red-200, body.light-theme .text-red-400 { color: #8b0000 !important; }
+      body.light-theme .hover\:bg-red-900:hover { background-color: rgba(139, 0, 0, 0.2) !important; }
+    </style>
+  </head>
+  <body class="flex flex-col md:flex-row min-h-screen">
+    
+    <div id="sideNavContainer" class="hidden md:flex flex-col w-64 backdrop-blur-md bg-black/40 border-r border-white/10 shadow-lg p-4 z-40 h-screen sticky top-0 overflow-y-auto">
+      <div id="sideNav" class="flex flex-col gap-4"></div>
+    </div>
+    
+    <div id="mobileNavContainer" class="md:hidden flex flex-col w-full backdrop-blur-md bg-black/40 border-b border-white/10 shadow-lg p-4 z-40 sticky top-0">
+      <div id="mobileNav" class="flex flex-col gap-4"></div>
+    </div>
+
+    <div id="playerControls" class="hidden fixed bottom-4 right-4 md:top-8 md:right-8 md:bottom-auto z-50 flex gap-2 flex-col sm:flex-row player-map-controls">
+        <button onclick="toggleMap()" class="bg-gray-800 hover:bg-gray-700 text-amber-400 px-4 py-2 rounded shadow-lg text-xl border border-gray-600 transition" title="Toggle Map">🗺️ Map</button>
+        <button onclick="toggleTheme()" class="bg-gray-800 hover:bg-gray-700 text-amber-400 px-4 py-2 rounded shadow-lg text-xl border border-gray-600 transition" title="Toggle Light/Dark Mode">🌓</button>
+    </div>
+
+    <div id="app" class="flex-grow w-full px-4 md:px-8 pb-12 pt-8 md:pt-12 overflow-x-hidden relative">
+      <div class="text-center text-amber-500 mt-32 animate-pulse cinzel text-3xl font-bold tracking-widest uppercase drop-shadow-md">
+        Entering Dungeon...
+      </div>
+    </div>
+
+    <div id="floatingMapWrapper" class="hidden fixed top-20 left-1/2 -translate-x-1/2 z-[150] shadow-2xl rounded-lg bg-gray-800 border border-gray-600 flex flex-col" style="width: 800px; height: 600px; resize: both; overflow: hidden; min-width: 300px; min-height: 300px;">
+        <div id="mapHeader" class="h-12 bg-gray-900 flex justify-between items-center px-2 border-b border-gray-700 select-none relative z-50">
+            <div class="flex items-center gap-2">
+                <button id="mapDragHandle" class="px-3 py-1.5 bg-black/40 hover:bg-black/80 rounded cursor-move text-gray-400 hover:text-white" title="Drag Map Window">⠿</button>
+                <span class="text-sm uppercase font-bold text-amber-500 hidden sm:inline ml-2">Battle Map</span>
+            </div>
+            <div class="flex items-center gap-2" id="mapTools"></div>
+        </div>
+        <div id="mapAreaContainer" class="absolute top-12 bottom-0 left-0 right-0 overflow-auto bg-gray-900 pointer-events-auto">
+            <div id="mapArea" class="relative w-[3000px] h-[3000px] map-grid-square touch-none">
+                <canvas id="mapDrawCanvas" width="3000" height="3000" class="absolute inset-0 pointer-events-none"></canvas>
+                <div id="mapFigures" class="absolute inset-0 pointer-events-none"></div>
+                <div id="mapPawns" class="absolute inset-0 pointer-events-none"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="encounterAddModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-[300] p-4">
+       <div class="bg-gray-800 border border-gray-700 p-6 rounded-lg shadow-xl max-w-sm w-full relative">
+          <h3 class="text-xl cinzel font-bold text-amber-500 mb-4">Add to Encounter</h3>
+          <input type="hidden" id="encAddIdx">
+          <select id="encAddSelect" class="w-full p-2 bg-gray-900 border border-gray-600 text-white rounded mb-6 outline-none focus:border-amber-500"></select>
+          <div class="flex justify-end gap-3">
+             <button onclick="closeEncounterAddModal()" class="px-4 py-2 text-white bg-gray-600 rounded hover:bg-gray-500 font-bold transition">Cancel</button>
+             <button onclick="confirmEncounterAdd()" class="px-6 py-2 text-white bg-amber-700 rounded hover:bg-amber-600 font-bold transition cinzel">Add</button>
+          </div>
+       </div>
+    </div>
+
+    <div id="editModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-[300] p-4 backdrop-blur-sm overflow-y-auto">
+      <div class="bg-gray-800 border border-gray-700 rounded-lg p-6 w-full max-w-lg shadow-2xl relative my-8">
+        <button onclick="closeEditModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white text-xl">✕</button>
+        <h3 class="text-2xl cinzel font-bold text-amber-500 mb-4">Edit Combatant</h3>
+        <form onsubmit="saveEdit(event)" class="space-y-4 text-sm">
+          <input type="hidden" id="editId" />
+          <input type="hidden" id="editSource" value="active" />
+          <div class="grid grid-cols-3 gap-3 items-end">
+              <div class="col-span-2">
+                <label class="block text-gray-500 text-xs uppercase mb-1">Name</label>
+                <input type="text" id="editName" class="w-full p-2 rounded" required />
+              </div>
+              <div class="flex flex-col items-center">
+                  <label class="block text-gray-500 text-xs uppercase mb-1 w-full text-center">Avatar</label>
+                  <div class="relative w-12 h-12 mt-1">
+                      <div id="editImagePreview" class="w-12 h-12 rounded bg-gray-900 border border-gray-600 bg-cover bg-center flex items-center justify-center overflow-hidden">
+                          <span class="text-[10px] text-gray-500">Img</span>
+                      </div>
+                      <input type="file" accept="image/*" onchange="handleImageUpload(event, 'edit')" class="absolute inset-0 opacity-0 cursor-pointer" title="Upload Photo">
+                  </div>
+              </div>
+          </div>
+          <div class="grid grid-cols-4 gap-3">
+            <div><label class="block text-gray-500 text-xs uppercase mb-1">Init</label><input type="number" id="editInit" class="w-full p-2 rounded" /></div>
+            <div><label class="block text-gray-500 text-xs uppercase mb-1">AC</label><input type="number" id="editAC" class="w-full p-2 rounded" required /></div>
+            <div><label class="block text-gray-500 text-xs uppercase mb-1">Speed</label><input type="number" id="editSpeed" class="w-full p-2 rounded" value="0" /></div>
+            <div>
+              <label class="block text-gray-500 text-xs uppercase mb-1">Size</label>
+              <select id="editSize" class="w-full p-2 rounded appearance-none">
+                  <option value="0.5">Tiny</option><option value="1">Small/Med</option><option value="2">Large</option><option value="3">Huge</option><option value="4">Garg</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-4 gap-3">
+              <div><label class="block text-gray-500 text-xs uppercase mb-1">Max HP</label><input type="number" id="editMaxHP" class="w-full p-2 rounded" required /></div>
+              <div><label class="block text-gray-500 text-xs uppercase mb-1">Current</label><input type="number" id="editHP" class="w-full p-2 rounded" required /></div>
+              <div><label class="block text-gray-500 text-xs uppercase mb-1">Temp HP</label><input type="number" id="editTempHP" class="w-full p-2 rounded" placeholder="Opt" /></div>
+              <div><label class="block text-gray-500 text-xs uppercase mb-1">Group</label><input type="text" id="editGroup" class="w-full p-2 rounded" placeholder="Opt" /></div>
+          </div>
+          <div class="mt-3 border-t border-gray-800 pt-3">
+              <label class="block text-gray-500 text-xs uppercase mb-1">Attributes</label>
+              <input type="text" id="editAttributes" class="w-full p-2 rounded" placeholder="e.g. STR 16 (+3), DEX 14 (+2)..." />
+          </div>
+          <div class="mt-3">
+              <label class="block text-gray-500 text-xs uppercase mb-1">Saving Throws</label>
+              <input type="text" id="editSaves" class="w-full p-2 rounded" placeholder="e.g. Dex +5, Wis +4" />
+          </div>
+          <div class="flex items-center gap-2 mt-4 justify-end border-t border-gray-800 pt-3">
+            <input type="checkbox" id="editIsMonster" class="w-5 h-5 accent-red-600" />
+            <label for="editIsMonster" class="font-bold text-gray-300 uppercase">Is Monster</label>
+          </div>
+          <div>
+            <label class="block text-gray-500 text-xs uppercase mb-1">Actions & Features</label>
+            <div class="border border-gray-600 rounded bg-gray-900 overflow-hidden">
+                <div class="flex items-center gap-1 bg-gray-800 p-1 border-b border-gray-600">
+                    <button type="button" onmousedown="event.preventDefault(); formatText('bold')" class="px-2 py-1 hover:bg-gray-700 text-gray-300 rounded font-bold">B</button>
+                    <button type="button" onmousedown="event.preventDefault(); formatText('insertUnorderedList')" class="px-2 py-1 hover:bg-gray-700 text-gray-300 rounded">• List</button>
+                </div>
+                <div id="editActions" contenteditable="true" class="p-2 min-h-[4rem] max-h-32 overflow-y-auto text-gray-100 text-xs"></div>
+            </div>
+          </div>
+          <div>
+            <label class="block text-gray-500 text-xs uppercase mb-1">Resistances & Notes</label>
+            <div class="border border-gray-600 rounded bg-gray-900 overflow-hidden">
+                <div class="flex items-center gap-1 bg-gray-800 p-1 border-b border-gray-600">
+                    <button type="button" onmousedown="event.preventDefault(); formatText('bold')" class="px-2 py-1 hover:bg-gray-700 text-gray-300 rounded font-bold">B</button>
+                    <button type="button" onmousedown="event.preventDefault(); formatText('insertUnorderedList')" class="px-2 py-1 hover:bg-gray-700 text-gray-300 rounded">• List</button>
+                </div>
+                <div id="editNotes" contenteditable="true" class="p-2 min-h-[4rem] max-h-32 overflow-y-auto text-gray-100 text-xs"></div>
+            </div>
+          </div>
+          <div class="mt-4 flex justify-end gap-2 border-t border-gray-700 pt-4">
+            <button type="submit" class="bg-amber-700 hover:bg-amber-600 text-white cinzel font-bold py-2 px-6 rounded transition flex-grow">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+      import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+      import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+      
+      const localFirebaseConfig = {
+        apiKey: "AIzaSyCzPeM7LPRtRx-ptHA0T2XqYXuRuoPIYuc",
+        authDomain: "dnd-combat-b3441.firebaseapp.com",
+        projectId: "dnd-combat-b3441",
+        storageBucket: "dnd-combat-b3441.firebasestorage.app",
+        messagingSenderId: "735138870990",
+        appId: "1:735138870990:web:2991e9e1f9608018d5c29f",
+      };
+
+      const appId = typeof __app_id !== "undefined" ? __app_id : "default-dnd-app-id";
+      const finalConfig = typeof __firebase_config !== "undefined" ? JSON.parse(__firebase_config) : localFirebaseConfig;
+
+      const app = initializeApp(finalConfig);
+      const auth = getAuth(app);
+      const db = getFirestore(app);
+
+      const DND_CONDITIONS = ["Blinded", "Charmed", "Deafened", "Exhaustion", "Frightened", "Grappled", "Incapacitated", "Invisible", "Paralyzed", "Petrified", "Poisoned", "Prone", "Restrained", "Stunned", "Unconscious"];
+      const PAWN_COLORS = ['#3b82f6', '#22c55e', '#a855f7', '#eab308', '#ec4899', '#06b6d4'];
+      const MONSTER_COLORS = ['#ef4444', '#e11d48', '#ea580c', '#b45309', '#991b1b'];
+
+      const getRoleFromHash = () => {
+          if (window.location.hash === "#admin") return "dm";
+          if (window.location.hash === "#encounters") return "encounters";
+          if (window.location.hash === "#info") return "info";
+          if (window.location.hash === "#campaign") return "campaign";
+          return "player";
+      };
+
+      let state = {
+        role: getRoleFromHash(),
+        theme: "light",
+        viewMode: "rows",
+        activeId: null,
+        activeTooltipId: null,
+        combatants: [],
+        sharedCombatants: [], 
+        encounters: [],
+        dmNotes: "",
+        ui: { setupVisible: true, mapOpen: false, mapMinimized: false, mapGrid: 'square', selectedShapeId: null },
+        mapState: { lines: [], shapes: [] },
+        searchQuery: ""
+      };
+
+      let isFirebaseInitialized = false;
+      window.tempImages = { new: null, edit: null, shared: null };
+      
+      let mapMode = null; 
+      let isDrawing = false;
+      let drawPath = [];
+      let canvasCtx = null;
+      let currentColor = '#ef4444';
+      const GRID_SIZE = 50; 
+
+      async function initApp() {
+        try {
+          if (typeof __initial_auth_token !== "undefined") { await signInWithCustomToken(auth, __initial_auth_token); } 
+          else { await signInAnonymously(auth); }
+
+          const stateDocRef = doc(db, "artifacts", appId, "public", "data", "encounter", "state");
+
+          onSnapshot(stateDocRef, (docSnap) => {
+              isFirebaseInitialized = true;
+              if (docSnap.exists()) {
+                const data = docSnap.data();
+                state.combatants = data.combatants || [];
+                state.sharedCombatants = data.sharedCombatants || data.savedCombatants || [];
+                state.encounters = data.encounters || [];
+                state.activeId = data.activeId || null;
+                state.dmNotes = data.dmNotes || "";
+                state.mapState = data.mapState || { lines: [], shapes: [] };
+                if(data.ui) state.ui = {...state.ui, ...data.ui};
+              } else if (state.role === "dm") {
+                  saveStateToFirebase();
+              }
+              render();
+            },
+            (error) => { console.error("Firestore Listen Error:", error); }
+          );
+        } catch (error) { console.error("Firebase Auth Error:", error); }
+      }
+
+      async function saveStateToFirebase() {
+        if (!auth.currentUser) return;
+        const stateDocRef = doc(db, "artifacts", appId, "public", "data", "encounter", "state");
+        try { await setDoc(stateDocRef, state); } 
+        catch (error) { console.error("Error saving state:", error); }
+      }
+
+      function insertByInitiative(combatant) {
+          let insertIndex = 0;
+          while (insertIndex < state.combatants.length && state.combatants[insertIndex].initiative >= combatant.initiative) { insertIndex++; }
+          state.combatants.splice(insertIndex, 0, combatant);
+      }
+
+      window.formatText = (command, value = null) => { document.execCommand(command, false, value); };
+
+      window.handleImageUpload = (e, target) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (event) => {
+              const img = new Image();
+              img.onload = () => {
+                  const canvas = document.createElement('canvas');
+                  const MAX_SIZE = 150;
+                  let w = img.width, h = img.height;
+                  if (w > h) { if (w > MAX_SIZE) { h *= MAX_SIZE / w; w = MAX_SIZE; } } 
+                  else { if (h > MAX_SIZE) { w *= MAX_SIZE / h; h = MAX_SIZE; } }
+                  canvas.width = w; canvas.height = h;
+                  canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                  window.tempImages[target] = canvas.toDataURL('image/jpeg', 0.7);
+                  document.getElementById(target + 'ImagePreview').style.backgroundImage = `url(${window.tempImages[target]})`;
+                  document.getElementById(target + 'ImagePreview').innerHTML = ''; 
+              };
+              img.src = event.target.result;
+          };
+          reader.readAsDataURL(file);
+      };
+
+      window.toggleElement = (id) => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden'); };
+      
+      window.toggleMapTooltip = (id, pawnId, event) => {
+          if(event) event.stopPropagation();
+          state.activeTooltipId = state.activeTooltipId === pawnId ? null : pawnId;
+          renderMapContent();
+      };
+
+      function renderSidebarMenu() {
+          return `
+              <div class="text-center md:text-left mb-6">
+                  <h1 class="text-3xl font-bold text-amber-500 tracking-wider drop-shadow-md cinzel">Combat Tracker</h1>
+                  <p class="text-gray-400 text-xs mt-1 uppercase tracking-widest font-bold">${state.role === "dm" ? "Dungeon Master" : state.role === "info" ? "DM Reference" : state.role === "encounters" ? "Encounters" : "Campaign"}</p>
+              </div>
+              <div class="flex flex-col gap-3">
+                  ${state.role === 'dm' ? `<button onclick="toggleMap()" class="bg-gray-800 hover:bg-gray-700 ${state.ui.mapOpen ? 'text-amber-400 border-amber-600' : 'text-gray-400'} px-4 py-2 rounded border border-gray-600 transition shadow-lg text-left" title="Toggle Map">🗺️ Toggle Map</button>` : ''}
+                  <button onclick="window.location.hash='#admin'" class="bg-gray-800 hover:bg-gray-700 ${state.role === 'dm' ? 'text-amber-400 border-amber-600' : 'text-gray-400'} px-4 py-2 rounded border border-gray-600 transition shadow-lg text-left">🛡️ Battle Order</button>
+                  <button onclick="window.location.hash='#encounters'" class="bg-gray-800 hover:bg-gray-700 ${state.role === 'encounters' ? 'text-amber-400 border-amber-600' : 'text-gray-400'} px-4 py-2 rounded border border-gray-600 transition shadow-lg text-left">⚔️ Encounters</button>
+                  <button onclick="window.location.hash='#campaign'" class="bg-gray-800 hover:bg-gray-700 ${state.role === 'campaign' ? 'text-amber-400 border-amber-600' : 'text-gray-400'} px-4 py-2 rounded border border-gray-600 transition shadow-lg text-left">📜 Campaign Notes</button>
+                  <button onclick="window.location.hash='#info'" class="bg-gray-800 hover:bg-gray-700 ${state.role === 'info' ? 'text-amber-400 border-amber-600' : 'text-gray-400'} px-4 py-2 rounded border border-gray-600 transition shadow-lg text-left">📕 Rules & Notes</button>
+                  <button onclick="toggleTheme()" class="bg-gray-800 hover:bg-gray-700 text-gray-400 px-4 py-2 rounded border border-gray-600 transition shadow-lg text-left mt-4">🌓 Toggle Theme</button>
+                  <button onclick="window.location.hash=''" class="bg-gray-800 hover:bg-gray-700 text-gray-400 px-4 py-2 rounded border border-gray-600 transition shadow-lg cinzel font-bold mt-2">Player View</button>
+              </div>
+          `;
+      }
+
+      function render() {
+        if (!isFirebaseInitialized) return;
+        const activeElementId = document.activeElement ? document.activeElement.id : null;
+        let selectionStart = null, selectionEnd = null;
+        if (activeElementId && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+            selectionStart = document.activeElement.selectionStart;
+            selectionEnd = document.activeElement.selectionEnd;
+        }
+
+        const appDiv = document.getElementById("app");
+        const sideNavContainer = document.getElementById("sideNavContainer");
+        const mobileNavContainer = document.getElementById("mobileNavContainer");
+        const playerControls = document.getElementById("playerControls");
+        const floatingMapWrapper = document.getElementById("floatingMapWrapper");
+
+        if (state.ui.mapOpen) {
+            floatingMapWrapper.classList.remove("hidden");
+            if (state.ui.mapMinimized) {
+                floatingMapWrapper.classList.add("map-minimized");
+                document.getElementById('mapAreaContainer').classList.add('hidden');
+            } else {
+                floatingMapWrapper.classList.remove("map-minimized");
+                document.getElementById('mapAreaContainer').classList.remove('hidden');
+                renderMapContent();
+                renderMapTools();
+                setTimeout(redrawCanvas, 50);
+            }
+        } else {
+            floatingMapWrapper.classList.add("hidden");
+        }
+
+        if (state.role !== "player") {
+          sideNavContainer.classList.remove("hidden");
+          mobileNavContainer.classList.remove("hidden");
+          playerControls.classList.add("hidden");
+          
+          const menuHtml = renderSidebarMenu();
+          document.getElementById("sideNav").innerHTML = menuHtml;
+          document.getElementById("mobileNav").innerHTML = menuHtml;
+
+          if (state.role === "dm") appDiv.innerHTML = renderDMView();
+          else if (state.role === "encounters") appDiv.innerHTML = renderEncountersView();
+          else if (state.role === "info") appDiv.innerHTML = renderInfoView();
+          else if (state.role === "campaign") appDiv.innerHTML = renderCampaignView();
+
+        } else {
+          sideNavContainer.classList.add("hidden");
+          mobileNavContainer.classList.add("hidden");
+          playerControls.classList.remove("hidden");
+          appDiv.innerHTML = renderPlayerView();
+        }
+
+        if (activeElementId) {
+            const el = document.getElementById(activeElementId);
+            if (el) {
+                el.focus();
+                if (selectionStart !== null && el.setSelectionRange) el.setSelectionRange(selectionStart, selectionEnd);
+            }
+        }
+      }
+
+      function getPawnBorderHex(c) {
+          const baseName = c.name.trim().replace(/\s\d+$/, ''); 
+          const duplicates = state.combatants.filter(cb => cb.name.trim().replace(/\s\d+$/, '') === baseName);
+          const index = duplicates.findIndex(cb => cb.id === c.id);
+          const colorArray = c.isMonster ? MONSTER_COLORS : PAWN_COLORS;
+          return colorArray[(index >= 0 ? index : 0) % colorArray.length];
+      }
+      
+      const getAbbr = (name) => {
+          const clean = name.trim().toUpperCase() || "?";
+          return clean.charAt(0);
+      };
+
+      window.toggleShapeControls = (idx, event) => {
+          if (event) event.stopPropagation();
+          state.ui.selectedShapeId = state.ui.selectedShapeId === idx ? null : idx;
+          renderMapContent();
+      };
+
+      function renderMapContent() {
+          const mapPawns = document.getElementById("mapPawns");
+          if (mapPawns) {
+              mapPawns.innerHTML = state.combatants.map((c) => {
+                  const pxSize = GRID_SIZE * (c.size || 1);
+                  const hexColor = getPawnBorderHex(c);
+                  const isActive = state.activeId === c.id;
+                  const isTooltipOpen = state.activeTooltipId === c.id;
+                  
+                  return `
+                  <div id="pawn-wrapper-${c.id}" class="absolute pointer-events-none" style="left: ${c.x !== undefined ? c.x : 1000}px; top: ${c.y !== undefined ? c.y : 1000}px; z-index: ${isTooltipOpen ? 200 : isActive ? 60 : 40}">
+                      <div id="pawn-${c.id}"
+                           class="absolute cursor-grab active:cursor-grabbing flex items-center justify-center pointer-events-auto"
+                           style="width: ${pxSize}px; height: ${pxSize}px; left: -${pxSize/2}px; top: -${pxSize/2}px;"
+                           onpointerdown="startMapDrag(event, 'pawn', ${c.id})"
+                           ondblclick="toggleMapTooltip('map-tip-${c.id}', ${c.id}, event)">
+                           
+                          <div class="absolute inset-0 drop-shadow-lg" style="color: ${hexColor}">
+                             ${c.image ? `
+                                <div class="w-full h-full rounded-full bg-cover bg-center border-[3px]" style="background-image: url(${c.image}); border-color: currentColor; transform: rotate(${c.rotation || 0}deg)"></div>
+                             ` : `
+                                <div class="w-full h-full rounded-full flex items-center justify-center border-[3px] opacity-50" style="background-color: ${c.isMonster ? '#7f1d1d' : '#1e3a8a'}; border-color: currentColor; transform: rotate(${c.rotation || 0}deg)">
+                                   <span class="text-white font-bold text-shadow text-[${c.size>1?'1rem':'0.7rem'}] opacity-100">${getAbbr(c.name)}</span>
+                                </div>
+                             `}
+                          </div>
+                          
+                          ${isActive ? `<div class="absolute -bottom-2 -right-2 z-10 active-badge w-6 h-6 animate-pulse">⚔️</div>` : ''}
+                      </div>
+
+                      <div id="map-tip-${c.id}" class="${isTooltipOpen ? '' : 'hidden'} map-tooltip absolute bottom-full mb-4 w-[28rem] p-4 bg-gray-900 border border-amber-600 rounded-lg text-left shadow-2xl text-gray-200 z-[300] cursor-default pointer-events-auto" style="left: -14rem;" onpointerdown="event.stopPropagation()">
+                          <div class="flex justify-between items-start mb-2 border-b border-gray-700 pb-1">
+                              <strong class="text-amber-500 font-cinzel tracking-wider text-lg">${c.name}</strong>
+                              <button class="text-gray-500 hover:text-white font-bold" onpointerdown="toggleMapTooltip('map-tip-${c.id}', ${c.id}, event)">✕</button>
+                          </div>
+                          <div class="text-sm font-bold mb-3 ${c.hpCurrent <= 0 ? 'text-red-500' : 'text-white'}">HP: ${c.hpCurrent} / ${c.hpMax}</div>
+                          <div class="text-sm space-y-3">
+                              <div><strong class="text-gray-400 uppercase tracking-wider block mb-1">Actions:</strong>
+                                  <div class="text-gray-200 prose prose-sm prose-invert leading-relaxed max-w-none">${c.actions || '-'}</div></div>
+                              <div><strong class="text-gray-400 uppercase tracking-wider block mb-1">Notes:</strong>
+                                  <div class="text-gray-200 prose prose-sm prose-invert leading-relaxed max-w-none">${c.resistances || '-'}</div></div>
+                          </div>
+                      </div>
+                  </div>
+                  `;
+              }).join('');
+          }
+
+          const mapFigures = document.getElementById("mapFigures");
+          if (mapFigures) {
+              mapFigures.innerHTML = state.mapState.shapes.map((s, idx) => {
+                  const pxSize = GRID_SIZE * (s.size || 1);
+                  let shapeClass = '';
+                  if (s.type === 'circle') shapeClass = 'shape-circle';
+                  if (s.type === 'triangle') shapeClass = 'shape-triangle';
+                  const isSelected = state.ui.selectedShapeId === idx;
+                  
+                  return `
+                  <div class="absolute bg-white/50 border-2 border-white pointer-events-auto cursor-grab active:cursor-grabbing z-30 flex items-center justify-center ${shapeClass}"
+                       style="left: ${s.x}px; top: ${s.y}px; width: ${pxSize}px; height: ${pxSize}px; margin-left: -${pxSize/2}px; margin-top: -${pxSize/2}px; transform: rotate(${s.rotation || 0}deg)"
+                       onpointerdown="startMapDrag(event, 'shape', ${idx})"
+                       ondblclick="toggleShapeControls(${idx}, event)">
+                       ${state.role === 'dm' && isSelected ? `
+                           <div class="shape-handle -top-6 left-1/2 -translate-x-1/2 bg-amber-500 text-white" title="Rotate" onpointerdown="startRotate(event, 'shape', ${idx})">↻</div>
+                           <div class="shape-handle -top-6 left-full -translate-x-1/2 bg-blue-500 text-white" title="Scale" onpointerdown="startScale(event, ${idx})">⤡</div>
+                           <div class="shape-handle -top-6 left-0 -translate-x-1/2 bg-red-600 text-white" title="Remove" onpointerdown="removeShape(${idx}); event.stopPropagation()">✕</div>
+                       ` : ''}
+                  </div>
+                  `;
+              }).join('');
+          }
+          
+          const mapArea = document.getElementById("mapArea");
+          if (mapArea) {
+              mapArea.className = `relative w-[3000px] h-[3000px] map-grid-${state.ui.mapGrid || 'square'} touch-none overflow-hidden ${mapMode === 'draw' ? 'cursor-crosshair' : mapMode === 'erase' ? 'cursor-eraser' : 'cursor-default'}`;
+          }
+      }
+
+      function renderMapTools() {
+          const tools = document.getElementById("mapTools");
+          if (!tools) return;
+          if (state.role !== 'dm') {
+              tools.innerHTML = `
+                  <button onclick="toggleMapMinimize()" class="text-white bg-gray-700 hover:bg-gray-600 rounded px-2 py-1 font-bold text-sm">_</button>
+                  <button onclick="toggleMap()" onmousedown="event.stopPropagation()" class="text-white bg-red-600/80 hover:bg-red-500 rounded px-3 py-1 font-bold text-sm ml-1">✕</button>
+              `;
+              return;
+          }
+          
+          tools.innerHTML = `
+              <div class="flex bg-black/40 rounded border border-gray-700 overflow-hidden">
+                  <button onclick="setMapGrid('square')" class="px-2 py-1 text-xs ${state.ui.mapGrid!=='hex' ? 'bg-amber-600 text-white' : 'text-gray-400 hover:text-white'}">■</button>
+                  <button onclick="setMapGrid('hex')" class="px-2 py-1 text-xs ${state.ui.mapGrid==='hex' ? 'bg-amber-600 text-white' : 'text-gray-400 hover:text-white'}">⬡</button>
+              </div>
+              <div class="flex items-center gap-1 border-l border-gray-700 pl-2">
+                  <input type="color" id="drawColorPicker" value="${currentColor}" onchange="currentColor=this.value" class="w-6 h-6 p-0 border-0 bg-transparent cursor-pointer rounded" title="Draw Color">
+                  <button onclick="addShape('square')" class="text-xs px-2 py-1 bg-gray-700 text-white hover:bg-gray-600 rounded" title="Square">■</button>
+                  <button onclick="addShape('circle')" class="text-xs px-2 py-1 bg-gray-700 text-white hover:bg-gray-600 rounded" title="Circle">●</button>
+                  <button onclick="addShape('triangle')" class="text-xs px-2 py-1 bg-gray-700 text-white hover:bg-gray-600 rounded" title="Triangle">▲</button>
+              </div>
+              <div class="flex items-center gap-1 border-l border-gray-700 pl-2">
+                  <button onclick="setMapMode('draw')" class="text-xs px-2 py-1 rounded ${mapMode==='draw' ? 'bg-amber-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}" title="Draw">✎</button>
+                  <button onclick="setMapMode('erase')" class="text-lg px-2 py-0 rounded ${mapMode==='erase' ? 'bg-amber-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}" title="Erase line">⌫</button>
+                  <button onclick="clearMap()" class="text-[10px] px-2 py-1 rounded bg-red-900/80 text-white hover:bg-red-700" title="Clear Drawings">Clear</button>
+              </div>
+              <div class="flex border-l border-gray-700 pl-2 ml-1 gap-1">
+                  <button onclick="toggleMapMinimize()" onmousedown="event.stopPropagation()" class="text-gray-400 hover:text-white px-2 text-lg font-bold">_</button>
+                  <button onclick="toggleMap()" onmousedown="event.stopPropagation()" class="text-red-400 hover:text-red-300 px-2 text-lg font-bold">✕</button>
+              </div>
+          `;
+      }
+      
+      window.toggleMap = () => { state.ui.mapOpen = !state.ui.mapOpen; saveStateToFirebase(); render(); };
+      window.toggleMapMinimize = () => { state.ui.mapMinimized = !state.ui.mapMinimized; saveStateToFirebase(); render(); };
+      window.setMapGrid = (type) => { state.ui.mapGrid = type; saveStateToFirebase(); };
+      window.setMapMode = (mode) => { mapMode = mapMode === mode ? null : mode; renderMapTools(); renderMapContent(); };
+      window.clearMap = () => { if(confirm("Clear drawings and shapes?")) { state.mapState.lines = []; state.mapState.shapes = []; saveStateToFirebase(); } };
+      window.addShape = (type) => {
+          const area = document.getElementById("mapAreaContainer");
+          const cx = area ? area.scrollLeft + area.offsetWidth/2 : 1500;
+          const cy = area ? area.scrollTop + area.offsetHeight/2 : 1500;
+          state.mapState.shapes.push({ type, x: cx, y: cy, size: 2, rotation: 0 });
+          saveStateToFirebase();
+      };
+      window.removeShape = (idx) => { state.mapState.shapes.splice(idx, 1); state.ui.selectedShapeId = null; saveStateToFirebase(); };
+      
+      // Canvas Drawing Logic
+      function redrawCanvas() {
+          const canvas = document.getElementById('mapDrawCanvas');
+          if(!canvas) return;
+          if(!canvasCtx) canvasCtx = canvas.getContext('2d');
+          canvasCtx.clearRect(0,0, canvas.width, canvas.height);
+          canvasCtx.lineWidth = 4;
+          canvasCtx.lineCap = 'round';
+          canvasCtx.lineJoin = 'round';
+          
+          state.mapState.lines.forEach(line => {
+              canvasCtx.strokeStyle = line.color || '#ef4444';
+              canvasCtx.beginPath();
+              line.points.forEach((p, i) => {
+                  if(i===0) canvasCtx.moveTo(p.x, p.y);
+                  else canvasCtx.lineTo(p.x, p.y);
+              });
+              canvasCtx.stroke();
+          });
+      }
+
+      // Map Interactions
+      let mapDragObj = { type: null, id: null, startMouseX: 0, startMouseY: 0, initialObjX: 0, initialObjY: 0, initialSize: 0, initialPoints: null };
+      
+      window.startMapDrag = (e, type, id) => {
+          if (mapMode === 'draw' || mapMode === 'erase') return; 
+          if (e.target.closest('.shape-handle') || e.target.closest('.map-tooltip')) return;
+          
+          mapDragObj.type = type; mapDragObj.id = id;
+          mapDragObj.startMouseX = e.clientX; mapDragObj.startMouseY = e.clientY;
+          
+          if (type === 'pawn') {
+              const c = state.combatants.find(cb => cb.id === id);
+              if(c) { mapDragObj.initialObjX = c.x || 1000; mapDragObj.initialObjY = c.y || 1000; }
+          } else if (type === 'shape') {
+              const s = state.mapState.shapes[id];
+              if(s) { mapDragObj.initialObjX = s.x; mapDragObj.initialObjY = s.y; }
+          } else if (type === 'line') {
+              const l = state.mapState.lines[id];
+              if(l) { mapDragObj.initialPoints = JSON.parse(JSON.stringify(l.points)); }
+          }
+          
+          e.stopPropagation();
+          e.preventDefault();
+      };
+      
+      window.startRotate = (e, type, id) => { mapDragObj.type = 'rotate_'+type; mapDragObj.id = id; e.stopPropagation(); };
+      window.startScale = (e, id) => {
+          mapDragObj.type = 'scale'; mapDragObj.id = id;
+          const s = state.mapState.shapes[id];
+          mapDragObj.initialSize = s.size || 1;
+          const mapArea = document.getElementById('mapArea');
+          const rect = mapArea.getBoundingClientRect();
+          const cx = e.clientX - rect.left; const cy = e.clientY - rect.top;
+          mapDragObj.initialDist = Math.hypot(cx - s.x, cy - s.y);
+          e.stopPropagation();
+      };
+
+      window.addEventListener('pointermove', (e) => {
+          const mapArea = document.getElementById('mapArea');
+          if(!mapArea) return;
+          const rect = mapArea.getBoundingClientRect();
+          const cx = e.clientX - rect.left; const cy = e.clientY - rect.top;
+
+          if (mapDragObj.type === 'rotate_shape') {
+              const s = state.mapState.shapes[mapDragObj.id];
+              if(s) { s.rotation = Math.atan2(cy - s.y, cx - s.x) * 180 / Math.PI + 90; renderMapContent(); }
+              return;
+          } else if (mapDragObj.type === 'rotate_pawn') {
+              const c = state.combatants.find(cb => cb.id === mapDragObj.id);
+              if(c) { c.rotation = Math.atan2(cy - c.y, cx - c.x) * 180 / Math.PI + 90; renderMapContent(); }
+              return;
+          } else if (mapDragObj.type === 'scale') {
+              const s = state.mapState.shapes[mapDragObj.id];
+              if(s) {
+                  const currentDist = Math.hypot(cx - s.x, cy - s.y);
+                  const diff = (currentDist - mapDragObj.initialDist) / GRID_SIZE;
+                  s.size = Math.max(0.5, mapDragObj.initialSize + diff);
+                  renderMapContent();
+              }
+              return;
+          }
+
+          if (mapDragObj.type) {
+              const dx = e.clientX - mapDragObj.startMouseX;
+              const dy = e.clientY - mapDragObj.startMouseY;
+              
+              if (mapDragObj.type === 'pawn') {
+                  const newX = mapDragObj.initialObjX + dx;
+                  const newY = mapDragObj.initialObjY + dy;
+                  const pawnWrap = document.getElementById(`pawn-wrapper-${mapDragObj.id}`);
+                  if(pawnWrap) { pawnWrap.style.left = newX + 'px'; pawnWrap.style.top = newY + 'px'; }
+              } else if (mapDragObj.type === 'shape') {
+                  state.mapState.shapes[mapDragObj.id].x = mapDragObj.initialObjX + dx;
+                  state.mapState.shapes[mapDragObj.id].y = mapDragObj.initialObjY + dy;
+                  renderMapContent();
+              } else if (mapDragObj.type === 'line') {
+                  const line = state.mapState.lines[mapDragObj.id];
+                  line.points = mapDragObj.initialPoints.map(p => ({ x: p.x + dx, y: p.y + dy }));
+                  redrawCanvas();
+              }
+          } else if (isDrawing && mapMode === 'draw') {
+              drawPath.push({x: cx, y: cy});
+              if(canvasCtx) { canvasCtx.lineTo(cx, cy); canvasCtx.stroke(); }
+          } else if (isDrawing && mapMode === 'erase') {
+              const threshold = 20;
+              const originalLen = state.mapState.lines.length;
+              state.mapState.lines = state.mapState.lines.filter(line => !line.points.some(p => Math.hypot(p.x - cx, p.y - cy) < threshold));
+              if(state.mapState.lines.length !== originalLen) redrawCanvas();
+          }
+      });
+      window.addEventListener('pointerup', (e) => {
+          if (mapDragObj.type) {
+              if (mapDragObj.type === 'pawn') {
+                  const c = state.combatants.find(cb => cb.id === mapDragObj.id);
+                  if (c) { 
+                      c.x = mapDragObj.initialObjX + (e.clientX - mapDragObj.startMouseX); 
+                      c.y = mapDragObj.initialObjY + (e.clientY - mapDragObj.startMouseY); 
+                  }
+              } else if (mapDragObj.type === 'shape') {
+                  // saved naturally
+              } else if (mapDragObj.type === 'line') {
+                  // Finalize line position
+              }
+              mapDragObj.type = null;
+              saveStateToFirebase();
+          }
+          if (isDrawing) {
+              isDrawing = false;
+              if (mapMode === 'draw') {
+                  if (drawPath.length < 2) state.mapState.lines.pop();
+                  saveStateToFirebase();
+                  drawPath = [];
+                  redrawCanvas();
+              } else if (mapMode === 'erase') {
+                  saveStateToFirebase();
+              }
+          }
+      });
+      
+      document.addEventListener('DOMContentLoaded', () => {
+          document.body.addEventListener('pointerdown', (e) => {
+              const mapArea = document.getElementById('mapArea');
+              if(mapArea && mapArea.contains(e.target) && e.target.id !== 'mapDragHandle') {
+                  if (e.target.closest('button') || e.target.closest('.shape-handle') || e.target.closest('.map-tooltip')) return;
+                  const rect = mapArea.getBoundingClientRect();
+                  const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+
+                  if (mapMode === 'draw') {
+                      isDrawing = true;
+                      drawPath = [{x: cx, y: cy}];
+                      state.mapState.lines.push({ points: drawPath, color: currentColor });
+                      if(canvasCtx) { canvasCtx.strokeStyle=currentColor; canvasCtx.beginPath(); canvasCtx.moveTo(cx, cy); }
+                      e.stopPropagation();
+                  } else if (mapMode === 'erase') {
+                      isDrawing = true;
+                      e.stopPropagation();
+                  } else if (!mapMode) {
+                      let hitLineIdx = -1;
+                      state.mapState.lines.forEach((line, idx) => {
+                          if (line.points.some(p => Math.hypot(p.x - cx, p.y - cy) < 10)) hitLineIdx = idx;
+                      });
+                      if (hitLineIdx !== -1) {
+                          window.startMapDrag(e, 'line', hitLineIdx);
+                      } else {
+                          if (state.ui.selectedShapeId !== null) {
+                              state.ui.selectedShapeId = null;
+                              renderMapContent();
+                          }
+                      }
+                  }
+              }
+          });
+      });
+      
+      // Floating Map Drag window Logic
+      let mapWinDrag = { isDragging: false, startX: 0, startY: 0, initialLeft: 0, initialTop: 0 };
+      document.body.addEventListener('mousedown', (e) => {
+          if (e.target.id === 'mapDragHandle') {
+              const floatingMap = document.getElementById('floatingMapWrapper');
+              mapWinDrag.isDragging = true;
+              mapWinDrag.startX = e.clientX; mapWinDrag.startY = e.clientY;
+              const rect = floatingMap.getBoundingClientRect();
+              mapWinDrag.initialLeft = rect.left; mapWinDrag.initialTop = rect.top;
+              floatingMap.style.transform = 'none';
+              floatingMap.style.left = mapWinDrag.initialLeft + 'px';
+              floatingMap.style.top = mapWinDrag.initialTop + 'px';
+              e.preventDefault();
+          }
+      });
+      window.addEventListener('mousemove', (e) => {
+          if (!mapWinDrag.isDragging) return;
+          const floatingMap = document.getElementById('floatingMapWrapper');
+          floatingMap.style.left = (mapWinDrag.initialLeft + (e.clientX - mapWinDrag.startX)) + 'px';
+          floatingMap.style.top = (mapWinDrag.initialTop + (e.clientY - mapWinDrag.startY)) + 'px';
+      });
+      window.addEventListener('mouseup', () => { mapWinDrag.isDragging = false; });
+
+      function renderEncountersView() {
+          const encountersHtml = state.encounters.map((e, idx) => `
+              <div class="bg-gray-800 border border-gray-700 rounded-lg p-4 shadow mb-4">
+                  <div class="flex justify-between items-center mb-3 border-b border-gray-700 pb-2">
+                      <span class="text-lg font-bold text-amber-500">${e.name} (${e.combatants.length})</span>
+                      <div class="flex gap-2">
+                          <button onclick="loadEncounter(${idx});" class="text-sm bg-amber-700 text-white px-3 py-1 rounded font-normal">Load Session</button>
+                          <button onclick="deleteEncounter(${idx});" class="text-sm bg-red-900 text-white px-3 py-1 rounded font-normal">✕</button>
+                      </div>
+                  </div>
+                  <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      ${e.combatants.map(c => `
+                          <div class="bg-gray-900 p-2 rounded border border-gray-600 text-xs">
+                              <strong class="${c.isMonster ? 'text-red-400' : 'text-blue-400'}">${c.name}</strong><br>
+                              <span class="text-gray-400">HP: ${c.hpCurrent}/${c.hpMax} \vert{} AC:${c.ac}</span>
+                          </div>
+                      `).join('')}
+                  </div>
+                  <button onclick="openEncounterAddModal(${idx});" class="mt-3 text-xs bg-gray-700 text-white px-3 py-1.5 rounded font-bold hover:bg-gray-600">+ Add Combatant</button>
+              </div>
+          `).join('');
+          
+          const rosterCards = state.sharedCombatants.map((c, idx) => `
+              <div class="flex justify-between items-center p-3 rounded border border-gray-700 ${c.isMonster ? 'bg-red-950/40' : 'bg-gray-900'}">
+                  <div class="flex items-center gap-3">
+                      ${c.image ? `<div class="w-10 h-10 rounded-full bg-cover bg-center border border-gray-600" style="background-image: url(${c.image})"></div>` : `<div class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center font-bold text-gray-200 border border-gray-600">${c.name.charAt(0)}</div>`}
+                      <div>
+                          <span class="font-bold text-gray-200">${c.name.replace(/"/g, "&quot;")}${c.isMonster ? ' ☠' : ''}</span>
+                          <span class="text-sm text-gray-500 ml-3">AC: ${c.ac} | HP: ${c.hpMax}</span>
+                      </div>
+                  </div>
+                  <div class="flex gap-2">
+                      <button onclick="openEditModal(${c.id}, 'roster')" class="bg-gray-700 hover:bg-gray-600 text-amber-500 px-3 py-1 rounded text-sm font-bold transition">✎ Edit</button>
+                      <button onclick="addToCurrentFromShared(${idx})" class="bg-amber-700 hover:bg-amber-600 text-white px-3 py-1 rounded text-sm font-bold transition">Add to Active</button>
+                      <button onclick="removeShared(${idx})" class="bg-red-900/80 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-bold transition">✕</button>
+                  </div>
+              </div>
+          `).join('');
+
+          return `
+              <div class="w-full space-y-8 animate-fade-in text-gray-300 max-w-4xl mx-auto">
+                  <section>
+                      <div class="flex justify-between items-center border-b border-gray-700 pb-2 mb-4">
+                          <h2 class="text-2xl font-bold text-amber-500 cinzel">Saved Encounters</h2>
+                          <button onclick="saveCurrentEncounter()" class="bg-amber-700 hover:bg-amber-600 text-white px-4 py-1.5 rounded text-sm font-bold shadow">Save Current State as Encounter</button>
+                      </div>
+                      ${state.encounters.length === 0 ? '<p class="text-gray-500 italic">No encounters saved.</p>' : encountersHtml}
+                  </section>
+                  <section class="mt-8 border-t border-gray-700 pt-6">
+                      <h2 class="text-2xl font-bold text-amber-500 cinzel mb-4">Shared Roster</h2>
+                      <div class="flex flex-col gap-2 max-h-[500px] overflow-y-auto pr-2">
+                          ${state.sharedCombatants.length === 0 ? '<p class="text-gray-500 italic">No shared combatants.</p>' : rosterCards}
+                      </div>
+                  </section>
+              </div>
+          `;
+      }
+
+      window.openEncounterAddModal = (idx) => {
+          document.getElementById('encAddIdx').value = idx;
+          document.getElementById('encAddSelect').innerHTML = state.sharedCombatants.map((c, i) => `<option value="${i}">${c.name}</option>`).join('');
+          document.getElementById('encounterAddModal').classList.remove('hidden');
+      };
+      window.closeEncounterAddModal = () => document.getElementById('encounterAddModal').classList.add('hidden');
+      window.confirmEncounterAdd = () => {
+          const encIdx = document.getElementById('encAddIdx').value;
+          const sharedIdx = document.getElementById('encAddSelect').value;
+          if(encIdx !== "" && sharedIdx !== "") {
+              const combatant = JSON.parse(JSON.stringify(state.sharedCombatants[sharedIdx]));
+              combatant.id = Date.now();
+              state.encounters[encIdx].combatants.push(combatant);
+              saveStateToFirebase();
+              closeEncounterAddModal();
+          }
+      };
+
+      window.addToCurrentFromShared = (idx) => {
+          const template = state.sharedCombatants[idx];
+          if(template) {
+              const copy = JSON.parse(JSON.stringify(template));
+              copy.id = Date.now();
+              let baseName = copy.name.replace(/\s\d+$/, '');
+              const existingNames = state.combatants.map(c => c.name).filter(n => n.startsWith(baseName));
+              if (existingNames.length > 0) {
+                  let maxNum = 1;
+                  existingNames.forEach(n => { const m = n.match(/\s(\d+)$/); if(m) maxNum = Math.max(maxNum, parseInt(m[1])); });
+                  copy.name = `${baseName} ${maxNum + 1}`;
+              }
+              if(copy.isMonster) copy.initiative = Math.floor(Math.random() * 20) + 1;
+              const mapArea = document.getElementById("mapAreaContainer");
+              copy.x = mapArea ? mapArea.scrollLeft + mapArea.offsetWidth/2 : 1000;
+              copy.y = mapArea ? mapArea.scrollTop + mapArea.offsetHeight/2 : 1000;
+              insertByInitiative(copy);
+              saveStateToFirebase();
+              alert(`${copy.name} added to combat tracker!`);
+          }
+      };
+      window.removeShared = (idx) => { if(confirm("Remove from shared roster?")) { state.sharedCombatants.splice(idx,1); saveStateToFirebase(); } };
+
+      window.saveCurrentEncounter = () => {
+          const name = prompt("Enter a name for this encounter:");
+          if (name) {
+              state.encounters.push({ name: name, combatants: JSON.parse(JSON.stringify(state.combatants)) });
+              state.combatants.forEach(sc => {
+                  const baseName = sc.name.replace(/\s\d+$/, ''); 
+                  const exists = state.sharedCombatants.find(sh => sh.name === baseName || sh.name === sc.name);
+                  if(!exists) {
+                      let copy = JSON.parse(JSON.stringify(sc));
+                      copy.name = baseName;
+                      state.sharedCombatants.push(copy);
+                  }
+              });
+              saveStateToFirebase();
+          }
+      };
+      window.loadEncounter = (idx) => {
+          if (confirm("Loading this encounter will replace current combatants on the tracker. Continue?")) {
+              state.combatants = JSON.parse(JSON.stringify(state.encounters[idx].combatants));
+              state.activeId = null;
+              saveStateToFirebase();
+          }
+      };
+      window.deleteEncounter = (idx) => {
+          if (confirm("Delete this encounter?")) { state.encounters.splice(idx, 1); saveStateToFirebase(); }
+      };
+
+      function renderDMView() {
+        const condOptions = DND_CONDITIONS.map((c) => `<option value="${c}">${c}</option>`).join("");
+        
+        let groups = {};
+        state.combatants.forEach(c => {
+            const g = c.group || 'Ungrouped';
+            if(!groups[g]) groups[g] = [];
+            groups[g].push(c);
+        });
+
+        return `
+            <div class="flex flex-col gap-6 w-full max-w-5xl mx-auto">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-2 border-b border-gray-800 pb-2 gap-3">
+                    <h2 class="text-3xl cinzel font-bold text-amber-500">Order of Battle</h2>
+                    <div class="flex flex-wrap gap-4 items-center">
+                        <button onclick="toggleSetup()" class="${state.ui.setupVisible ? 'text-amber-500 font-bold' : 'text-gray-400 hover:text-white'} text-sm flex items-center gap-1 transition" title="Toggle Setup Views">
+                            <span class="text-lg">+</span> Create Combatant
+                        </button>
+                        <div class="w-px h-6 bg-gray-700"></div>
+                        <button onclick="sortInitiative()" class="text-sm text-gray-400 hover:text-amber-500 font-semibold transition" title="Force Sort by Initiative">Sort Init</button>
+                        <div class="flex bg-gray-900 rounded border border-gray-700 p-1 text-sm">
+                            <button onclick="setViewMode('rows')" class="px-4 py-1 rounded transition ${state.viewMode === "rows" ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white"}">Rows</button>
+                            <button onclick="setViewMode('cards')" class="px-4 py-1 rounded transition ${state.viewMode === "cards" ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white"}">Cards</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="${state.ui.setupVisible ? 'block' : 'hidden'} mb-6">
+                    <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 shadow-xl mb-4">
+                        <h3 class="text-xl cinzel font-bold text-amber-500 mb-4 border-b border-gray-700 pb-2">Create Combatant</h3>
+                        <form onsubmit="handleAddSubmit(event)" class="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                            <div class="md:col-span-2 grid grid-cols-4 gap-3 items-end">
+                                <div class="col-span-3">
+                                    <label class="block text-gray-500 text-xs uppercase mb-1">Name</label>
+                                    <input type="text" id="newName" class="w-full p-2 rounded" required>
+                                </div>
+                                <div class="flex flex-col items-center">
+                                    <label class="block text-gray-500 text-xs uppercase mb-1 w-full text-center">Avatar</label>
+                                    <div class="relative w-10 h-10 mt-1">
+                                        <div id="newImagePreview" class="w-10 h-10 rounded bg-gray-900 border border-gray-600 bg-cover bg-center flex items-center justify-center overflow-hidden">
+                                            <span class="text-[10px] text-gray-500">Img</span>
+                                        </div>
+                                        <input type="file" accept="image/*" onchange="handleImageUpload(event, 'new')" class="absolute inset-0 opacity-0 cursor-pointer" title="Upload Photo">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 md:col-span-2 items-end">
+                                <div><label class="block text-gray-500 text-xs uppercase mb-1">Size</label><select id="newSize" class="w-full p-2 rounded appearance-none"><option value="0.5">Tiny</option><option value="1" selected>Small/Med</option><option value="2">Large</option><option value="3">Huge</option><option value="4">Garg</option></select></div>
+                                <div class="flex items-center gap-2 mb-2"><input type="checkbox" id="newIsMonster" class="w-5 h-5 accent-red-600"><label for="newIsMonster" class="font-bold text-gray-300 uppercase">Is Monster</label></div>
+                            </div>
+                            
+                            <div><label class="block text-gray-500 text-xs uppercase mb-1">Initiative</label><input type="number" id="newInit" class="w-full p-2 rounded" placeholder="Auto if Mon"></div>
+                            <div><label class="block text-gray-500 text-xs uppercase mb-1">AC</label><input type="number" id="newAC" class="w-full p-2 rounded" required></div>
+                            <div><label class="block text-gray-500 text-xs uppercase mb-1">Max HP</label><input type="number" id="newHP" class="w-full p-2 rounded" required></div>
+                            <div><label class="block text-gray-500 text-xs uppercase mb-1">Group (Opt)</label><input type="text" id="newGroup" class="w-full p-2 rounded" placeholder="Group A"></div>
+                            
+                            <div class="md:col-span-2 border-t border-gray-700 pt-4 mt-2">
+                                <label class="block text-gray-500 text-xs uppercase mb-1">Attributes</label>
+                                <input type="text" id="newAttributes" class="w-full p-2 rounded" placeholder="STR 16 (+3)...">
+                            </div>
+                            <div class="md:col-span-2 border-t border-gray-700 pt-4 mt-2">
+                                <label class="block text-gray-500 text-xs uppercase mb-1">Saving Throws</label>
+                                <input type="text" id="newSaves" class="w-full p-2 rounded" placeholder="Dex +5...">
+                            </div>
+                            
+                            <div class="md:col-span-4 flex justify-end gap-3 mt-2 border-t border-gray-700 pt-4">
+                                <button type="submit" onclick="window.submitAction='save'" class="bg-gray-700 hover:bg-gray-600 text-white font-bold px-4 py-2 rounded transition border border-gray-600">Save to Shared Roster</button>
+                                <button type="submit" onclick="window.submitAction='initiative'" class="bg-amber-700 hover:bg-amber-600 text-white font-bold px-6 py-2 rounded transition">Add to Initiative</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="${state.viewMode === "cards" ? "grid grid-cols-1 md:grid-cols-2 gap-6" : "flex flex-col gap-4"}">
+                    ${state.combatants.length === 0 ? '<p class="text-gray-500 text-center italic py-10 w-full border border-dashed border-gray-700 rounded-lg">The battle has not yet begun...</p>' : ""}
+                    ${Object.keys(groups).map(gName => {
+                        return (gName !== 'Ungrouped' ? `<h3 class="text-gray-400 font-bold uppercase tracking-widest mt-2 border-b border-gray-700 pb-1 w-full md:col-span-2">${gName}</h3>` : '') + 
+                        groups[gName].map((c) => renderDMCombatant(c, condOptions)).join("");
+                    }).join("")}
+                </div>
+            </div>
+        `;
+      }
+
+      function renderDMCombatant(c, condOptions) {
+        const bgClass = c.isMonster ? "card-monster" : "card-player";
+        const activeClass = state.activeId === c.id ? "active-turn scale-[1.01]" : "";
+        
+        const layoutClass = state.viewMode === "rows" ? "flex-col md:flex-row gap-4 lg:gap-6 items-stretch pr-16 md:pr-4" : "flex-col gap-4";
+        const safeCardClasses = [bgClass, activeClass, "rounded-lg", "p-4", "flex", layoutClass, "transition-all", "relative", "z-10"].filter(Boolean).join(" ");
+        const isRow = state.viewMode === "rows";
+
+        const displayIcon = c.isMonster ? ' ☠' : '';
+        const safeName = c.name.replace(/"/g, "&quot;");
+
+        return `
+                <div class="${safeCardClasses} cursor-move group/card" 
+                     draggable="true" data-id="${c.id}"
+                     ondragstart="handleDragStart(event, ${c.id})" ondragover="handleDragOver(event)"
+                     ondragenter="handleDragEnter(event)" ondragleave="handleDragLeave(event)"
+                     ondrop="handleDrop(event, ${c.id})" ondragend="handleDragEnd(event)">
+
+                    <div class="absolute top-0 right-0 flex ${isRow ? 'flex-col border-l border-b border-gray-700 rounded-bl-lg overflow-hidden bg-gray-900/50' : 'flex-row gap-1 p-2'} z-10">
+                        <button onclick="openEditModal(${c.id}, 'active')" class="text-gray-400 hover:text-amber-500 hover:bg-black/40 transition text-lg font-bold flex items-center justify-center w-10 h-10 ${isRow ? 'border-b border-gray-700' : 'rounded bg-black/20'}" title="Edit">✎</button>
+                        <button onclick="removeFromInitiative(${c.id})" class="text-gray-400 hover:text-red-500 hover:bg-black/40 transition text-lg font-bold flex items-center justify-center w-10 h-10 ${isRow ? '' : 'rounded bg-black/20'}" title="Remove">✕</button>
+                    </div>
+
+                    <div class="flex items-center gap-4 ${isRow ? 'w-full md:w-auto min-w-[200px]' : 'w-full'}">
+                        <div onclick="setActive(${c.id})" title="Set Active Turn" class="relative flex-shrink-0 w-14 h-14 cursor-pointer hover:scale-110 transition-transform flex items-center justify-center pointer-events-auto">
+                            ${c.image ? 
+                              `<div class="w-14 h-14 rounded-full bg-cover bg-center border-[3px]" style="background-image: url(${c.image}); border-color:${getPawnBorderHex(c)}"></div>` 
+                              : `<div class="w-14 h-14 rounded-full flex items-center justify-center font-bold border-[3px] text-xl text-white opacity-90" style="background-color: ${c.isMonster?'#7f1d1d':'#1e3a8a'}; border-color:${getPawnBorderHex(c)}">${getAbbr(c.name)}</div>`
+                            }
+                            ${state.activeId === c.id ? `<div class="absolute -bottom-1 -right-1 bg-red-600 rounded-full w-6 h-6 flex items-center justify-center text-[10px] border-2 border-gray-900 shadow-[0_0_10px_#ef4444] animate-pulse z-20">⚔️</div>` : ''}
+                        </div>
+                        <div class="flex-grow w-full pointer-events-auto pr-8 md:pr-0">
+                            <h3 class="text-xl font-bold cinzel text-white leading-tight">${safeName}${displayIcon}</h3>
+                            <div class="flex flex-wrap gap-4 mt-1 text-sm">
+                                <div><span class="text-gray-500">INIT</span> <span class="font-bold text-gray-200">${c.initiative}</span></div>
+                                <div><span class="text-gray-500">AC</span> <span class="font-bold text-gray-200">${c.ac}</span></div>
+                                <div><span class="text-gray-500">SPD</span> <span class="font-bold text-gray-200">${c.speed || 0} ft</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    ${(c.attributes || c.saves) ? `
+                        <div class="${isRow ? 'w-full md:w-48 flex-shrink-0 flex flex-col justify-center' : 'mt-2 text-xs bg-black/20 p-2 rounded border border-white/5 space-y-1'}">
+                            ${c.attributes ? `<div class="mb-1"><strong class="text-gray-500 text-[10px] uppercase tracking-wider block">Attributes</strong> <span class="text-gray-200 text-xs">${c.attributes.replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span></div>` : ''}
+                            ${c.saves ? `<div><strong class="text-gray-500 text-[10px] uppercase tracking-wider block">Saves</strong> <span class="text-gray-200 text-xs">${c.saves.replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span></div>` : ''}
+                        </div>
+                    ` : (isRow ? `<div class="w-full md:w-48 flex-shrink-0"></div>` : '')}
+
+                    <div class="${isRow ? "w-full md:w-48 flex-shrink-0 flex flex-col justify-center" : "w-full"} bg-black/40 p-3 rounded border border-white/5 text-center pointer-events-auto">
+                        <div class="text-xs text-gray-500 uppercase tracking-widest mb-1">Health</div>
+                        <div class="text-2xl font-black mb-2 ${c.hpCurrent <= 0 ? "text-red-600" : "text-gray-100"}">
+                            ${c.hpCurrent} <span class="text-sm font-normal text-gray-500">/ ${c.hpMax}</span> ${c.hpTemp ? `<span class="text-sm font-bold text-blue-400 ml-1">+${c.hpTemp}</span>` : ''}
+                        </div>
+                        <div class="flex gap-1">
+                            <input type="number" id="hpmath-${c.id}" placeholder="Amt" class="w-full text-center p-1 rounded text-sm bg-gray-800 text-white border border-gray-600 focus:border-amber-500 outline-none">
+                            <button onclick="applyDamage(${c.id})" class="bg-red-900/80 hover:bg-red-700 text-white px-2 py-1 rounded text-sm font-bold transition">Dmg</button>
+                            <button onclick="applyHeal(${c.id})" class="bg-green-900/80 hover:bg-green-700 text-white px-2 py-1 rounded text-sm font-bold transition">Heal</button>
+                        </div>
+                    </div>
+
+                    <div class="${isRow ? "flex-1 min-w-0 flex-col" : "w-full flex-col"} flex gap-2 relative pointer-events-auto">
+                        <div class="flex-grow flex flex-col gap-2">
+                            <details class="bg-black/20 rounded border border-white/5 group" open>
+                                <summary class="text-xs font-bold text-gray-400 cursor-pointer p-2 uppercase tracking-wider outline-none flex justify-between">
+                                    <span>Actions & Notes</span>
+                                    <span class="group-open:rotate-180 transition-transform">▼</span>
+                                </summary>
+                                <div class="p-2 border-t border-white/5 text-gray-300 text-sm">
+                                    ${c.actions ? `<div class="mb-2"><strong class="text-gray-500 text-[10px] uppercase block">Actions</strong><div class="prose prose-sm prose-invert leading-snug">${c.actions}</div></div>` : ''}
+                                    ${c.resistances ? `<div><strong class="text-gray-500 text-[10px] uppercase block">Notes</strong><div class="prose prose-sm prose-invert leading-snug">${c.resistances}</div></div>` : ''}
+                                </div>
+                            </details>
+                            
+                            <div class="mt-auto flex flex-col gap-2">
+                                <div class="flex gap-2">
+                                    <input list="cond-list-${c.id}" id="cond-input-${c.id}" class="w-full p-1 text-sm rounded bg-gray-900 border border-gray-600 text-gray-100 focus:border-amber-500 focus:outline-none" placeholder="Add condition...">
+                                    <datalist id="cond-list-${c.id}">${condOptions}</datalist>
+                                    <button onclick="addCondition(${c.id})" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-white text-sm font-bold transition">+</button>
+                                </div>
+                                <div class="flex flex-wrap gap-1 min-h-[24px]">
+                                    ${c.conditions.map((cond, idx) => `
+                                        <span class="inline-flex items-center gap-1 text-xs bg-red-950/60 text-red-200 border border-red-900/50 px-2 py-1 rounded-full cursor-pointer hover:bg-red-900 transition" onclick="removeCondition(${c.id},${idx})">${cond} <span>×</span></span>
+                                    `).join("")}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+      }
+
+      window.handleAddSubmit = (e) => {
+        e.preventDefault();
+        let baseName = document.getElementById("newName").value.trim();
+        let isMonster = document.getElementById("newIsMonster").checked;
+        let initVal = document.getElementById("newInit").value;
+        
+        if (isMonster && !initVal) initVal = Math.floor(Math.random() * 20) + 1;
+        
+        let finalName = baseName;
+        const nameRegex = new RegExp(`^${baseName}(\\s\\d+)?$`);
+        const existingNames = state.combatants.map(c => c.name).filter(n => nameRegex.test(n));
+        if (existingNames.length > 0) {
+            let maxNum = 1;
+            existingNames.forEach(n => {
+                const match = n.match(/\s(\d+)$/);
+                if (match) maxNum = Math.max(maxNum, parseInt(match[1]));
+            });
+            finalName = `${baseName} ${maxNum + 1}`;
+        }
+
+        const mapArea = document.getElementById("mapAreaContainer");
+        const cx = mapArea ? mapArea.scrollLeft + mapArea.offsetWidth/2 : 1000;
+        const cy = mapArea ? mapArea.scrollTop + mapArea.offsetHeight/2 : 1000;
+
+        const newCombatant = {
+          id: Date.now(), 
+          isMonster: isMonster,
+          name: finalName,
+          image: window.tempImages.new || null,
+          size: parseFloat(document.getElementById("newSize").value) || 1,
+          group: document.getElementById("newGroup").value || "",
+          hpMax: parseInt(document.getElementById("newHP").value) || 0,
+          hpCurrent: parseInt(document.getElementById("newHP").value) || 0,
+          hpTemp: parseInt(document.getElementById("newTempHP").value) || 0,
+          ac: parseInt(document.getElementById("newAC").value) || 0,
+          initiative: parseInt(initVal) || 0,
+          speed: parseInt(document.getElementById("newSpeed").value) || 0,
+          attributes: document.getElementById("newAttributes").value || "",
+          saves: document.getElementById("newSaves").value || "",
+          actions: document.getElementById("newActions").innerHTML,
+          resistances: document.getElementById("newNotes").innerHTML,
+          conditions: [],
+          x: cx, y: cy, rotation: 0
+        };
+        
+        if (window.submitAction === 'save') {
+            let copy = JSON.parse(JSON.stringify(newCombatant));
+            copy.name = baseName; 
+            state.sharedCombatants.push(copy);
+        } else {
+            insertByInitiative(newCombatant);
+        }
+        
+        e.target.reset();
+        document.getElementById("newSpeed").value = 0;
+        document.getElementById("newSize").value = "1";
+        document.getElementById("newActions").innerHTML = "";
+        document.getElementById("newNotes").innerHTML = "";
+        window.tempImages.new = null;
+        document.getElementById("newImagePreview").style.backgroundImage = 'none';
+        document.getElementById("newImagePreview").innerHTML = '<span class="text-[10px] text-gray-500">Img</span>';
+        saveStateToFirebase();
+      };
+      
+      window.saveEdit = (e) => {
+        e.preventDefault();
+        const id = parseInt(document.getElementById("editId").value);
+        const source = document.getElementById("editSource").value;
+        const arrayToUpdate = source === 'roster' ? state.sharedCombatants : state.combatants;
+        const index = arrayToUpdate.findIndex((c) => c.id === id);
+
+        if (index !== -1) {
+          arrayToUpdate[index] = {
+            ...arrayToUpdate[index],
+            name: document.getElementById("editName").value,
+            image: window.tempImages.edit !== undefined ? window.tempImages.edit : arrayToUpdate[index].image,
+            size: parseFloat(document.getElementById("editSize").value) || 1,
+            group: document.getElementById("editGroup").value || "",
+            initiative: parseInt(document.getElementById("editInit").value) || 0,
+            ac: parseInt(document.getElementById("editAC").value) || 0,
+            hpMax: parseInt(document.getElementById("editMaxHP").value) || 0,
+            hpCurrent: parseInt(document.getElementById("editHP").value) || 0,
+            hpTemp: parseInt(document.getElementById("editTempHP").value) || 0,
+            speed: parseInt(document.getElementById("editSpeed").value) || 0,
+            attributes: document.getElementById("editAttributes").value || "",
+            saves: document.getElementById("editSaves").value || "",
+            actions: document.getElementById("editActions").innerHTML,
+            resistances: document.getElementById("editNotes").innerHTML,
+            isMonster: document.getElementById("editIsMonster").checked,
+          };
+          closeEditModal();
+          saveStateToFirebase();
+        }
+      };
+
+      function renderInfoView() { return `<div class="text-white p-8 max-w-4xl mx-auto"><h2 class="text-3xl text-amber-500 cinzel font-bold mb-4">DM Reference</h2><div class="bg-gray-800 p-6 rounded shadow border border-gray-700">Rules & Notes will be placed here.</div></div>`; }
+      function renderCampaignView() { return `<div class="text-white p-8 max-w-4xl mx-auto"><h2 class="text-3xl text-amber-500 cinzel font-bold mb-4">Campaign Notes</h2><textarea class="w-full h-96 p-4 rounded bg-gray-900 border border-gray-600 text-gray-200" onchange="saveNotes(event)">${state.dmNotes||''}</textarea></div>`; }
+      function renderPlayerView() {
+          return `<div class="w-full flex flex-col items-center max-w-4xl mx-auto text-white">
+              <h2 class="text-4xl cinzel text-amber-500 mb-8 mt-4 uppercase font-bold tracking-wider">The Combat</h2>
+              ${state.combatants.map(c => `
+                  <div id="player-card-${c.id}" class="w-full mb-4 p-4 rounded-lg flex items-center justify-between border ${c.isMonster ? 'bg-red-900/30 border-red-900' : 'bg-gray-800 border-gray-600 shadow-xl'} ${state.activeId===c.id ? 'ring-2 ring-amber-500' : ''}">
+                      <div class="flex items-center gap-4 relative">
+                          <div class="relative flex-shrink-0 w-16 h-16">
+                              ${c.image ? `<div class="w-16 h-16 rounded-full bg-cover bg-center border-[3px]" style="background-image:url(${c.image}); border-color:${getPawnBorderHex(c)}"></div>` : `<div class="w-16 h-16 rounded-full flex items-center justify-center font-bold text-2xl border-[3px]" style="background-color:${c.isMonster?'#7f1d1d':'#1e3a8a'}; border-color:${getPawnBorderHex(c)}">${c.name.charAt(0)}</div>`}
+                              ${state.activeId === c.id ? `<div class="absolute -bottom-2 -right-2 bg-red-600 rounded-full w-7 h-7 flex items-center justify-center text-xs border-2 border-gray-900 shadow-[0_0_10px_#ef4444] animate-pulse z-20">⚔️</div>` : ''}
+                          </div>
+                          <span class="text-2xl cinzel font-bold tracking-wide">${c.name}</span>
+                      </div>
+                      <div class="flex gap-2">
+                          ${c.hpTemp ? `<span class="bg-black/50 text-blue-400 border border-blue-900/50 px-3 py-1 rounded text-sm font-bold uppercase">+${c.hpTemp} Temp</span>`:''}
+                          ${c.conditions.map(cond => `<span class="bg-red-900/50 text-red-200 border border-red-900/50 px-3 py-1 rounded text-sm font-bold uppercase">${cond}</span>`).join('')}
+                      </div>
+                  </div>
+              `).join('')}
+          </div>`;
+      }
+
+      window.deleteFromRoster = (id) => { state.sharedCombatants = state.sharedCombatants.filter(c => c.id !== id); saveStateToFirebase(); };
+      window.removeFromInitiative = (id) => { state.combatants = state.combatants.filter(c => c.id !== id); if (state.activeId === id) state.activeId = null; saveStateToFirebase(); };
+      window.applyDamage = (id) => {
+        const input = document.getElementById(`hpmath-${id}`); const val = parseInt(input.value);
+        if (!val || isNaN(val)) return;
+        const c = state.combatants.find((c) => c.id === id);
+        if (c) { c.hpCurrent = Math.max(0, c.hpCurrent - val); input.value = ""; saveStateToFirebase(); }
+      };
+      window.applyHeal = (id) => {
+        const input = document.getElementById(`hpmath-${id}`); const val = parseInt(input.value);
+        if (!val || isNaN(val)) return;
+        const c = state.combatants.find((c) => c.id === id);
+        if (c) { c.hpCurrent = Math.min(c.hpMax, c.hpCurrent + val); input.value = ""; saveStateToFirebase(); }
+      };
+      window.addCondition = (id) => {
+        const input = document.getElementById(`cond-input-${id}`); const val = input.value.trim();
+        if (!val) return;
+        const c = state.combatants.find((c) => c.id === id);
+        if (c && !c.conditions.includes(val)) { c.conditions.push(val); input.value = ""; saveStateToFirebase(); }
+      };
+      window.removeCondition = (combatantId, conditionIndex) => {
+        const c = state.combatants.find((c) => c.id === combatantId);
+        if (c) { c.conditions.splice(conditionIndex, 1); saveStateToFirebase(); }
+      };
+
+      const editModal = document.getElementById("editModal");
+      window.openEditModal = (id, source = 'active') => {
+        const arrayToSearch = source === 'roster' ? state.sharedCombatants : state.combatants;
+        const c = arrayToSearch.find((c) => c.id === id);
+        if (!c) return;
+        document.getElementById("editId").value = c.id;
+        document.getElementById("editSource").value = source;
+        document.getElementById("editName").value = c.name;
+        document.getElementById("editInit").value = c.initiative;
+        document.getElementById("editAC").value = c.ac;
+        document.getElementById("editMaxHP").value = c.hpMax;
+        document.getElementById("editHP").value = c.hpCurrent;
+        document.getElementById("editTempHP").value = c.hpTemp || "";
+        document.getElementById("editSpeed").value = c.speed || 0;
+        document.getElementById("editSize").value = c.size || 1;
+        document.getElementById("editGroup").value = c.group || "";
+        document.getElementById("editAttributes").value = c.attributes || "";
+        document.getElementById("editSaves").value = c.saves || "";
+        document.getElementById("editActions").innerHTML = c.actions || "";
+        document.getElementById("editNotes").innerHTML = c.resistances || "";
+        document.getElementById("editIsMonster").checked = c.isMonster;
+
+        window.tempImages.edit = c.image || null;
+        const preview = document.getElementById("editImagePreview");
+        if (c.image) { preview.style.backgroundImage = `url(${c.image})`; preview.innerHTML = ''; } 
+        else { preview.style.backgroundImage = 'none'; preview.innerHTML = '<span class="text-[10px] text-gray-500">Img</span>'; }
+        editModal.classList.remove("hidden");
+      };
+      window.closeEditModal = () => { editModal.classList.add("hidden"); window.tempImages.edit = null; };
+      window.deleteCombatant = () => {
+        const id = parseInt(document.getElementById("editId").value);
+        const source = document.getElementById("editSource").value;
+        if (source === 'roster') { state.sharedCombatants = state.sharedCombatants.filter((c) => c.id !== id); } 
+        else { state.combatants = state.combatants.filter((c) => c.id !== id); if (state.activeId === id) state.activeId = null; }
+        closeEditModal(); saveStateToFirebase();
+      };
+
+      window.updateSearch = (e) => { state.searchQuery = e.target.value; render(); };
+      window.toggleDetails = (key, event) => { state.ui[key] = event.target.open; };
+      window.toggleSetup = () => { state.ui.setupVisible = !state.ui.setupVisible; render(); };
+      window.saveNotes = (e) => { state.dmNotes = e.target.value; saveStateToFirebase(); };
+      window.toggleTheme = () => { state.theme = state.theme === "dark" ? "light" : "dark"; document.body.classList.toggle("light-theme", state.theme === "light"); };
+      window.setViewMode = (mode) => { state.viewMode = mode; render(); };
+      window.setActive = (id) => { state.activeId = state.activeId === id ? null : id; saveStateToFirebase(); };
+      window.sortInitiative = () => { state.combatants.sort((a, b) => b.initiative - a.initiative); saveStateToFirebase(); };
+      
+      window.addEventListener("hashchange", () => { state.role = getRoleFromHash(); render(); });
+      if (document.body && !document.body.classList.contains("light-theme") && state.theme === "light") document.body.classList.add("light-theme");
+
+      initApp();
+    </script>
+  </body>
+</html>
