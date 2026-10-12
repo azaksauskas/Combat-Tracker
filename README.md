@@ -4,6 +4,12 @@ A realtime combat tracker for the DM, with a read-only player screen and a share
 
 ## Running it
 
+**Just want to open it?** Double-click `combat-tracker.html`. It is a self-contained build (like the original single file) and works straight from disk. Don't open `index.html`: that is only the development shell, and it loads TypeScript sources that need Vite.
+
+After changing the code, regenerate that file with `npm run build:single`.
+
+For development:
+
 ```bash
 npm install
 npm run dev          # http://localhost:5173

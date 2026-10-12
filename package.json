@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:single": "tsc -b && vite build --mode single && node -e \"require('fs').copyFileSync('dist-single/index.html','combat-tracker.html')\""
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -41,6 +42,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
+    "vite-plugin-singlefile": "^2.3.3",
     "vitest": "^5.0.3"
   }
 }
