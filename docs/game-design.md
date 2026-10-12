@@ -95,3 +95,22 @@ anything shared publicly. Your own homebrew comes from the roster.
   - Auto-save and resume; victory and defeat screens.
   - With the AI playing the party, it wins 70–83% of fights, which take
     about 4 rounds.
+- **M3 done:** the RPG layer.
+  - Adventures: scenes, choices, skill checks (one hero of your choosing,
+    or a 2024 group check), story flags, choices you can make only once,
+    gold costs.
+  - Effects: XP, milestones, gold, items, traps with saving throws, short
+    and long rests.
+  - Fights inside the story: surprise from checks, and HP, features and
+    potions carry over between scenes and battles.
+  - Progression: 2024 XP table, fixed HP per level, hit dice, and class
+    features for levels 2–3 (Action Surge, Champion's Improved Critical,
+    Cunning Action, Turn Undead); fallen heroes stay fallen.
+  - Items: Potion of Healing and Greater Healing (bonus action, yourself or
+    an ally within 5 ft) and a +1 weapon that can be equipped.
+  - First adventure, "The Goblin Trail": two routes, three possible
+    battles, milestone levels 2 and 3. Automated playthroughs with the AI
+    finish on both routes.
+  - Not yet: spells and spell slots (Cure Wounds, Magic Missile…), level-3
+    subclass choices beyond the SRD's one per class, shops, the adventure
+    editor (M5).

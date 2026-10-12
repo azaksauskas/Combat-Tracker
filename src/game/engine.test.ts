@@ -321,3 +321,85 @@ describe("features", () => {
     expect(ofType(a.events, "attack")[0]!.roll.total).toBe(ofType(b.events, "attack")[0]!.roll.total);
   });
 });
+
+describe("level 2–3 features, potions and surprise", () => {
+  const withFeatures = (u: UnitSetup, ...features: UnitSetup["stats"]["features"]) => ({ ...u, stats: { ...u.stats, features: [...u.stats.features, ...features] } });
+
+  it("Action Surge gives a second action once", () => {
+    let s = game(OPEN, [withFeatures(setup("brann", "fighter", { x: 0, y: 0 }), "action-surge"), setup("gob", "goblin-warrior", { x: 5, y: 5 })]);
+    expect(() => run(s, { type: "action-surge", unitId: "brann" })).toThrow(/action first/);
+    s = run(s, { type: "dash", unitId: "brann" }).state;
+    s = run(s, { type: "action-surge", unitId: "brann" }).state;
+    expect(unitOf(s, "brann").turn.action).toBe(true);
+    s = run(s, { type: "dash", unitId: "brann" }).state;
+    expect(unitOf(s, "brann").turn.movement).toBe(90);
+    expect(() => run(s, { type: "action-surge", unitId: "brann" })).toThrow(/No Action Surge/);
+  });
+
+  it("Improved Critical crits on a 19", () => {
+    const s = game(OPEN, [withFeatures(setup("brann", "fighter", { x: 0, y: 0 }), "improved-critical"), setup("zom", "zombie", { x: 1, y: 0 })]);
+    const r = run(s, { type: "action", unitId: "brann", actionId: actionId(s, "brann", "Greatsword"), targetId: "zom" }, dice([19, 20], [1, 6], [1, 6], [1, 6], [1, 6], [20, 20]));
+    expect(ofType(r.events, "attack")[0]).toMatchObject({ hit: true, crit: true });
+  });
+
+  it("Cunning Action: Dash and Disengage as bonus actions", () => {
+    let s = game(OPEN, [withFeatures(setup("pip", "rogue", { x: 0, y: 0 }), "cunning-action"), setup("gob", "goblin-warrior", { x: 1, y: 0 })]);
+    s = run(s, { type: "dash", unitId: "pip", bonus: true }).state;
+    expect(unitOf(s, "pip").turn).toMatchObject({ movement: 60, action: true, bonusAction: false });
+    const s2 = game(OPEN, [setup("brann", "fighter", { x: 0, y: 0 }), setup("gob", "goblin-warrior", { x: 1, y: 0 })]);
+    expect(() => run(s2, { type: "dash", unitId: "brann", bonus: true })).toThrow(/bonus action/);
+  });
+
+  it("Turn Undead: failed saves leave undead Turned until they're hurt", () => {
+    let s = game(OPEN, [
+      withFeatures(setup("maren", "cleric", { x: 0, y: 0 }), "turn-undead"),
+      setup("skel", "skeleton", { x: 3, y: 0 }),
+      setup("gob", "goblin-warrior", { x: 1, y: 1 }),
+      setup("brann", "fighter", { x: 4, y: 0 }),
+    ]);
+    // Skeleton saves: d20 2 − 1 = 1 vs DC 13 → Turned. The goblin isn't undead.
+    const r = run(s, { type: "turn-undead", unitId: "maren" }, dice([2, 20]));
+    expect(ofType(r.events, "save")).toHaveLength(1);
+    expect(unitOf(r.state, "skel").conditions).toContain("Turned");
+    expect(unitOf(r.state, "maren").resources["channel-divinity"]).toBe(1);
+    s = run(r.state, { type: "end-turn", unitId: "maren" }).state;
+    expect(currentUnit(s)!.id).toBe("skel");
+    expect(() => run(s, { type: "dash", unitId: "skel" })).toThrow(/can't act/);
+    s = run(s, { type: "end-turn", unitId: "skel" }).state;
+    s = run(s, { type: "end-turn", unitId: "gob" }).state;
+    // Brann's hit snaps it out of it.
+    const hit = run(s, { type: "action", unitId: "brann", actionId: actionId(s, "brann", "Greatsword"), targetId: "skel" }, dice([15, 20], [1, 6], [1, 6]));
+    expect(unitOf(hit.state, "skel").conditions).not.toContain("Turned");
+  });
+
+  it("potions heal you or an adjacent ally as a bonus action and come from the stash", () => {
+    const { state } = createGame(boardFromAscii(OPEN), [setup("pip", "rogue", { x: 0, y: 0 }), setup("brann", "fighter", { x: 1, y: 0 }), setup("gob", "goblin-warrior", { x: 7, y: 5 })], 3, { stash: { "potion-healing": 1 } });
+    let s = produce(state, (d) => {
+      d.units.sort((a, b) => ["pip", "brann", "gob"].indexOf(a.id) - ["pip", "brann", "gob"].indexOf(b.id));
+      d.turnIndex = 0;
+      d.units[1]!.hp = 2;
+    });
+    const r = run(s, { type: "use-potion", unitId: "pip", itemId: "potion-healing", targetId: "brann" }, dice([4, 4], [4, 4]));
+    expect(unitOf(r.state, "brann").hp).toBe(12);
+    expect(r.state.stash!["potion-healing"]).toBe(0);
+    expect(unitOf(r.state, "pip").turn.bonusAction).toBe(false);
+    s = produce(r.state, (d) => {
+      d.units[0]!.turn.bonusAction = true;
+    });
+    expect(() => run(s, { type: "use-potion", unitId: "pip", itemId: "potion-healing", targetId: "pip" })).toThrow(/No potion/);
+  });
+
+  it("carries HP and resources into a fight, and surprise lowers initiative", () => {
+    const units = [{ ...setup("brann", "fighter", { x: 0, y: 0 }), hp: 5, hpMax: 12, resources: { "second-wind": 0 } }, setup("gob", "goblin-warrior", { x: 5, y: 5 })];
+    const { state } = createGame(boardFromAscii(OPEN), units, 9);
+    expect(unitOf(state, "brann")).toMatchObject({ hp: 5, hpMax: 12, resources: { "second-wind": 0 } });
+    // Over many seeds, a surprised side rolls lower on average.
+    let normal = 0;
+    let surprised = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      normal += unitOf(createGame(boardFromAscii(OPEN), units, seed).state, "gob").initiative;
+      surprised += unitOf(createGame(boardFromAscii(OPEN), units, seed, { surprised: "enemy" }).state, "gob").initiative;
+    }
+    expect(surprised).toBeLessThan(normal);
+  });
+});

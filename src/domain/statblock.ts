@@ -53,7 +53,18 @@ export type Mastery = (typeof MASTERIES)[number];
  * Rules features the game engine knows how to apply. Anything else stays a
  * descriptive trait.
  */
-export const FEATURES = ["pack-tactics", "sneak-attack", "undead-fortitude", "nimble-escape", "second-wind"] as const;
+export const FEATURES = [
+  "pack-tactics",
+  "sneak-attack",
+  "undead-fortitude",
+  "nimble-escape",
+  "second-wind",
+  // Gained at levels 2–3 (2024 rules):
+  "action-surge",
+  "improved-critical",
+  "cunning-action",
+  "turn-undead",
+] as const;
 export type Feature = (typeof FEATURES)[number];
 
 /** "Melee Attack Roll: +4, reach 5 ft. Hit: 5 (1d6 + 2) Slashing damage." */
@@ -122,6 +133,8 @@ export const StatBlockSchema = z.object({
   actions: z.array(ActionSchema).catch([]),
   traits: z.array(TraitSchema).catch([]),
   features: z.array(z.enum(FEATURES)).catch([]),
+  /** "undead", "beast", "humanoid"… (Turn Undead needs to know). */
+  creatureType: z.string().nullable().catch(null),
 });
 export type StatBlock = z.infer<typeof StatBlockSchema>;
 

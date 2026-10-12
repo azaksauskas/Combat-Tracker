@@ -70,6 +70,8 @@ export interface GameState {
   rngSeed: number;
   outcome: null | "victory" | "defeat";
   nextId: number;
+  /** The party's shared consumables, e.g. { "potion-healing": 2 }. */
+  stash?: Record<string, number>;
 }
 
 export type GameEvent =

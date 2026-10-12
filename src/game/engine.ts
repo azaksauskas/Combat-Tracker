@@ -16,7 +16,10 @@ import { GameError, type Effect, type GameEvent, type GameState, type Side, type
 export type Command =
   | { type: "move"; unitId: string; to: Cell }
   | { type: "action"; unitId: string; actionId: string; targetId: string }
-  | { type: "dash"; unitId: string }
+  | { type: "dash"; unitId: string; bonus?: boolean }
+  | { type: "action-surge"; unitId: string }
+  | { type: "turn-undead"; unitId: string }
+  | { type: "use-potion"; unitId: string; itemId: string; targetId: string }
   | { type: "disengage"; unitId: string; bonus?: boolean }
   | { type: "dodge"; unitId: string }
   | { type: "second-wind"; unitId: string }
@@ -25,7 +28,14 @@ export type Command =
 
 // --- Rules tables --------------------------------------------------------------
 
-const INCAPACITATING = ["Incapacitated", "Paralyzed", "Petrified", "Stunned", "Unconscious"];
+/** "Turned" = Frightened + Incapacitated by Turn Undead, until it takes damage. */
+const INCAPACITATING = ["Incapacitated", "Paralyzed", "Petrified", "Stunned", "Unconscious", "Turned"];
+
+/** Consumables the party can carry into a fight. */
+export const POTIONS: Record<string, { name: string; dice: string }> = {
+  "potion-healing": { name: "Potion of Healing", dice: "2d4+2" },
+  "potion-greater-healing": { name: "Potion of Greater Healing", dice: "4d4+4" },
+};
 const GRANTS_ADVANTAGE_AGAINST = ["Blinded", "Paralyzed", "Petrified", "Restrained", "Stunned", "Unconscious"];
 const AUTO_CRIT_WITHIN_5 = ["Paralyzed", "Unconscious"];
 const AUTO_FAIL_STR_DEX = ["Paralyzed", "Petrified", "Stunned", "Unconscious"];
@@ -176,6 +186,8 @@ function kill(ctx: Ctx, u: Unit) {
  */
 function takeDamage(ctx: Ctx, u: Unit, amount: number, detail: string, opts: { crit?: boolean; types?: string[] } = {}) {
   if (amount <= 0 || u.dead) return;
+  // Turned undead snap out of it when they take damage.
+  if (has(u, "Turned")) removeCondition(ctx, u, "Turned");
   const absorbed = Math.min(u.tempHp, amount);
   u.tempHp -= absorbed;
   let rest = amount - absorbed;
@@ -256,7 +268,10 @@ function makeAttack(ctx: Ctx, a: Unit, t: Unit, action: AttackAction, opts: { op
   const autoCrit = dist <= 5 && AUTO_CRIT_WITHIN_5.some((c) => has(t, c));
   const natural = roll.natural;
   const hit = natural === 20 || (natural !== 1 && roll.total >= t.ac);
-  const crit = hit && (natural === 20 || autoCrit);
+  // Champion's Improved Critical: a 19 on the kept d20 also crits.
+  const kept = roll.terms[0]?.kind === "dice" ? roll.terms[0].rolls.find((_, i) => (roll.terms[0] as { kept: boolean[] }).kept[i]) : undefined;
+  const critRange = a.stats.features.includes("improved-critical") ? 19 : 20;
+  const crit = hit && ((kept ?? 0) >= critRange || natural === 20 || autoCrit);
   ctx.events.push({ type: "attack", attackerId: a.id, targetId: t.id, action: action.name, roll, advantage, reasons, hit, crit, opportunity: opts.opportunity });
 
   // Advantage/disadvantage effects are used up by the attack.
@@ -474,18 +489,58 @@ function run(ctx: Ctx, cmd: Command) {
       return;
     }
     case "dash":
-      spend(u, "action");
-      u.turn.movement += u.speed;
-      ctx.events.push({ type: "feature", unitId: u.id, name: "Dash", detail: `+${u.speed} ft movement` });
-      return;
-    case "disengage":
       if (cmd.bonus) {
-        if (!u.stats.features.includes("nimble-escape")) throw new GameError(`${u.name} can't Disengage as a bonus action`);
+        if (!u.stats.features.includes("cunning-action")) throw new GameError(`${u.name} can't Dash as a bonus action`);
+        spend(u, "bonusAction");
+      } else spend(u, "action");
+      u.turn.movement += u.speed;
+      ctx.events.push({ type: "feature", unitId: u.id, name: cmd.bonus ? "Cunning Action: Dash" : "Dash", detail: `+${u.speed} ft movement` });
+      return;
+    case "disengage": {
+      const via = u.stats.features.includes("nimble-escape") ? "Nimble Escape" : u.stats.features.includes("cunning-action") ? "Cunning Action" : null;
+      if (cmd.bonus) {
+        if (!via) throw new GameError(`${u.name} can't Disengage as a bonus action`);
         spend(u, "bonusAction");
       } else spend(u, "action");
       u.turn.disengaged = true;
-      ctx.events.push({ type: "feature", unitId: u.id, name: cmd.bonus ? "Nimble Escape" : "Disengage", detail: "no opportunity attacks this turn" });
+      ctx.events.push({ type: "feature", unitId: u.id, name: cmd.bonus ? `${via}: Disengage` : "Disengage", detail: "no opportunity attacks this turn" });
       return;
+    }
+    case "action-surge":
+      if (!u.stats.features.includes("action-surge") || (u.resources["action-surge"] ?? 0) <= 0) throw new GameError("No Action Surge left");
+      if (u.turn.action) throw new GameError("Use your action first, then surge for another");
+      u.resources["action-surge"]! -= 1;
+      u.turn.action = true;
+      ctx.events.push({ type: "feature", unitId: u.id, name: "Action Surge", detail: "one more action this turn" });
+      return;
+    case "turn-undead": {
+      if (!u.stats.features.includes("turn-undead") || (u.resources["channel-divinity"] ?? 0) <= 0) throw new GameError("No Channel Divinity left");
+      spend(u, "action");
+      u.resources["channel-divinity"]! -= 1;
+      const dc = 8 + u.stats.proficiency + abilityMod(u.stats.abilities.wis);
+      ctx.events.push({ type: "feature", unitId: u.id, name: "Turn Undead", detail: `Wisdom save DC ${dc} for undead within 30 ft` });
+      for (const t of ctx.s.units as Unit[]) {
+        if (t.side === u.side || t.dead || t.hp <= 0 || t.stats.creatureType !== "undead" || distanceFt(u.pos, t.pos) > 30) continue;
+        const roll = d20(ctx, saveBonus(t.stats, "wis"));
+        const success = roll.total >= dc;
+        ctx.events.push({ type: "save", targetId: t.id, action: "Turn Undead", ability: "Wisdom", dc, roll, success });
+        if (!success) addCondition(ctx, t, "Turned");
+      }
+      return;
+    }
+    case "use-potion": {
+      const potion = POTIONS[cmd.itemId];
+      if (!potion || (s.stash?.[cmd.itemId] ?? 0) <= 0) throw new GameError("No potion of that kind left");
+      const t = unit(ctx, cmd.targetId);
+      if (t.side !== u.side || t.dead) throw new GameError("Potions are for your allies");
+      if (distanceFt(u.pos, t.pos) > 5) throw new GameError(`${t.name} is too far away to hand a potion to`);
+      spend(u, "bonusAction");
+      s.stash![cmd.itemId]! -= 1;
+      const roll = rollTerms(parseDice(potion.dice), ctx.rng);
+      ctx.events.push({ type: "feature", unitId: u.id, name: potion.name, detail: `${t.id === u.id ? "drinks" : `gives it to ${t.name}`}: ${roll.expression} = ${roll.total}` });
+      heal(ctx, t, roll.total);
+      return;
+    }
     case "dodge":
       spend(u, "action");
       u.dodging = true;
@@ -547,18 +602,41 @@ export interface UnitSetup {
   image?: string | null;
   stats: Unit["stats"];
   ac: number;
+  /** Current HP (carried over between fights in an adventure). */
   hp: number;
+  /** Defaults to `hp`. */
+  hpMax?: number;
   speed: number;
   pos: Cell;
+  /** Remaining uses of limited features; defaults to full. */
+  resources?: Record<string, number>;
+}
+
+/** Full uses of each limited feature a creature has. */
+export function defaultResources(stats: Unit["stats"]): Record<string, number> {
+  const r: Record<string, number> = {};
+  if (stats.features.includes("second-wind")) r["second-wind"] = 2;
+  if (stats.features.includes("action-surge")) r["action-surge"] = 1;
+  if (stats.features.includes("turn-undead")) r["channel-divinity"] = 2;
+  return r;
+}
+
+export interface GameOptions {
+  /** This side was caught off guard: Disadvantage on initiative (2024). */
+  surprised?: Side;
+  /** Party consumables available in the fight. */
+  stash?: Record<string, number>;
 }
 
 /** Rolls initiative (d20 + Dex, ties to higher Dex) and starts round 1. */
-export function createGame(board: Board, setups: UnitSetup[], seed: number): ApplyResult {
+export function createGame(board: Board, setups: UnitSetup[], seed: number, opts: GameOptions = {}): ApplyResult {
   const seeded = mulberry32(seed);
   const events: GameEvent[] = [];
   const units: Unit[] = setups.map((x) => {
     const dex = abilityMod(x.stats.abilities.dex);
-    const init = Math.floor(seeded.rng() * 20) + 1 + dex;
+    const d20 = () => Math.floor(seeded.rng() * 20) + 1;
+    const roll = opts.surprised === x.side ? Math.min(d20(), d20()) : d20();
+    const init = roll + dex;
     return {
       id: x.id,
       name: x.name,
@@ -567,7 +645,7 @@ export function createGame(board: Board, setups: UnitSetup[], seed: number): App
       stats: x.stats,
       ac: x.ac,
       hp: x.hp,
-      hpMax: x.hp,
+      hpMax: x.hpMax ?? x.hp,
       tempHp: 0,
       speed: x.speed,
       pos: { ...x.pos },
@@ -578,11 +656,11 @@ export function createGame(board: Board, setups: UnitSetup[], seed: number): App
       turn: { movement: x.speed, action: true, bonusAction: true, disengaged: false, sneakAttackUsed: false },
       reaction: true,
       dodging: false,
-      resources: (x.stats.features.includes("second-wind") ? { "second-wind": 2 } : {}) as Record<string, number>,
+      resources: { ...defaultResources(x.stats), ...x.resources },
     };
   });
   units.sort((a, b) => b.initiative - a.initiative || b.stats.abilities.dex - a.stats.abilities.dex);
-  const initial: GameState = { board, units, turnIndex: 0, round: 1, effects: [], rngSeed: seeded.seed(), outcome: null, nextId: 1 };
+  const initial: GameState = { board, units, turnIndex: 0, round: 1, effects: [], rngSeed: seeded.seed(), outcome: null, nextId: 1, stash: { ...opts.stash } };
   const state = produce(initial, (draft) => {
     events.push({ type: "round", round: 1 });
     const ctx: Ctx = { s: draft, rng: mulberry32(draft.rngSeed).rng, events };

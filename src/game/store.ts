@@ -2,7 +2,8 @@ import { toast } from "sonner";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { nextAiCommand } from "./ai";
-import { apply, canAct, createGame, currentUnit, type Command } from "./engine";
+import type { Board } from "./board";
+import { apply, canAct, createGame, currentUnit, type Command, type GameOptions } from "./engine";
 import { describeEvents, type LogLine } from "./log";
 import { randomSeed } from "./rng";
 import { setupFor, type Scenario } from "./scenarios";
@@ -20,6 +21,8 @@ export interface Fx {
 interface PlayState {
   game: GameState | null;
   scenario: (Scenario & { custom?: UnitSetup[] }) | null;
+  /** "campaign": the battle belongs to an adventure and reports back to it. */
+  mode: "skirmish" | "campaign";
   log: LogLine[];
   fx: Fx[];
   aiRunning: boolean;
@@ -30,12 +33,12 @@ let fxId = 1;
 
 export const usePlay = create<PlayState>()(
   persist(
-    (): PlayState => ({ game: null, scenario: null, log: [], fx: [], aiRunning: false }),
+    (): PlayState => ({ game: null, scenario: null, mode: "skirmish", log: [], fx: [], aiRunning: false }),
     {
       name: "combat-tracker:game",
       storage: createJSONStorage(() => localStorage),
       // The game auto-saves after every command; transient visuals don't.
-      partialize: ({ game, scenario, log }) => ({ game, scenario, log }),
+      partialize: ({ game, scenario, mode, log }) => ({ game, scenario, mode, log }),
     },
   ),
 );
@@ -95,8 +98,19 @@ export function runAi() {
 
 export function startGame(scenario: Scenario & { custom?: UnitSetup[] }) {
   const { board, units } = setupFor(scenario);
-  const { state, events } = createGame(board, units, randomSeed());
-  usePlay.setState({ scenario, log: [], fx: [], aiRunning: false });
+  startBattle(scenario, board, units, {}, "skirmish");
+}
+
+/** Starts any battle: a skirmish, or a fight inside an adventure. */
+export function startBattle(
+  scenario: Scenario & { custom?: UnitSetup[] },
+  board: Board,
+  units: UnitSetup[],
+  opts: GameOptions,
+  mode: PlayState["mode"],
+) {
+  const { state, events } = createGame(board, units, randomSeed(), opts);
+  usePlay.setState({ scenario, mode, log: [], fx: [], aiRunning: false });
   record(events, state);
   runAi();
 }
@@ -120,5 +134,5 @@ export function dispatch(cmd: Command): string | null {
 }
 
 export function quitGame() {
-  usePlay.setState({ game: null, scenario: null, log: [], fx: [], aiRunning: false });
+  usePlay.setState({ game: null, scenario: null, mode: "skirmish", log: [], fx: [], aiRunning: false });
 }

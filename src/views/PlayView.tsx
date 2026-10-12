@@ -10,15 +10,23 @@ import { SCENARIOS, encounterScenario, type Scenario } from "../game/scenarios";
 import type { GameState, Unit } from "../game/state";
 import { dispatch, quitGame, runAi, startGame, usePlay } from "../game/store";
 import { useGame } from "../store/game";
+import { ADVENTURES } from "../content/adventures";
+import { beginAdventure, returnFromBattle, useCampaign } from "../game/campaign-store";
+import { POTIONS } from "../game/engine";
+import { distanceFt } from "../game/board";
+import { AdventureView } from "./AdventureView";
 
 /** Solo skirmish: your four heroes against an encounter, monsters run by the computer. */
 export function PlayView() {
   const game = usePlay((s) => s.game);
+  const campaign = useCampaign((s) => s.state);
   // A reload during the monsters' turn picks up where it left off.
   useEffect(() => {
     if (usePlay.getState().game) runAi();
   }, []);
-  return game ? <Battle game={game} /> : <ScenarioPicker />;
+  if (game) return <Battle game={game} />;
+  if (campaign) return <AdventureView state={campaign} />;
+  return <ScenarioPicker />;
 }
 
 function ScenarioPicker() {
@@ -58,7 +66,22 @@ function ScenarioPicker() {
         </ul>
       </section>
       <section>
-        <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">Choose a battle</h3>
+        <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">Adventures</h3>
+        <ul className="grid gap-3 md:grid-cols-2">
+          {ADVENTURES.map((a) => (
+            <li key={a.id} className="flex flex-col rounded-lg border-2 border-accent/60 bg-surface p-4 shadow">
+              <h3 className="text-xl font-bold text-accent">{a.title}</h3>
+              <p className="mt-1 flex-1 text-sm text-muted">{a.blurb}</p>
+              <p className="mt-2 text-xs text-faint">Story, skill checks, three possible battles, loot, rests and levelling to 3.</p>
+              <button className="btn btn-primary mt-3 font-display" onClick={() => beginAdventure(a)}>
+                Begin the adventure
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section>
+        <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">Quick skirmish</h3>
         <ul className="grid gap-3 md:grid-cols-3">{SCENARIOS.map(card)}</ul>
       </section>
       {playable.length > 0 && (
@@ -73,7 +96,7 @@ function ScenarioPicker() {
 }
 
 function Battle({ game }: { game: GameState }) {
-  const { scenario, log, fx, aiRunning } = usePlay();
+  const { scenario, log, fx, aiRunning, mode: playMode } = usePlay();
   const [mode, setMode] = useState<BoardMode>({ kind: "move" });
   const [hoverId, setHoverId] = useState<string | null>(null);
   const active = currentUnit(game);
@@ -102,9 +125,17 @@ function Battle({ game }: { game: GameState }) {
             {game.outcome ? (game.outcome === "victory" ? "Victory!" : "Defeat") : aiRunning ? "Monsters are acting…" : active ? `${active.name}'s turn` : ""}
           </p>
         </div>
-        <button className="btn btn-ghost" onClick={() => confirm("Abandon this battle?") && quitGame()}>
-          Quit battle
-        </button>
+        {playMode === "campaign" ? (
+          !game.outcome && (
+            <button className="btn btn-ghost" onClick={() => confirm("Retreat? It counts as losing this fight.") && returnFromBattle(true)}>
+              Retreat
+            </button>
+          )
+        ) : (
+          <button className="btn btn-ghost" onClick={() => confirm("Abandon this battle?") && quitGame()}>
+            Quit battle
+          </button>
+        )}
       </header>
 
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[15rem_1fr_20rem]">
@@ -258,7 +289,39 @@ function HeroPanel({
                 Stand up
               </button>
             )}
+            {u.stats.features.includes("action-surge") && (
+              <button
+                className="btn col-span-3 px-1 text-xs"
+                disabled={!heroTurn || u.turn.action || (u.resources["action-surge"] ?? 0) <= 0}
+                onClick={() => send({ type: "action-surge", unitId: u.id })}
+                title="After using your action: take one more"
+              >
+                Action Surge ({u.resources["action-surge"] ?? 0})
+              </button>
+            )}
+            {u.stats.features.includes("cunning-action") && (
+              <>
+                <button className="btn col-span-3 px-1 text-xs sm:col-span-1" disabled={!heroTurn || !u.turn.bonusAction} onClick={() => send({ type: "dash", unitId: u.id, bonus: true })} title="Cunning Action: Dash as a bonus action">
+                  Bonus Dash
+                </button>
+                <button className="btn col-span-3 px-1 text-xs sm:col-span-2" disabled={!heroTurn || !u.turn.bonusAction} onClick={() => send({ type: "disengage", unitId: u.id, bonus: true })} title="Cunning Action: Disengage as a bonus action">
+                  Bonus Disengage
+                </button>
+              </>
+            )}
+            {u.stats.features.includes("turn-undead") && (
+              <button
+                className="btn col-span-3 px-1 text-xs"
+                disabled={!heroTurn || !u.turn.action || (u.resources["channel-divinity"] ?? 0) <= 0}
+                onClick={() => send({ type: "turn-undead", unitId: u.id })}
+                title="Undead within 30 ft: Wisdom save or Turned until damaged"
+              >
+                Turn Undead ({u.resources["channel-divinity"] ?? 0})
+              </button>
+            )}
           </div>
+
+          <Potions game={game} unit={u} heroTurn={heroTurn} />
 
           <button className="btn btn-primary w-full font-display" disabled={!heroTurn} onClick={() => send({ type: "end-turn", unitId: u.id })} title="Shortcut: E">
             End turn
@@ -339,6 +402,7 @@ function CombatLog({ lines }: { lines: { id: number; text: string; tone: string 
 
 function Outcome({ game }: { game: GameState }) {
   const scenario = usePlay((s) => s.scenario);
+  const campaign = usePlay((s) => s.mode) === "campaign";
   const won = game.outcome === "victory";
   const fallen = game.units.filter((u) => u.side === "party" && u.dead).length;
   const downed = game.units.filter((u) => u.side === "party" && !u.dead && u.hp <= 0).length;
@@ -351,6 +415,12 @@ function Outcome({ game }: { game: GameState }) {
           {won && (fallen || downed) ? ` ${fallen ? `${fallen} fallen` : ""}${fallen && downed ? ", " : ""}${downed ? `${downed} unconscious` : ""}.` : ""}
         </p>
         <div className="mt-4 flex flex-col gap-2">
+          {campaign ? (
+            <button className="btn btn-primary font-display" onClick={() => returnFromBattle()}>
+              Continue the adventure
+            </button>
+          ) : (
+            <>
           {scenario && (
             <button className="btn btn-primary font-display" onClick={() => startGame(scenario)}>
               Play again
@@ -359,8 +429,42 @@ function Outcome({ game }: { game: GameState }) {
           <button className="btn" onClick={quitGame}>
             Choose another battle
           </button>
+            </>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Healing potions from the party's pack: drink, or hand to an ally within 5 ft (bonus action). */
+function Potions({ game, unit: u, heroTurn }: { game: GameState; unit: Unit; heroTurn: boolean }) {
+  const stock = Object.entries(game.stash ?? {}).filter(([, n]) => n > 0);
+  if (stock.length === 0) return null;
+  const allies = game.units.filter((x) => x.side === "party" && !x.dead && distanceFt(x.pos, u.pos) <= 5);
+  return (
+    <div className="space-y-1">
+      {stock.map(([id, n]) => (
+        <div key={id} className="flex items-center gap-1 text-xs">
+          <span className="flex-1" title={POTIONS[id]?.dice}>
+            🧪 {POTIONS[id]?.name ?? id} × {n}
+          </span>
+          <select
+            className="field w-32 py-0.5 text-xs"
+            value=""
+            disabled={!heroTurn || !u.turn.bonusAction}
+            aria-label={`Use ${POTIONS[id]?.name}`}
+            onChange={(e) => e.target.value && dispatch({ type: "use-potion", unitId: u.id, itemId: id, targetId: e.target.value })}
+          >
+            <option value="">Use on…</option>
+            {allies.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.id === u.id ? "yourself" : a.name} ({a.hp}/{a.hpMax})
+              </option>
+            ))}
+          </select>
+        </div>
+      ))}
     </div>
   );
 }
