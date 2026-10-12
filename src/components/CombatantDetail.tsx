@@ -1,6 +1,8 @@
 import clsx from "clsx";
 import { SIZES, type Combatant } from "../domain/types";
-import { removeCombatant, setActive } from "../store/actions";
+import { toast } from "sonner";
+import { escapeHtml } from "../lib/rollable";
+import { removeCombatant, rollDice, setActive } from "../store/actions";
 import { useUi } from "../store/ui";
 import { Avatar } from "./Avatar";
 import { ConditionEditor } from "./Conditions";
@@ -18,6 +20,12 @@ interface Props {
 /** Full stat block for one combatant: follows the active turn unless pinned. */
 export function CombatantDetail({ combatant: c, ring, active, pinned, onEdit }: Props) {
   const setUi = useUi((s) => s.set);
+  // Clicking "+4" or "2d6+3" in the stat block rolls it and logs it.
+  const onRoll = (expression: string, context: string) => {
+    const r = rollDice(expression, { label: `${c.name}: ${context}`, shown: useUi.getState().rollShown });
+    const nat = r.natural === 20 ? " · Natural 20!" : r.natural === 1 ? " · Natural 1" : "";
+    toast(`${r.label} → ${r.total}${nat}`, { description: `${r.expression}: ${r.breakdown.replace(/~(\d+)~/g, "($1)")}` });
+  };
   const size = SIZES.find((s) => s.value === c.size)?.label ?? `${c.size}×`;
 
   return (
@@ -92,13 +100,13 @@ export function CombatantDetail({ combatant: c, ring, active, pinned, onEdit }: 
           {c.attributes && (
             <div>
               <h4 className="text-xs font-bold tracking-wider text-faint uppercase">Attributes</h4>
-              {c.attributes}
+              <RichText html={escapeHtml(c.attributes)} onRoll={onRoll} />
             </div>
           )}
           {c.saves && (
             <div>
               <h4 className="text-xs font-bold tracking-wider text-faint uppercase">Saves</h4>
-              {c.saves}
+              <RichText html={escapeHtml(c.saves)} onRoll={onRoll} />
             </div>
           )}
         </section>
@@ -107,13 +115,13 @@ export function CombatantDetail({ combatant: c, ring, active, pinned, onEdit }: 
       {c.actions && (
         <section className="text-sm">
           <h4 className="text-xs font-bold tracking-wider text-faint uppercase">Actions</h4>
-          <RichText html={c.actions} />
+          <RichText html={c.actions} onRoll={onRoll} />
         </section>
       )}
       {c.notes && (
         <section className="text-sm">
           <h4 className="text-xs font-bold tracking-wider text-faint uppercase">Notes</h4>
-          <RichText html={c.notes} />
+          <RichText html={c.notes} onRoll={onRoll} />
         </section>
       )}
     </div>

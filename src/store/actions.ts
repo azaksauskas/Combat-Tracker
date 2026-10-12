@@ -1,6 +1,7 @@
 import * as rules from "../domain/combat";
+import { describeRoll, parseDice, rollTerms, withAdvantage } from "../domain/dice";
 import { snapToGrid } from "../domain/grid";
-import type { Combatant, MapLine, MapShape, GridType } from "../domain/types";
+import { MAX_ROLL_LOG, type Combatant, type GridType, type MapLine, type MapShape, type RollEntry } from "../domain/types";
 import { update, useGame } from "./game";
 import { useUi } from "./ui";
 
@@ -184,4 +185,36 @@ export const clearDrawings = () =>
   update("combat", (d) => {
     d.map.lines = [];
     d.map.shapes = [];
+  });
+
+// --- Dice ------------------------------------------------------------------
+
+/**
+ * Rolls dice notation and records it in the shared roll log (newest first).
+ * Throws an Error with a readable message if the notation doesn't parse.
+ */
+export const rollDice = (
+  input: string,
+  opts: { label?: string; shown?: boolean; advantage?: "normal" | "adv" | "dis" } = {},
+): RollEntry => {
+  const result = rollTerms(withAdvantage(parseDice(input), opts.advantage ?? "normal"));
+  const entry: RollEntry = {
+    id: rules.newId(),
+    at: Date.now(),
+    label: opts.label ?? "",
+    expression: result.expression,
+    breakdown: describeRoll(result),
+    total: result.total,
+    natural: result.natural ?? null,
+    shown: opts.shown ?? false,
+  };
+  update("combat", (d) => {
+    d.rolls = [entry, ...d.rolls].slice(0, MAX_ROLL_LOG);
+  });
+  return entry;
+};
+
+export const clearRolls = () =>
+  update("combat", (d) => {
+    d.rolls = [];
   });

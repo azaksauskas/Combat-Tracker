@@ -16,6 +16,9 @@ interface UiState {
   /** The user's colour picks, kept separately for each base theme. */
   themeOverrides: Record<BaseTheme, ThemeOverrides>;
   themeEditorOpen: boolean;
+  diceOpen: boolean;
+  /** New rolls are shown on the player screen. */
+  rollShown: boolean;
   /** DM sidebar shown (desktop) / menu expanded (mobile). */
   sidebarOpen: boolean;
   /** Battle order page: show the map docked between the list and details. */
@@ -52,6 +55,8 @@ export const useUi = create<UiState>()(
       theme: "light",
       themeOverrides: { light: {}, dark: {} },
       themeEditorOpen: false,
+      diceOpen: false,
+      rollShown: false,
       sidebarOpen: true,
       dockMap: true,
       combatTab: "order",
@@ -71,7 +76,7 @@ export const useUi = create<UiState>()(
       name: "combat-tracker:ui",
       storage: createJSONStorage(() => localStorage),
       // Transient selection state isn't worth restoring after a reload.
-      partialize: ({ set: _set, mapTool: _tool, pinnedId: _pin, hoverId: _hover, combatTab: _tab, selectedShapeId: _shape, themeEditorOpen: _editor, ...rest }) => rest,
+      partialize: ({ set: _set, mapTool: _tool, pinnedId: _pin, hoverId: _hover, combatTab: _tab, selectedShapeId: _shape, themeEditorOpen: _editor, diceOpen: _dice, ...rest }) => rest,
     },
   ),
 );

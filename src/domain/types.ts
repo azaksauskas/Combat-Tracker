@@ -93,12 +93,29 @@ export const MapStateSchema = z.object({
 });
 export type MapState = z.infer<typeof MapStateSchema>;
 
-/** Live combat: initiative order, turn tracking and the battle map. */
+export const RollEntrySchema = z.object({
+  id,
+  at: z.number().catch(0),
+  /** Who/what rolled, e.g. "Goblin: +4 to hit". */
+  label: str,
+  expression: str,
+  /** Human-readable dice, e.g. "[~7~, 18] + 4" (~x~ = dropped die). */
+  breakdown: str,
+  total: int,
+  natural: z.union([z.literal(20), z.literal(1)]).nullable().catch(null),
+  /** Visible on the player screen. */
+  shown: z.boolean().catch(false),
+});
+export type RollEntry = z.infer<typeof RollEntrySchema>;
+export const MAX_ROLL_LOG = 30;
+
+/** Live combat: initiative order, turn tracking, the battle map and the roll log. */
 export const CombatDocSchema = z.object({
   combatants: z.array(CombatantSchema).catch([]),
   activeId: z.string().nullable().catch(null),
   round: int,
   map: MapStateSchema.catch({ grid: "square", lines: [], shapes: [] }),
+  rolls: z.array(RollEntrySchema).catch([]),
 });
 export type CombatDoc = z.infer<typeof CombatDocSchema>;
 

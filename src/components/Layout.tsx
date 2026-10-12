@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation } from "react-router";
 import { MapWindow } from "../map/MapWindow";
 import { useGame } from "../store/game";
 import { useUi } from "../store/ui";
+import { DiceTray } from "./DiceTray";
 import { DragonMenuIcon } from "./DragonMenuIcon";
 import { ThemeEditor } from "./ThemeEditor";
 
@@ -151,6 +152,7 @@ export function DmLayout() {
         </ConnectionGate>
       </main>
       {!mapDocked && <MapWindow editable />}
+      <DiceTray />
       <ThemeEditor />
     </div>
   );

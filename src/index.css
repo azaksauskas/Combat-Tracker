@@ -120,3 +120,22 @@
     @apply text-strong;
   }
 }
+
+@keyframes roll-pop {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.3;
+  }
+  60% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Clickable dice / modifiers inside stat blocks. */
+.roll-link {
+  @apply cursor-pointer rounded px-0.5 font-semibold text-accent underline decoration-dotted underline-offset-2 hover:bg-surface-3;
+}
