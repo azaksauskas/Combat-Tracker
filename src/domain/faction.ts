@@ -20,6 +20,8 @@ export const FactionSchema = z.object({
   tribute: z.number().catch(20),
   /** They only notice heroes with at least this renown (hero level). */
   minRenown: z.number().catch(1),
+  /** Breaking their lair is a milestone: the heroes reach at least this level. */
+  milestone: z.number().optional(),
 });
 export type Faction = z.infer<typeof FactionSchema>;
 

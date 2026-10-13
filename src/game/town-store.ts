@@ -14,6 +14,7 @@ import { findScenario } from "./campaign-store";
 import { setupFor } from "./scenarios";
 import { quitGame, startBattle, usePlay } from "./store";
 import { chosenParty } from "./party-store";
+import { MAX_LEVEL, XP_BY_CR, XP_FOR_LEVEL, levelForXp } from "./party";
 import {
   ONLINE_MS_PER_HOUR,
   advance,
@@ -415,10 +416,11 @@ export function startTownBattle(kind: "raid" | "lair", fid: string) {
   if (!id || !f || !t) return;
   const sc = findScenario(kind === "raid" ? f.raid : f.lair);
   if (!sc) return toast.error(`${f.name}'s ${kind === "raid" ? "raid" : "lair"} battle no longer exists. Ask the DM to fix the faction.`);
-  const { board, units } = setupFor(sc, chosenParty());
+  const party = chosenParty();
+  const { board, units } = setupFor(sc, party);
   const name = kind === "raid" ? `${f.name} raid ${t.name}` : `${f.name}'s lair`;
   // Potions from the town's stores are at hand; what's left goes back.
-  startBattle({ ...sc, name }, board, units, { stash: { ...t.stash } }, "town", { kind, faction: fid });
+  startBattle({ ...sc, name }, board, units, { stash: { ...t.stash } }, "town", { kind, faction: fid, heroes: party.map((e) => e.key) });
 }
 
 /** Back from a town battle: apply the result to the town. */
@@ -430,7 +432,10 @@ export function finishTownBattle(retreat = false) {
   const won = !retreat && game.outcome === "victory";
   const result = context.kind === "raid" ? raidResult : lairResult;
   updatePlayer(id, (d) => (d.town ? { ...d, town: { ...result(d.town, f, won), stash: { ...(game.stash ?? d.town.stash) } } } : d));
-  if (won) salvageBattle(game, scenario?.name ?? f.name);
+  if (won) {
+    salvageBattle(game, scenario?.name ?? f.name);
+    awardXp(id, game, context.heroes ?? [], context.kind === "lair" ? f.milestone : undefined);
+  }
   addChronicle(id, [
     {
       kind: "fight",
@@ -446,4 +451,30 @@ export function finishTownBattle(retreat = false) {
   ]);
   passTime(2);
   quitGame();
+}
+
+/** XP for the heroes who fought (monsters' XP shared out), and a lair's milestone level. */
+function awardXp(id: string, game: GameState, keys: string[], milestone: number | undefined) {
+  if (!keys.length) return;
+  const monsterXp = game.units.filter((u) => u.side === "enemy" && u.dead).reduce((n, u) => n + (XP_BY_CR[u.stats.cr ?? ""] ?? 0), 0);
+  const share = Math.floor(monsterXp / keys.length);
+  const names = new Map(chosenParty().map((e) => [e.key, e.label]));
+  const ups: string[] = [];
+  let best = 0;
+  updatePlayer(id, (d) => {
+    const progress = { ...d.progress };
+    for (const k of keys) {
+      const was = progress[k] ?? { level: 1, xp: 0 };
+      let xp = was.xp + share;
+      if (milestone) xp = Math.max(xp, XP_FOR_LEVEL[Math.min(MAX_LEVEL, milestone)] ?? 0);
+      const level = Math.max(was.level, levelForXp(xp));
+      if (level > was.level) ups.push(`${names.get(k) ?? k} reached level ${level}`);
+      best = Math.max(best, level);
+      progress[k] = { level, xp };
+    }
+    return { ...d, progress, renown: Math.max(d.renown, best) };
+  });
+  toast.success(`+${share} XP each${milestone ? ` · milestone: level ${milestone}` : ""}`);
+  for (const u of ups) toast.success(`⭐ ${u}!`);
+  if (ups.length) addChronicle(id, ups.map((text) => ({ kind: "level" as const, text: `${text}.` })));
 }

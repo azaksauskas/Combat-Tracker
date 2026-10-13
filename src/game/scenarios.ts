@@ -97,6 +97,61 @@ export const SCENARIOS: Scenario[] = [
     monsters: ["giant-rat", "giant-rat", "giant-rat", "cultist", "giant-rat", "cultist"],
     difficulty: "Low",
   },
+  {
+    id: "crypt-depths",
+    name: "The Crypt Depths",
+    blurb: "Below the old crypt, where the dead are made. For heroes of level 3 or more.",
+    map: [
+      "####################",
+      "#P.....#.....#....5#",
+      "#P.....#..1..#.....#",
+      "#P.........#....6..#",
+      "#P..##.....#..2....#",
+      "#...##..3.....#..7.#",
+      "#.......#..4..#....#",
+      "#..#....#.....#.8.9#",
+      "####################",
+    ],
+    // 9 × CR 1/4 = 450 XP: Low for level 3, a slog without radiant damage.
+    monsters: ["skeleton", "skeleton", "zombie", "skeleton", "zombie", "skeleton", "zombie", "skeleton", "zombie"],
+    difficulty: "Moderate",
+  },
+  {
+    id: "hollow-sanctum",
+    name: "The Hollow Sanctum",
+    blurb: "The cult's hidden temple, its hired brutes and its captain. For heroes of level 4.",
+    map: [
+      "##################",
+      "#P......#.....3..#",
+      "#P..~~..#..1.....#",
+      "#P..~~......#..6.#",
+      "#P.......2..#....#",
+      "#....#.......4.7.#",
+      "#....#..5........#",
+      "##################",
+    ],
+    // 4 cultists + 2 bugbears + a captain = 950 XP: Low to Moderate for level 4.
+    monsters: ["cultist", "bugbear-warrior", "cultist", "cultist", "cultist", "bugbear-warrior", "bandit-captain"],
+    difficulty: "Moderate",
+  },
+  {
+    id: "gnoll-warband",
+    name: "The Gnoll Warband",
+    blurb: "Gnolls on the march with a bugbear chieftain. For heroes of level 4–5.",
+    map: [
+      "....................",
+      "P.......~~......1...",
+      "P...##..~~...2....5.",
+      "P...##........3.....",
+      "P.........##.....6..",
+      "..........##..4.....",
+      ".....~~.............",
+      ".....~~.............",
+    ],
+    // 4 gnolls + 2 bugbears = 800 XP: Low to Moderate for level 4.
+    monsters: ["gnoll-warrior", "gnoll-warrior", "gnoll-warrior", "gnoll-warrior", "bugbear-warrior", "bugbear-warrior"],
+    difficulty: "Moderate",
+  },
 ];
 
 function starts(map: string[], ch: (c: string) => boolean): Cell[] {

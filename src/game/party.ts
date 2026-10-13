@@ -1,6 +1,7 @@
 import { PARTY, type ContentEntry } from "../content/srd";
 import { secureRng, type Rng } from "../domain/dice";
-import { ActionSchema, abilityMod, type Feature, type StatAction, type StatBlock } from "../domain/statblock";
+import { ActionSchema, abilityMod, type Ability, type Feature, type StatAction, type StatBlock } from "../domain/statblock";
+import { SKILL_ABILITY } from "./skills";
 import type { Cell } from "./board";
 import { defaultResources, type UnitSetup } from "./engine";
 import type { GameState } from "./state";
@@ -42,7 +43,7 @@ export interface Party {
 
 /** 2024 character advancement: XP needed for levels 1–5. */
 export const XP_FOR_LEVEL = [0, 0, 300, 900, 2700, 6500];
-export const MAX_LEVEL = 3;
+export const MAX_LEVEL = 5;
 export const levelForXp = (xp: number) => {
   let level = 1;
   for (let l = 2; l <= MAX_LEVEL; l++) if (xp >= XP_FOR_LEVEL[l]!) level = l;
@@ -65,18 +66,19 @@ export function createParty(members: ContentEntry[] = PARTY): Party {
   const heroes = members.map((p): Hero => {
     const c = p.build();
     const stats = c.stats!;
+    const level = stats.level ?? 1;
     return {
       key: p.key,
       name: c.name,
       className: stats.className ?? "Adventurer",
-      level: 1,
+      level,
       stats,
       ac: c.ac,
       speed: c.speed,
       hp: c.hpMax,
       hpMax: c.hpMax,
       hitDie: HIT_DIE[stats.className ?? ""] ?? 8,
-      hitDice: 1,
+      hitDice: level,
       resources: defaultResources(stats),
       equipment: [],
       dead: false,
@@ -94,6 +96,11 @@ interface ClassLevel {
   spellSlots?: number[];
   /** New spells or attacks (the stat block gives the spell save DC). */
   actions?: (s: StatBlock) => StatAction[];
+  /** Ability Score Improvement: +2 to this ability (the class's main one). */
+  asi?: Ability;
+  /** New proficiency bonus (+3 from level 5). */
+  proficiency?: number;
+  attacksPerAction?: number;
 }
 
 /** A spell learned on level-up, with a stable id. */
@@ -108,10 +115,18 @@ const CLASS_LEVELS: Record<string, Record<number, ClassLevel>> = {
       features: ["improved-critical"],
       traits: [{ name: "Champion: Improved Critical", text: "Your attack rolls score a Critical Hit on a 19 or 20." }],
     },
+    4: { asi: "str", traits: [{ name: "Ability Score Improvement", text: "+2 Strength." }] },
+    5: { proficiency: 3, attacksPerAction: 2, traits: [{ name: "Extra Attack", text: "Attack twice whenever you take the Attack action. Proficiency bonus +3." }] },
   },
   Rogue: {
     2: { features: ["cunning-action"], traits: [{ name: "Cunning Action", text: "Bonus Action: Dash, Disengage or Hide." }] },
     3: { traits: [{ name: "Thief: Fast Hands", text: "Bonus Action: Sleight of Hand, use an object, or disarm a trap. Sneak Attack is now 2d6." }] },
+    4: { asi: "dex", traits: [{ name: "Ability Score Improvement", text: "+2 Dexterity." }] },
+    5: {
+      proficiency: 3,
+      features: ["uncanny-dodge"],
+      traits: [{ name: "Uncanny Dodge", text: "Reaction: halve the damage of an attack that hits you (used automatically). Sneak Attack is now 3d6. Proficiency bonus +3." }],
+    },
   },
   Cleric: {
     2: {
@@ -127,6 +142,13 @@ const CLASS_LEVELS: Record<string, Record<number, ClassLevel>> = {
         { name: "Life Domain: Disciple of Life", text: "Healing spells that use a slot restore an extra 2 + the slot's level HP." },
         { name: "2nd-level spells", text: "Aid. Spell slots: four 1st, two 2nd." },
       ],
+    },
+    4: { asi: "wis", spellSlots: [4, 3], traits: [{ name: "Ability Score Improvement", text: "+2 Wisdom. Spell slots: four 1st, three 2nd." }] },
+    5: {
+      proficiency: 3,
+      spellSlots: [4, 3, 2],
+      actions: () => [spell({ kind: "heal", name: "Mass Healing Word", dice: "2d4", ability: "wis", range: 60, targets: 6, slot: 3, bonusAction: true, notes: "Up to six allies you can see" })],
+      traits: [{ name: "3rd-level spells", text: "Mass Healing Word (bonus action, up to six allies). Spell slots: four 1st, three 2nd, two 3rd. Proficiency bonus +3." }],
     },
   },
   Wizard: {
@@ -152,6 +174,25 @@ const CLASS_LEVELS: Record<string, Record<number, ClassLevel>> = {
         { name: "2nd-level spells", text: "Shatter. Spell slots: four 1st, two 2nd." },
       ],
     },
+    4: { asi: "int", spellSlots: [4, 3], traits: [{ name: "Ability Score Improvement", text: "+2 Intelligence. Spell slots: four 1st, three 2nd." }] },
+    5: {
+      proficiency: 3,
+      spellSlots: [4, 3, 2],
+      actions: (st) => [
+        spell({
+          kind: "save",
+          name: "Fireball",
+          save: "dex",
+          dc: 8 + st.proficiency + abilityMod(st.abilities.int),
+          range: 150,
+          area: { shape: "sphere", size: 20 },
+          slot: 3,
+          damage: [{ dice: "8d6", type: "fire" }],
+          onSuccess: "half",
+        }),
+      ],
+      traits: [{ name: "3rd-level spells", text: "Fireball (20-ft sphere, 8d6 fire). Spell slots: four 1st, three 2nd, two 3rd. Proficiency bonus +3." }],
+    },
   },
 };
 
@@ -162,6 +203,41 @@ export interface LevelUpReport {
   gains: string[];
 }
 
+const isSpell = (a: StatAction) => !!a.slot || !!a.cantrip;
+/** The ability a weapon attack uses: finesse and ranged weapons go by Dexterity. */
+const weaponAbility = (a: StatAction): Ability => (a.kind === "attack" && (a.finesse || a.attackType === "ranged") ? "dex" : "str");
+const plus = (dice: string, n: number) => (n === 0 ? dice : `${dice}${n > 0 ? "+" : ""}${n}`);
+
+/**
+ * Applies an Ability Score Improvement (+2 to one ability, max 20) and a new
+ * proficiency bonus to a hand-written stat block, carrying the changes into
+ * attacks, spell DCs and skills.
+ */
+export function improve(stats: StatBlock, asi: Ability | undefined, profDelta: number): StatBlock {
+  if (!asi && !profDelta) return stats;
+  const abilities = { ...stats.abilities };
+  let modDelta = 0;
+  if (asi) {
+    const before = abilityMod(abilities[asi]);
+    abilities[asi] = Math.min(20, abilities[asi] + 2);
+    modDelta = abilityMod(abilities[asi]) - before;
+  }
+  const casting: Ability | null = stats.className === "Cleric" ? "wis" : stats.className === "Wizard" ? "int" : null;
+  const actions = stats.actions.map((a): StatAction => {
+    if (a.kind === "attack") {
+      // Which ability the attack uses: the one whose modifier + proficiency gives its to-hit.
+      const fits = (ab: Ability) => abilityMod(stats.abilities[ab]) + stats.proficiency === a.toHit;
+      const uses = isSpell(a) ? casting : asi && fits(asi) ? asi : fits("str") ? "str" : fits("dex") ? "dex" : weaponAbility(a);
+      const d = uses === asi ? modDelta : 0;
+      return { ...a, toHit: a.toHit + d + profDelta, damage: !isSpell(a) && d ? a.damage.map((p, i) => (i === 0 ? { ...p, dice: plus(p.dice, d) } : p)) : a.damage };
+    }
+    if (a.kind === "save") return { ...a, dc: a.dc + (casting === asi ? modDelta : 0) + profDelta };
+    return a;
+  });
+  const skills = Object.fromEntries(Object.entries(stats.skills).map(([k, v]) => [k, v + (SKILL_ABILITY[k] === asi ? modDelta : 0) + profDelta]));
+  return { ...stats, abilities, actions, skills, proficiency: stats.proficiency + profDelta };
+}
+
 /** One level: fixed HP (2024 average), a hit die, and class features. */
 export function levelUp(hero: Hero): LevelUpReport {
   const level = hero.level + 1;
@@ -169,14 +245,19 @@ export function levelUp(hero: Hero): LevelUpReport {
   const toughness = hero.stats.traits.some((t) => t.name === "Dwarven Toughness") ? 1 : 0;
   const hpGain = Math.max(1, hero.hitDie / 2 + 1 + abilityMod(hero.stats.abilities.con)) + toughness;
   const cl = CLASS_LEVELS[hero.className]?.[level] ?? { traits: [] };
-  const stats: StatBlock = {
-    ...hero.stats,
-    level,
-    features: [...hero.stats.features, ...(cl.features ?? [])],
-    traits: [...hero.stats.traits, ...cl.traits],
-    actions: [...hero.stats.actions, ...(cl.actions?.(hero.stats) ?? [])],
-    spellSlots: cl.spellSlots ?? hero.stats.spellSlots,
-  };
+  const stats: StatBlock = improve(
+    {
+      ...hero.stats,
+      level,
+      features: [...hero.stats.features, ...(cl.features ?? [])],
+      traits: [...hero.stats.traits, ...cl.traits],
+      actions: [...hero.stats.actions, ...(cl.actions?.(hero.stats) ?? [])],
+      spellSlots: cl.spellSlots ?? hero.stats.spellSlots,
+      attacksPerAction: cl.attacksPerAction ?? hero.stats.attacksPerAction,
+    },
+    cl.asi,
+    (cl.proficiency ?? hero.stats.proficiency) - hero.stats.proficiency,
+  );
   const next: Hero = {
     ...hero,
     level,
@@ -363,4 +444,20 @@ export function applyFight(party: Party, game: GameState): FightResult {
   const items = { ...party.items };
   for (const [id, n] of Object.entries(game.stash ?? {})) items[id] = n;
   return { party: { ...party, heroes, items }, xpEach, fallen };
+}
+
+/** A party member as they are now: their level-1 sheet, levelled up to where they've got to. */
+export function withProgress(e: ContentEntry, progress: { level: number } | undefined): ContentEntry {
+  const target = Math.min(MAX_LEVEL, progress?.level ?? 1);
+  if (target <= 1) return e;
+  return {
+    ...e,
+    subtitle: e.subtitle.replace(/Level \d+/, `Level ${target}`),
+    build: () => {
+      const base = e.build();
+      let hero = createParty([e]).heroes[0]!;
+      while (hero.level < target) hero = levelUp(hero).hero;
+      return { ...base, stats: hero.stats, hpMax: hero.hpMax, hpCurrent: hero.hpMax };
+    },
+  };
 }

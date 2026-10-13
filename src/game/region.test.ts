@@ -39,7 +39,8 @@ describe("factions and the town", () => {
 
   it("defending and striking back", () => {
     const t = { ...big(), threats: [{ faction: goblins.id, attention: 70, stage: "raiding" as const, dueAt: 50 }] };
-    expect(canStrike(threatOf(t, goblins.id))).toBe(true);
+    expect(canStrike(threatOf(t, goblins.id), goblins, 1)).toBe(true);
+    expect(canStrike(threatOf(t, dead.id), dead, 1)).toBe(false);
     expect(threatOf(raidResult(t, goblins, true), goblins.id)).toMatchObject({ stage: "watching", attention: 15 });
     expect(raidResult(t, goblins, false).gold).toBeLessThan(t.gold);
     const won = lairResult(t, goblins, true);

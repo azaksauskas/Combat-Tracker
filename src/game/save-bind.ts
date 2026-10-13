@@ -18,7 +18,7 @@ interface SavedBattle {
   game: GameState;
   scenario: (Scenario & { custom?: UnitSetup[] }) | null;
   mode: "skirmish" | "campaign" | "town";
-  context?: { kind: "raid" | "lair"; faction: string } | null;
+  context?: { kind: "raid" | "lair"; faction: string; heroes?: string[] } | null;
   log: LogLine[];
 }
 

@@ -26,6 +26,8 @@ export const RENOWN = [
   { level: 1, title: "Unknown", reach: "a village name at most", maxBuildings: 4 },
   { level: 2, title: "Known in the valley", reach: "people come looking for you", maxBuildings: 7 },
   { level: 3, title: "Known across the region", reach: "rivals take notice", maxBuildings: 11 },
+  { level: 4, title: "Known across the realm", reach: "lords and factions take notice", maxBuildings: 15 },
+  { level: 5, title: "A hero of the realm", reach: "songs are sung in far-off taverns", maxBuildings: 20 },
 ] as const;
 export const renownOf = (level: number) => RENOWN[Math.min(RENOWN.length, Math.max(1, level)) - 1]!;
 

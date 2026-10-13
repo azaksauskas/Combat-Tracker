@@ -4,6 +4,7 @@ import { update, useGame } from "../store/game";
 import { activeDoc, updatePlayer, useActiveProfile } from "../store/players";
 import { characterEntry } from "./builder";
 import { withMods } from "./crafting";
+import { withProgress } from "./party";
 
 /**
  * Which heroes go on the next adventure or skirmish (1–4), by content key.
@@ -25,11 +26,31 @@ export function resolveParty(picks: string[], characters: CharacterSpec[]): Cont
 /** Characters the active player can pick from: theirs plus any shared ones in the library. */
 export const myCharacters = (): CharacterSpec[] => [...useGame.getState().library.characters, ...(activeDoc()?.characters ?? [])];
 
-/** The party for the next fight or adventure, with the mods the smithy fitted. */
+/** The party for the next fight or adventure: at the level they've reached, with the mods the smithy fitted. */
 export const chosenParty = () => {
-  const gear = activeDoc()?.gear ?? {};
-  return resolveParty(activeDoc()?.picks ?? [], myCharacters()).map((e) => withMods(e, gear[e.key]));
+  const doc = activeDoc();
+  return resolveParty(doc?.picks ?? [], myCharacters()).map((e) => withMods(withProgress(e, doc?.progress[e.key]), doc?.gear[e.key]));
 };
+
+/** The XP the chosen party carries into an adventure (the best of them; the others catch up). */
+export const partyXp = () => {
+  const doc = activeDoc();
+  return Math.max(0, ...resolveParty(doc?.picks ?? [], myCharacters()).map((e) => doc?.progress[e.key]?.xp ?? 0));
+};
+
+/** Remember how far heroes have got (never goes down). */
+export function recordProgress(heroes: { key: string; level: number }[], xp: number) {
+  const id = useActiveProfile.getState().id;
+  if (!id) return;
+  updatePlayer(id, (d) => {
+    const progress = { ...d.progress };
+    for (const h of heroes) {
+      const was = progress[h.key] ?? { level: 1, xp: 0 };
+      progress[h.key] = { level: Math.max(was.level, h.level), xp: Math.max(was.xp, xp) };
+    }
+    return { ...d, progress };
+  });
+}
 
 export function togglePick(key: string) {
   const id = useActiveProfile.getState().id;

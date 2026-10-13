@@ -67,7 +67,8 @@ travelled, scaled down while the game only supports levels 1–3:
 | 1 | Unknown, a village name at most | Local errands, a first plot of land |
 | 2 | Known in the valley | People seek you out; found a proper village |
 | 3 | Known across the region | Rivals take notice; regional quests and threats |
-| 4–5 (later) | Known across the realm | Lords, factions, a bigger map |
+| 4 | Known across the realm | Lords and factions take notice; 15 buildings |
+| 5 | A hero of the realm | Songs in far-off taverns; 20 buildings |
 
 ### Towns
 
@@ -119,7 +120,8 @@ picker into a real sign-in without changing the data model.
 | **M8** | Towns and time: founding a town, buildings, settlers, the world clock, catch-up simulation and the "while you were away" report |
 | **M9** | Mods and crafting through the smithy and apothecary |
 | **M10** | Region and threats: renown tiers, power, factions, raids, lairs as DM-built dungeons |
-| Later | Logins (Firebase Auth, DM and player roles, security rules); levels 4–5 |
+| **Levels 4–5** | Heroes keep their levels; ability increase, proficiency +3, Extra Attack, Uncanny Dodge, Mass Healing Word, Fireball; milestone lairs |
+| Later | Logins (Firebase Auth, DM and player roles, security rules) |
 | Idea | A kids' version to play with a child, based on Mausritter (mice adventurers, simpler rules); see "Future ideas" |
 
 ## Status
@@ -332,6 +334,27 @@ picker into a real sign-in without changing the data model.
   - Town battles use the chosen party with its mods and the town's potions,
     salvage iron and dust, move the clock and go in the chronicle; the DM's
     Players page shows each town's threats.
+
+- **Levels 4–5 done:**
+  - Heroes keep their level and XP between adventures, skirmishes and town
+    battles (per player). Adventures start with the heroes as they are; a
+    new hero catches up with the party at the next XP gain.
+  - Level 4: +2 to the class's main ability (Str, Dex, Wis, Int), carried
+    into attacks, damage, spell DCs and skills. Casters get 3 second-level
+    slots.
+  - Level 5: proficiency +3; Fighter Extra Attack, Rogue Uncanny Dodge
+    (reaction, halves a hit) and Sneak Attack 3d6, Cleric Mass Healing Word
+    (bonus action, up to six allies), Wizard Fireball (20-ft sphere, 8d6);
+    third-level slots.
+  - Monsters can have Multiattack. New: Gnoll Warrior, Bugbear Warrior,
+    Bandit Captain (from memory: check against the SRD), and three tougher
+    battles: The Crypt Depths, The Hollow Sanctum, The Gnoll Warband.
+  - Town battles give XP; breaking a lair is a milestone (Red Fang → 2,
+    River Road → 3, Restless Dead → 4, Hollow Eye → 5). Heroes famous enough
+    can seek a faction's lair out at any time. New faction for renown 4:
+    the Gnoll Pack.
+  - With the AI playing the party: Crypt Depths 60% at level 3, Hollow
+    Sanctum 85% at level 4, Gnoll Warband 77% at level 4.
 
 ## Future ideas
 

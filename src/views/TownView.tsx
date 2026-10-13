@@ -6,10 +6,10 @@ import type { Profile } from "../domain/players";
 import { BUILDINGS, HIRE_COST, beds, built, cantBuild, clockText, durationText, helpsLeft, isBuilt, opinion, power, renownOf, sleepHours, staffing, type SimContext } from "../game/town";
 import { reputationText } from "../domain/alignment";
 import { allFactions, payTributeTo, refuseTributeTo, startTownBattle } from "../game/town-store";
-import { STAGE_TEXT, threatOf } from "../game/region";
+import { STAGE_TEXT, canStrike, threatOf } from "../game/region";
 import { bindTown, hireWorker, brew, build, buy, craftMod, found, goHome, helpOut, joinTown, liveHours, removeMod, renameTown, setOpen, sleep, today, townContext, useTownUi } from "../game/town-store";
 import { BREWS, COMPONENTS, MODS, SLOTS, applyMods, cantAfford, costText, fits, type Component, type Slot } from "../game/crafting";
-import { ITEMS } from "../game/party";
+import { ITEMS, withProgress } from "../game/party";
 import { availableMembers, myCharacters } from "../game/party-store";
 import { useGame } from "../store/game";
 import { useActiveProfile, usePlayers } from "../store/players";
@@ -289,9 +289,9 @@ function Region({ town: t, renown }: { town: Town; renown: number }) {
                   <div className="h-1.5 rounded bg-danger" style={{ width: `${th.attention}%` }} />
                 </div>
               )}
-              {th.stage === "watching" && (
-                <button className="btn mt-1 px-2 py-0.5 text-xs" onClick={() => startTownBattle("lair", f.id)}>
-                  🏴 Strike their lair
+              {canStrike(th, f, renown) && th.stage !== "demanding" && th.stage !== "raiding" && (
+                <button className="btn mt-1 px-2 py-0.5 text-xs" onClick={() => startTownBattle("lair", f.id)} title={`Lair battle${f.milestone ? `; breaking it takes the heroes to level ${f.milestone}` : ""}`}>
+                  🏴 Strike their lair{f.milestone ? ` (milestone: level ${f.milestone})` : ""}
                 </button>
               )}
             </li>
@@ -426,7 +426,8 @@ function Smithy({ town: t }: { town: Town }) {
   const id = useActiveProfile((s) => s.id)!;
   const gear = usePlayers((s) => s.docs[id]?.gear) ?? {};
   usePlayers((s) => s.docs[id]?.characters);
-  const heroes = availableMembers(myCharacters());
+  const progress = usePlayers((s) => s.docs[id]?.progress) ?? {};
+  const heroes = availableMembers(myCharacters()).map((e) => withProgress(e, progress[e.key]));
   const [heroKey, setHeroKey] = useState(heroes[0]?.key ?? "");
   const hero = heroes.find((h) => h.key === heroKey) ?? heroes[0];
   if (!hero) return null;

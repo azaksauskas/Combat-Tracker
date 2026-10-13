@@ -216,6 +216,73 @@ export const SRD_MONSTERS: ContentEntry[] = [
         }),
       ),
   },
+  // Stronger foes for heroes of levels 3–5 (also transcribed from memory: check against the SRD 5.2).
+  {
+    key: "gnoll-warrior",
+    label: "Gnoll Warrior",
+    subtitle: "CR 1/2 · Medium fiend",
+    build: () =>
+      creature(
+        { name: "Gnoll Warrior", isMonster: true, ac: 15, hpMax: 27, speed: 30 },
+        stats({
+          alignment: "Chaotic Evil",
+          abilities: { str: 14, dex: 12, con: 11, int: 6, wis: 10, cha: 7 },
+          proficiency: 2,
+          cr: "1/2",
+          creatureType: "fiend",
+          actions: [
+            attack({ name: "Rend", attackType: "melee", toHit: 4, damage: [{ dice: "1d6+2", type: "piercing" }] }),
+            attack({ name: "Bone Bow", attackType: "ranged", toHit: 3, range: [150, 600], damage: [{ dice: "1d10+1", type: "piercing" }] }),
+          ],
+          traits: [{ name: "Darkvision", text: "60 ft." }],
+        }),
+      ),
+  },
+  {
+    key: "bugbear-warrior",
+    label: "Bugbear Warrior",
+    subtitle: "CR 1 · Medium fey (goblinoid)",
+    build: () =>
+      creature(
+        { name: "Bugbear Warrior", isMonster: true, ac: 14, hpMax: 33, speed: 30 },
+        stats({
+          alignment: "Chaotic Evil",
+          abilities: { str: 15, dex: 14, con: 13, int: 8, wis: 11, cha: 9 },
+          proficiency: 2,
+          cr: "1",
+          creatureType: "fey",
+          skills: { Stealth: 6, Survival: 2 },
+          actions: [
+            attack({ name: "Light Hammer", attackType: "melee", toHit: 4, reach: 10, damage: [{ dice: "3d4+2", type: "bludgeoning" }], notes: "Reach 10 ft" }),
+            attack({ name: "Grab", attackType: "melee", toHit: 4, damage: [{ dice: "2d6+2", type: "bludgeoning" }] }),
+          ],
+          traits: [{ name: "Abduct", text: "Moves at full speed while dragging a creature." }],
+        }),
+      ),
+  },
+  {
+    key: "bandit-captain",
+    label: "Bandit Captain",
+    subtitle: "CR 2 · Medium humanoid",
+    build: () =>
+      creature(
+        { name: "Bandit Captain", isMonster: true, ac: 15, hpMax: 52, speed: 30 },
+        stats({
+          alignment: "Neutral",
+          abilities: { str: 10, dex: 16, con: 14, int: 14, wis: 11, cha: 14 },
+          proficiency: 2,
+          cr: "2",
+          creatureType: "humanoid",
+          attacksPerAction: 2,
+          skills: { Athletics: 4, Deception: 4 },
+          actions: [
+            attack({ name: "Scimitar", attackType: "melee", toHit: 5, finesse: true, damage: [{ dice: "1d6+3", type: "slashing" }] }),
+            attack({ name: "Dagger", attackType: "ranged", toHit: 5, range: [20, 60], damage: [{ dice: "1d4+3", type: "piercing" }] }),
+          ],
+          traits: [{ name: "Multiattack", text: "Two attacks with its Scimitar or Dagger." }],
+        }),
+      ),
+  },
 ];
 
 // --- Ready-made party (level 1, 2024 rules) -----------------------------------

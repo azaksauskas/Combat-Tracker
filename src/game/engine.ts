@@ -374,7 +374,13 @@ function makeAttack(ctx: Ctx, a: Unit, t: Unit, action: AttackAction, opts: { op
   }
 
   const damage = rollDamage(parts, { ac: t.ac, stats: t.stats }, ctx.rng, crit);
-  const total = damage.reduce((n, d) => n + d.amount, 0);
+  let total = damage.reduce((n, d) => n + d.amount, 0);
+  // Uncanny Dodge (Rogue 5): a reaction halves the damage of an attack that hits.
+  if (total > 0 && t.stats.features.includes("uncanny-dodge") && t.reaction && canAct(t)) {
+    t.reaction = false;
+    total = Math.floor(total / 2);
+    ctx.events.push({ type: "feature", unitId: t.id, name: "Uncanny Dodge", detail: `damage halved to ${total}` });
+  }
   takeDamage(ctx, t, total, describeDamage(damage), { crit, types: damage.map((d) => d.type) });
 
   if (action.onHitCondition && !t.dead && t.hp > 0) addCondition(ctx, t, action.onHitCondition);
@@ -676,10 +682,29 @@ function run(ctx: Ctx, cmd: Command) {
         return;
       }
 
+      if (action.kind === "heal" && (action.targets ?? 1) > 1) {
+        const ids = cmd.targetIds ?? (cmd.targetId ? [cmd.targetId] : []);
+        if (ids.length === 0) throw new GameError("Choose who to heal");
+        if (ids.length > (action.targets ?? 1)) throw new GameError(`${action.name} heals at most ${action.targets} creatures`);
+        for (const id of ids) {
+          const check = checkTarget(s as GameState, u.id, action.id, id);
+          if (!check.ok) throw new GameError(check.reason);
+        }
+        spendSpell(u, action, cost);
+        for (const id of ids) castHeal(ctx, u, unit(ctx, id), action);
+        return;
+      }
+
       if (!cmd.targetId) throw new GameError("Choose a target");
       const check = checkTarget(s as GameState, u.id, cmd.actionId, cmd.targetId);
       if (!check.ok) throw new GameError(check.reason);
-      spendSpell(u, action, cost);
+      // Extra Attack / Multiattack: the action lasts until every attack is made.
+      const perAction = u.stats.attacksPerAction ?? 1;
+      if (action.kind === "attack" && cost === "action" && !action.slot && !action.cantrip && perAction > 1) {
+        const left = (u.turn.attacksLeft || perAction) - 1;
+        u.turn.attacksLeft = left;
+        if (left <= 0) u.turn.action = false;
+      } else spendSpell(u, action, cost);
       const t = unit(ctx, cmd.targetId);
       if (action.kind === "attack") makeAttack(ctx, u, t, action);
       else if (action.kind === "save") forceSave(ctx, t, action);

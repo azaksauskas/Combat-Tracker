@@ -69,6 +69,8 @@ export const FEATURES = [
   "potent-cantrip",
   "disciple-of-life",
   "arcane-recovery",
+  // Level 5:
+  "uncanny-dodge",
 ] as const;
 
 /** Spell fields shared by every kind of action. */
@@ -135,6 +137,8 @@ export const HealActionSchema = z.object({
   ability: z.enum(ABILITIES).optional(),
   /** 5 = touch. */
   range: z.number().catch(5),
+  /** How many creatures it can heal at once (Mass Healing Word: 6). */
+  targets: z.number().optional(),
   notes: str,
   ...spellFields,
 });
@@ -203,6 +207,8 @@ export const StatBlockSchema = z.object({
   spellSlots: z.array(z.number()).catch([]),
   /** "undead", "beast", "humanoid"… (Turn Undead needs to know). */
   creatureType: z.string().nullable().catch(null),
+  /** Weapon attacks per Attack action: Extra Attack (Fighter 5) or a monster's Multiattack. */
+  attacksPerAction: z.number().catch(1),
   /** "Lawful Good", "Neutral Evil", "Unaligned"… (see domain/alignment.ts). */
   alignment: z.string().nullable().catch(null),
 });

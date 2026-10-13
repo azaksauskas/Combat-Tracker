@@ -25,6 +25,7 @@ import { MAX_PARTY, availableMembers, deleteCharacter, togglePick } from "../gam
 import { bindSaves } from "../game/save-bind";
 import { createProfile, useActiveProfile, usePlayers } from "../store/players";
 import { DEFAULT_PICKS } from "../game/party-store";
+import { withProgress } from "../game/party";
 
 /** Solo skirmish: your four heroes against an encounter, monsters run by the computer. */
 bindSaves();
@@ -152,7 +153,8 @@ function PartyPicker() {
   const picks = usePlayers((s) => (activeId ? s.docs[activeId]?.picks : undefined)) ?? [];
   const characters = useMemo(() => [...shared, ...(mine ?? [])], [shared, mine]);
   const [editing, setEditing] = useState<CharacterSpec | null>(null);
-  const members = availableMembers(characters);
+  const progress = usePlayers((s) => (activeId ? s.docs[activeId]?.progress : undefined));
+  const members = availableMembers(characters).map((e) => withProgress(e, progress?.[e.key]));
   const custom = new Map(characters.map((c) => [characterKey(c), c]));
   return (
     <section>
@@ -323,10 +325,11 @@ function Battle({ game }: { game: GameState }) {
             onTarget={(targetId) => {
               if (!active || mode.kind !== "target") return;
               const action = active.stats.actions.find((a) => a.id === mode.actionId);
-              if (action?.kind === "buff" && action.targets > 1) {
+              const many = action?.kind === "buff" ? action.targets : action?.kind === "heal" ? (action.targets ?? 1) : 1;
+              if (action && many > 1) {
                 // Several targets: collect them, then confirm in the side panel.
                 const picked = mode.picked ?? [];
-                const next = picked.includes(targetId) ? picked.filter((x) => x !== targetId) : [...picked, targetId].slice(-action.targets);
+                const next = picked.includes(targetId) ? picked.filter((x) => x !== targetId) : [...picked, targetId].slice(-many);
                 setMode({ ...mode, picked: next });
                 return;
               }
@@ -424,6 +427,7 @@ function HeroPanel({
             <Pip on={u.turn.bonusAction} label="Bonus" />
             <Pip on={u.reaction} label="Reaction" />
             <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-semibold text-strong">{u.turn.movement} ft</span>
+            {(u.turn.attacksLeft ?? 0) > 0 && <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-accent-fg">{u.turn.attacksLeft} more attack</span>}
           </div>
           <SpellSlots unit={u} />
           {u.concentration && <p className="text-xs text-highlight">Concentrating on {u.concentration}</p>}
@@ -554,12 +558,13 @@ const ordinalShort = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n =
 /** Bless and friends: the creatures picked so far, and a button to cast. */
 function PickedTargets({ game, unit: u, mode }: { game: GameState; unit: Unit; mode: Extract<BoardMode, { kind: "target" }> }) {
   const action = u.stats.actions.find((a) => a.id === mode.actionId);
-  if (action?.kind !== "buff" || action.targets <= 1) return null;
+  const many = action?.kind === "buff" ? action.targets : action?.kind === "heal" ? (action.targets ?? 1) : 1;
+  if (!action || many <= 1) return null;
   const picked = mode.picked ?? [];
   return (
     <div className="space-y-1 rounded-md border border-line bg-surface-2/60 p-2 text-xs">
       <div className="text-muted">
-        Pick up to {action.targets}: {picked.length ? picked.map((id) => game.units.find((x) => x.id === id)?.name).join(", ") : "nobody yet"}
+        Pick up to {many}: {picked.length ? picked.map((id) => game.units.find((x) => x.id === id)?.name).join(", ") : "nobody yet"}
       </div>
       <button
         className="btn btn-primary w-full text-xs"

@@ -7,7 +7,7 @@ import { SCENARIOS, encounterScenario, setupFor, type Scenario } from "./scenari
 import type { UnitSetup } from "./engine";
 import { mapScenario } from "./maps";
 import { quitGame, startBattle, usePlay } from "./store";
-import { chosenParty } from "./party-store";
+import { chosenParty, partyXp, recordProgress } from "./party-store";
 import { chronicleFight, chronicleStep } from "./chronicle";
 import { addChronicle, useActiveProfile } from "../store/players";
 import { homecoming, noteLevel, packForAdventure, passTime, salvageBattle } from "./town-store";
@@ -34,6 +34,7 @@ function set(state: CampaignState | null) {
   const ending = (state?.ended && !before?.ended) || (before && !before.ended && !state);
   if (ending) {
     const last = state ?? before!;
+    recordProgress(last.party.heroes, last.party.xp);
     const potions = Object.fromEntries(Object.entries(last.party.items).filter(([k, n]) => k.startsWith("potion") && n > 0));
     // The adventure's starting purse stays behind; what they earned comes home.
     const earned = Math.max(0, last.party.gold - (adventureOf(last)?.startingGold ?? 0));
@@ -49,7 +50,9 @@ const current = () => useCampaign.getState().state;
 
 export function beginAdventure(adv: Adventure) {
   quitGame();
-  const s = startAdventure(adv, undefined, chosenParty());
+  const started = startAdventure(adv, undefined, chosenParty());
+  // Heroes bring the XP they've earned so far.
+  const s = { ...started, party: { ...started.party, xp: partyXp() } };
   // Potions brewed in town go along.
   const potions = packForAdventure();
   const items = { ...s.party.items };

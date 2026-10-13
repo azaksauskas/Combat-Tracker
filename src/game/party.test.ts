@@ -10,7 +10,7 @@ const fixed = (...faces: number[]) => {
 
 describe("party progression", () => {
   it("uses the 2024 XP table", () => {
-    expect([0, 299, 300, 899, 900, 5000].map(levelForXp)).toEqual([1, 1, 2, 2, 3, 3]);
+    expect([0, 299, 300, 899, 900, 2700, 5000, 6500, 99999].map(levelForXp)).toEqual([1, 1, 2, 2, 3, 4, 4, 5, 5]);
   });
 
   it("levels up with fixed HP, hit dice and class features", () => {

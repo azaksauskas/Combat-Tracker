@@ -65,7 +65,7 @@ export function FactionsView() {
                 </button>
               </div>
               <div className="text-xs text-muted">
-                {f.alignment} · tribute {f.tribute || "none"} · notices renown {f.minRenown}+ · raid: {fights.find((x) => x.id === f.raid)?.name} · lair: {fights.find((x) => x.id === f.lair)?.name}
+                {f.alignment} · tribute {f.tribute || "none"} · notices renown {f.minRenown}+{f.milestone ? ` · lair → level ${f.milestone}` : ""} · raid: {fights.find((x) => x.id === f.raid)?.name} · lair: {fights.find((x) => x.id === f.lair)?.name}
               </div>
               <p className="mt-1 text-xs">{f.description}</p>
             </li>
@@ -110,15 +110,25 @@ function FactionEditor({ faction: f, fights, onChange, onDelete }: { faction: Fa
       <Field label="Description (players see it)">
         <input className="field py-1" value={draft.description} onChange={(e) => set({ description: e.target.value })} />
       </Field>
-      <div className="grid gap-2 sm:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-5">
         <Field label="Raid battle">{fightSelect(draft.raid, "raid")}</Field>
         <Field label="Lair battle">{fightSelect(draft.lair, "lair")}</Field>
         <Field label="Tribute (0: they just raid)">
           <input className="field py-1" type="number" min={0} value={draft.tribute} onChange={(e) => set({ tribute: Math.max(0, Number(e.target.value) || 0) })} />
         </Field>
+        <Field label="Breaking the lair: level">
+          <select className="field py-1" value={draft.milestone ?? 0} onChange={(e) => onChange({ ...draft, milestone: Number(e.target.value) || undefined })}>
+            <option value={0}>no milestone</option>
+            {[2, 3, 4, 5].map((n) => (
+              <option key={n} value={n}>
+                at least {n}
+              </option>
+            ))}
+          </select>
+        </Field>
         <Field label="Notices heroes of level">
           <select className="field py-1" value={draft.minRenown} onChange={(e) => onChange({ ...draft, minRenown: Number(e.target.value) })}>
-            {[1, 2, 3].map((n) => (
+            {[1, 2, 3, 4, 5].map((n) => (
               <option key={n} value={n}>
                 {n}+
               </option>

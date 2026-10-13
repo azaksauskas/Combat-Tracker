@@ -12,6 +12,8 @@ export interface TurnBudget {
   bonusAction: boolean;
   disengaged: boolean;
   sneakAttackUsed: boolean;
+  /** Attacks left in this Attack action (Extra Attack, Multiattack). */
+  attacksLeft?: number;
 }
 
 export interface DeathSaves {

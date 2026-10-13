@@ -21,6 +21,7 @@ export const BUILTIN_FACTIONS: Faction[] = [
     lair: "goblin-ambush",
     tribute: 15,
     minRenown: 1,
+    milestone: 2,
   },
   {
     id: "river-road",
@@ -32,6 +33,7 @@ export const BUILTIN_FACTIONS: Faction[] = [
     lair: "bandit-camp",
     tribute: 25,
     minRenown: 1,
+    milestone: 3,
   },
   {
     id: "restless-dead",
@@ -40,9 +42,10 @@ export const BUILTIN_FACTIONS: Faction[] = [
     alignment: "Lawful Evil",
     description: "Something under the hill keeps sending the dead out. They want no gold; they want the living.",
     raid: "crypt",
-    lair: "crypt",
+    lair: "crypt-depths",
     tribute: 0,
     minRenown: 2,
+    milestone: 4,
   },
   {
     id: "hollow-eye",
@@ -51,9 +54,22 @@ export const BUILTIN_FACTIONS: Faction[] = [
     alignment: "Neutral Evil",
     description: "A cult that recruits the desperate and punishes the defiant. They notice heroes whose names travel.",
     raid: "cult-cellar",
-    lair: "cult-cellar",
+    lair: "hollow-sanctum",
     tribute: 40,
     minRenown: 3,
+    milestone: 5,
+  },
+  {
+    id: "gnoll-pack",
+    name: "The Gnoll Pack",
+    icon: "🦴",
+    alignment: "Chaotic Evil",
+    description: "A hungry warband with a bugbear chieftain. Only famous towns are worth the long march.",
+    raid: "gnoll-warband",
+    lair: "gnoll-warband",
+    tribute: 60,
+    minRenown: 4,
+    milestone: 5,
   },
 ];
 
@@ -173,8 +189,8 @@ export function refuseTribute(t: Town, f: Faction): Town {
   return logged(setThreat(t, { ...th, stage: "raiding", dueAt: due, demand: undefined }), t.hours, `Refused ${f.name}'s demand. They will come by ${clock(due)}.`, "bad");
 }
 
-/** The heroes can strike back once a faction has shown itself. */
-export const canStrike = (th: Threat) => th.stage === "watching" || th.stage === "demanding" || th.stage === "raiding";
+/** Heroes famous enough to know of a faction can seek out its lair, unless it's broken or friendly. */
+export const canStrike = (th: Threat, f: Faction, renown: number) => renown >= f.minRenown && th.stage !== "defeated" && th.stage !== "friendly";
 
 /** After the heroes fought the raiders in the town. */
 export function raidResult(t: Town, f: Faction, won: boolean): Town {

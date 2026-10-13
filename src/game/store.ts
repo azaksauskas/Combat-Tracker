@@ -24,7 +24,7 @@ interface PlayState {
   /** "campaign": the battle belongs to an adventure; "town": a raid or a lair attack for the player's town. */
   mode: "skirmish" | "campaign" | "town";
   /** For town battles: what's being fought for. */
-  context?: { kind: "raid" | "lair"; faction: string } | null;
+  context?: { kind: "raid" | "lair"; faction: string; heroes?: string[] } | null;
   log: LogLine[];
   fx: Fx[];
   aiRunning: boolean;
