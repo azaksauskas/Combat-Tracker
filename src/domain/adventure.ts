@@ -33,6 +33,8 @@ export const EffectSchema = z.discriminatedUnion("type", [
     save: z.object({ ability: z.enum(ABILITIES), dc: z.number() }).optional(),
   }),
   z.object({ type: z.literal("rest"), kind: z.enum(["short", "long"]) }),
+  /** Someone the party met moves to the player's town when the adventure ends. */
+  z.object({ type: z.literal("settler"), name: z.string(), trade: z.string().optional() }),
 ]);
 export type Effect = z.infer<typeof EffectSchema>;
 

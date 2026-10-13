@@ -83,3 +83,23 @@ describe("player documents", () => {
     expect(readLegacySaves({ getItem: () => "{broken" })).toEqual({});
   });
 });
+
+describe("settlers from adventures", () => {
+  it("a settler effect recruits someone for the town and the chronicle says so", () => {
+    const adv = {
+      id: "a",
+      title: "Rescue",
+      blurb: "",
+      start: "s",
+      startingGold: 10,
+      scenes: {
+        s: { id: "s", title: "Cell", text: "", choices: [{ id: "free", label: "Free her", success: { effects: [{ type: "settler" as const, name: "Tamsin", trade: "miller" }, { type: "gold" as const, amount: 40 }], next: { end: "victory" as const } } }] },
+      },
+    };
+    const before = startAdventure(adv, 1);
+    const after = choose(before, adv, "free");
+    expect(after.recruits).toEqual([{ name: "Tamsin", trade: "miller" }]);
+    expect(after.ended).toBe("victory");
+    expect(chronicleStep(before, after, "Rescue").map((e) => e.text)).toContain("Tamsin, miller, will move to the heroes' town.");
+  });
+});

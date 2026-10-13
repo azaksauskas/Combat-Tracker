@@ -10,6 +10,7 @@ import { quitGame, startBattle, usePlay } from "./store";
 import { chosenParty } from "./party-store";
 import { chronicleFight, chronicleStep } from "./chronicle";
 import { addChronicle, useActiveProfile } from "../store/players";
+import { homecoming, noteLevel, packForAdventure, passTime } from "./town-store";
 import { useGame } from "../store/game";
 
 /** The adventure in progress. Saved to the active player's document after every step (see save-bind.ts). */
@@ -25,13 +26,30 @@ function set(state: CampaignState | null) {
   useCampaign.setState({ state });
   const player = useActiveProfile.getState().id;
   const title = adventureOf(state ?? before)?.title ?? "an adventure";
-  if (player) addChronicle(player, chronicleStep(before, state, title));
+  if (!player) return;
+  addChronicle(player, chronicleStep(before, state, title));
+  // Renown follows the best hero; the end of an adventure brings the party home.
+  const best = (s: CampaignState | null) => Math.max(0, ...(s?.party.heroes.map((h) => h.level) ?? []));
+  if (state && best(state) > best(before)) noteLevel(best(state));
+  const ending = (state?.ended && !before?.ended) || (before && !before.ended && !state);
+  if (ending) {
+    const last = state ?? before!;
+    const potions = Object.fromEntries(Object.entries(last.party.items).filter(([k, n]) => k.startsWith("potion") && n > 0));
+    // The adventure's starting purse stays behind; what they earned comes home.
+    const earned = Math.max(0, last.party.gold - (adventureOf(last)?.startingGold ?? 0));
+    homecoming(title, earned, potions, state?.ended === "victory" ? (last.recruits ?? []) : [], best(last));
+  }
 }
 const current = () => useCampaign.getState().state;
 
 export function beginAdventure(adv: Adventure) {
   quitGame();
-  set(startAdventure(adv, undefined, chosenParty()));
+  const s = startAdventure(adv, undefined, chosenParty());
+  // Potions brewed in town go along.
+  const potions = packForAdventure();
+  const items = { ...s.party.items };
+  for (const [k, n] of Object.entries(potions)) items[k] = (items[k] ?? 0) + n;
+  set({ ...s, party: { ...s.party, items } });
 }
 
 export function pickChoice(choiceId: string, heroKey?: string) {
@@ -40,6 +58,10 @@ export function pickChoice(choiceId: string, heroKey?: string) {
   if (!s || !adv) return;
   try {
     set(choose(s, adv, choiceId, heroKey));
+    // Each choice takes about an hour; a night's camp takes eight more.
+    const choice = adv.scenes[s.sceneId]?.choices.find((c) => c.id === choiceId);
+    const sleeps = [choice?.success, choice?.failure].some((o) => o?.effects?.some((e) => e.type === "rest" && e.kind === "long"));
+    passTime(sleeps ? 9 : 1);
   } catch (err) {
     if (err instanceof StoryError) toast.error(err.message);
     else throw err;
@@ -54,6 +76,7 @@ export const dismissLevelUp = () => {
 export const completeShortRest = (spend: Record<string, number>) => {
   const s = current();
   if (s) set(finishShortRest(s, spend));
+  passTime(1);
 };
 
 export const equipItem = (heroKey: string, itemId: string) => {
@@ -104,6 +127,7 @@ export function returnFromBattle(retreat = false) {
   const battle = usePlay.getState().scenario?.name ?? "a battle";
   if (player) addChronicle(player, [chronicleFight(adv.title, battle, done.outcome ?? "defeat", retreat && !game.outcome, done.round)]);
   set(finishFight(s, adv, done));
+  passTime(1);
   quitGame();
 }
 

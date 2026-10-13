@@ -82,8 +82,10 @@ export function updatePlayer(id: string, change: (doc: PlayerDoc) => PlayerDoc) 
   const base = usePlayers.getState().docs[id] ?? emptyPlayerDoc();
   const next: PlayerDoc = { ...change(base), savedBy: CLIENT_ID, rev: base.rev + 1, updatedAt: Date.now() };
   usePlayers.setState((s) => ({ docs: { ...s.docs, [id]: next } }));
+  // A subscriber may have saved a newer version meanwhile; always store the latest.
+  const latest = usePlayers.getState().docs[id] ?? next;
   getAdapter()
-    ?.savePlayer(id, next)
+    ?.savePlayer(id, latest)
     .catch((err: unknown) => toast.error("Could not save the game", { description: String(err) }));
 }
 

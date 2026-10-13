@@ -61,6 +61,10 @@ export function chronicleStep(before: CampaignState | null, after: CampaignState
     if (h.dead && !was.dead) out.push({ kind: "death", adventure: title, text: `${h.name} died.` });
   }
 
+  // People who'll move to the player's town.
+  for (const r of after.recruits ?? [])
+    if (!(before.recruits ?? []).some((x) => x.name === r.name)) out.push({ kind: "story", adventure: title, text: `${r.name}${r.trade ? `, ${r.trade},` : ""} will move to the heroes' town.` });
+
   // Story flags the DM may want to know about.
   const flags = after.flags.filter((f) => !before.flags.includes(f));
   if (flags.length) out.push({ kind: "story", adventure: title, text: `Story: ${flags.join(", ")}.`, flags });

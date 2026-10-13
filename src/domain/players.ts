@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CharacterSpecSchema } from "./character";
+import { TownSchema } from "./town";
 
 /**
  * Players of the between-session game. A small shared directory lists the
@@ -67,6 +68,12 @@ export const PlayerDocSchema = z.object({
   /** The battle in progress: { game, scenario, mode, log }. */
   battle: z.unknown().nullable().catch(null),
   chronicle: lenient(ChronicleEntrySchema),
+  /** The player's own town (null until founded). */
+  town: TownSchema.nullable().catch(null),
+  /** Whose town the player lives in: another profile's id, or null for their own. */
+  residence: z.string().nullable().catch(null),
+  /** Renown = the highest level any of the player's heroes has reached. */
+  renown: z.number().catch(1),
   /** Which open page wrote last, so a page ignores the echo of its own save. */
   savedBy: z.string().catch(""),
   rev: z.number().catch(0),

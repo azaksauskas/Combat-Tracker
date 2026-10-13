@@ -224,7 +224,7 @@ export const GOBLIN_TRAIL: Adventure = {
           label: "Bring her home to Millbrook",
           success: {
             text: "The whole village turns out with torches. Hobb weeps, the reeve pays up, and Edda the hunter buys the first round. Somewhere beyond the hill, something that sent the dead walking is still out there — but that's a story for another day.",
-            effects: [{ type: "gold", amount: 50 }, { type: "milestone", level: 3 }],
+            effects: [{ type: "gold", amount: 50 }, { type: "milestone", level: 3 }, { type: "settler", name: "Tamsin", trade: "miller's daughter" }],
             next: { end: "victory" },
           },
         },

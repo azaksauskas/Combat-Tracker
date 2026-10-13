@@ -7,6 +7,7 @@ import { allAdventures } from "../game/campaign-store";
 import { update, useGame } from "../store/game";
 import { createProfile, deleteProfile, renameProfile, setChronicleStatus, setRole, useActiveProfile, usePlayers } from "../store/players";
 import { DEFAULT_PICKS } from "../game/party-store";
+import { built, clockText, renownOf } from "../game/town";
 
 const KIND_ICON: Record<ChronicleEntry["kind"], string> = { adventure: "📜", fight: "⚔", loot: "💰", level: "⭐", story: "🔖", death: "✝" };
 
@@ -165,6 +166,8 @@ function Dot({ profile, small }: { profile: Profile; small?: boolean }) {
   return <span className={clsx("inline-block shrink-0 rounded-full", small ? "h-2 w-2" : "h-3 w-3")} style={{ background: profile.color }} />;
 }
 
+const profileName = (id: string) => useGame.getState().players.profiles.find((p) => p.id === id)?.name ?? "another player";
+
 function PlayerCard({ profile: p, doc, onDeleted }: { profile: Profile; doc: PlayerDoc | undefined; onDeleted: () => void }) {
   const [name, setName] = useState(p.name);
   const campaign = doc?.campaign as CampaignState | null | undefined;
@@ -195,7 +198,21 @@ function PlayerCard({ profile: p, doc, onDeleted }: { profile: Profile; doc: Pla
           Delete player
         </button>
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-3">
+        <div>
+          <h4 className="text-xs font-bold tracking-wider text-faint uppercase">Town · {renownOf(doc?.renown ?? 1).title}</h4>
+          {doc?.town ? (
+            <div className="text-sm">
+              <strong className="text-strong">{doc.town.name}</strong> <span className="text-muted">· {clockText(doc.town.hours)}</span>
+              <div className="text-xs text-muted">
+                {built(doc.town).length} buildings · {doc.town.settlers.length} settlers · {doc.town.gold} gold · {doc.town.food} food
+              </div>
+              {doc.residence && <div className="text-xs text-warn">Living in {profileName(doc.residence)}'s town</div>}
+            </div>
+          ) : (
+            <p className="text-sm text-muted italic">{doc?.residence ? `Lives in ${profileName(doc.residence)}'s town.` : "No town yet."}</p>
+          )}
+        </div>
         <div>
           <h4 className="text-xs font-bold tracking-wider text-faint uppercase">Characters</h4>
           {doc?.characters.length ? (

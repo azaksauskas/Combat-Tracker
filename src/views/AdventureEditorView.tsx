@@ -608,6 +608,7 @@ const EFFECT_LABELS: Record<Effect["type"], string> = {
   flag: "Set flag",
   damage: "Trap / damage",
   rest: "Rest",
+  settler: "Settler for the town",
 };
 
 const blankEffect = (type: Effect["type"]): Effect =>
@@ -619,6 +620,7 @@ const blankEffect = (type: Effect["type"]): Effect =>
     flag: { type: "flag", name: "" },
     damage: { type: "damage", dice: "2d6", damageType: "piercing", save: { ability: "dex", dc: 12 } },
     rest: { type: "rest", kind: "short" },
+    settler: { type: "settler", name: "", trade: "" },
   })[type] as Effect;
 
 function EffectsEditor({ effects, onChange }: { effects: Effect[]; onChange: (e: Effect[]) => void }) {
@@ -677,6 +679,13 @@ function EffectFields({ effect: e, onChange }: { effect: Effect; onChange: (e: E
       );
     case "flag":
       return <input className="field w-40 py-0.5" placeholder="e.g. found-map" value={e.name} aria-label="Flag name" onChange={(x) => onChange({ ...e, name: x.target.value.trim() })} />;
+    case "settler":
+      return (
+        <>
+          <input className="field w-32 py-0.5" placeholder="Name" value={e.name} aria-label="Settler's name" onChange={(x) => onChange({ ...e, name: x.target.value })} />
+          <input className="field w-32 py-0.5" placeholder="Trade, e.g. blacksmith" value={e.trade ?? ""} aria-label="Settler's trade" onChange={(x) => onChange({ ...e, trade: x.target.value || undefined })} />
+        </>
+      );
     case "rest":
       return (
         <select className="field w-auto py-0.5" value={e.kind} aria-label="Rest" onChange={(x) => onChange({ ...e, kind: x.target.value as "short" | "long" })}>

@@ -38,6 +38,8 @@ export interface CampaignState {
   /** Things to resolve before the next choice (level-ups, rests, a fight). */
   pending: Pending[];
   ended: null | "victory" | "defeat";
+  /** People who will move to the player's town when the adventure ends. */
+  recruits?: { name: string; trade?: string }[];
   rngSeed: number;
   nextId: number;
 }
@@ -139,6 +141,12 @@ function applyEffects(s: CampaignState, effects: Effect[], rng: () => number) {
       }
       case "flag":
         if (!s.flags.includes(e.name)) s.flags = [...s.flags, e.name];
+        break;
+      case "settler":
+        if (!(s.recruits ?? []).some((r) => r.name === e.name)) {
+          s.recruits = [...(s.recruits ?? []), { name: e.name, ...(e.trade ? { trade: e.trade } : {}) }];
+          say(s, "reward", `${e.name} will come and live in your town.`);
+        }
         break;
       case "damage": {
         const heroes = s.party.heroes.map((h) => {

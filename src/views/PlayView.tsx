@@ -15,6 +15,7 @@ import { beginAdventure, returnFromBattle, useCampaign } from "../game/campaign-
 import { POTIONS } from "../game/engine";
 import { distanceFt } from "../game/board";
 import { AdventureView } from "./AdventureView";
+import { AwayReportDialog, TownView } from "./TownView";
 import { CharacterBuilder } from "../components/CharacterBuilder";
 import type { CharacterSpec } from "../domain/character";
 import { newId } from "../domain/combat";
@@ -36,9 +37,43 @@ export function PlayView() {
   const active = profiles.find((p) => p.id === activeId);
   if (!active) return <WhoIsPlaying />;
   if (!loaded) return <p className="mt-20 animate-pulse text-center text-muted">Loading {active.name}'s game…</p>;
-  if (game) return <Battle game={game} />;
-  if (campaign) return <AdventureView state={campaign} />;
-  return <ScenarioPicker />;
+  return (
+    <>
+      {game ? <Battle game={game} /> : campaign ? <AdventureView state={campaign} /> : <Home />}
+      <AwayReportDialog />
+    </>
+  );
+}
+
+/** Between adventures: your town, or setting out. */
+function Home() {
+  const [tab, setTab] = useState<"town" | "adventure">("town");
+  return (
+    <div className="mx-auto w-full max-w-6xl space-y-4">
+      <div className="relative flex items-center gap-1 border-b border-line" role="tablist">
+        {(
+          [
+            ["town", "🏘 Town"],
+            ["adventure", "🗺 Adventures & skirmishes"],
+          ] as const
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            role="tab"
+            aria-selected={tab === k}
+            className={clsx("-mb-px rounded-t-md border px-4 py-2 font-display text-sm", tab === k ? "border-line border-b-surface bg-surface text-accent" : "border-transparent text-muted hover:text-strong")}
+            onClick={() => setTab(k)}
+          >
+            {label}
+          </button>
+        ))}
+        <span className="ml-auto">
+          <PlayingAs />
+        </span>
+      </div>
+      {tab === "town" ? <TownView /> : <ScenarioPicker />}
+    </div>
+  );
 }
 
 function ScenarioPicker() {
@@ -67,8 +102,7 @@ function ScenarioPicker() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8">
-      <header className="relative">
-        <PlayingAs />
+      <header>
         <h2 className="text-3xl font-bold text-accent">Play</h2>
         <p className="text-sm text-muted">A solo skirmish with the 2024 rules. You command the party; the monsters fight back.</p>
       </header>
@@ -219,7 +253,7 @@ function PlayingAs() {
   const p = useGame((s) => s.players.profiles.find((x) => x.id === activeId));
   if (!p) return null;
   return (
-    <div className="absolute top-0 right-0 flex items-center gap-2 text-sm text-muted">
+    <div className="flex items-center gap-2 text-sm text-muted">
       <span className="inline-block h-3 w-3 rounded-full" style={{ background: p.color }} />
       Playing as <strong className="text-strong">{p.name}</strong>
       <button className="btn btn-ghost px-2 py-0.5 text-xs" onClick={() => useActiveProfile.setState({ id: null })}>

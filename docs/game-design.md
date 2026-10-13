@@ -85,15 +85,14 @@ travelled, scaled down while the game only supports levels 1–3:
 
 ### Time
 
-- The world has a clock. **While a player is in the game it runs in real
-  time** at a rate the DM sets.
+- The world has a clock. **While a player is in the game, 1 real minute is
+  1 game hour.**
 - **Long actions jump it forward:** sleeping (a long rest is 8 hours),
   travelling by waystone, crafting, building.
-- **While a player is away** nothing waits: on the next visit the game
-  works out how long it's been, simulates the town day by day (income,
-  construction, events, raids) with the seeded RNG, and opens with a
-  "While you were away…" report. Catch-up is capped so a long break
-  doesn't end in ruin.
+- **While a player is away** the world runs at real speed (a week away is
+  a game week): on the next visit the game simulates the town hour by hour
+  (income, construction, events) with the seeded RNG and opens with a
+  "While you were away…" report. Catch-up is capped at 30 game days.
 - Each town keeps its own clock; a hero who joins another town lives on
   that town's clock.
 - Open for later: whether the DM's real sessions should also move the
@@ -251,3 +250,29 @@ picker into a real sign-in without changing the data model.
     `firestore.rules.draft` sketches the rules (each player writes only
     their own document; the DM reads all). Until then anyone with the link
     can pick any profile.
+- **M8 done:** towns and time (the 🏘 Town tab on the Play page).
+  - Found a town: a hall, some gold, food and materials. Build houses,
+    farms, a lumber camp, market, tavern, apothecary and watchtowers (the
+    smithy waits for M9). One project at a time; each takes game hours and
+    costs gold and materials. Renown limits the number of buildings (4 /
+    7 / 11 for levels 1 / 2 / 3).
+  - Settlers arrive when there are beds (far more often with a tavern),
+    work the buildings in the order they were built, eat a food a day and
+    leave when food runs out. People rescued in adventures move in when the
+    adventure ends (new "Settler for the town" effect; Tamsin in The Goblin
+    Trail).
+  - Every morning: production, then the day's events (merchant caravans,
+    thieves, storms, good harvests, travellers). Thieves grow bolder as the
+    town's power grows, less so with a watchtower, more so with the owner
+    away.
+  - The clock: 1 minute = 1 hour while on the Play page; real speed while
+    away, with the "While you were away…" report on return. Sleeping (8 h)
+    and helping out (1 day) jump it; each adventure choice takes an hour,
+    a night's camp 8 more, a battle an hour.
+  - Adventures and the town: potions brewed by the apothecary go with the
+    party; what the party earned and the potions left come home at the
+    end; renown follows the best hero's level.
+  - Waystone: move into another player's town (if open; 6 hours of travel)
+    and back home. Your own town carries on without you; theirs keeps its
+    owner's clock.
+  - The DM's Players page shows each player's town and renown.
