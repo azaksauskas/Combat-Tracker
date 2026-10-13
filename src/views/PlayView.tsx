@@ -6,6 +6,7 @@ import { averageDamage, hitChance } from "../game/ai";
 import { canAct, checkTarget, currentUnit } from "../game/engine";
 import { GameBoard, type BoardMode } from "../game/GameBoard";
 import { SCENARIOS, encounterScenario, type Scenario } from "../game/scenarios";
+import { mapScenario } from "../game/maps";
 import type { GameState, Unit } from "../game/state";
 import { dispatch, quitGame, runAi, startGame, usePlay } from "../game/store";
 import { useGame } from "../store/game";
@@ -37,6 +38,9 @@ export function PlayView() {
 function ScenarioPicker() {
   const encounters = useGame((s) => s.library.encounters);
   const custom = useGame((s) => s.library.adventures);
+  const maps = useGame((s) => s.library.maps);
+  const roster = useGame((s) => s.library.roster);
+  const myMaps = maps.map((m) => ({ map: m, sc: mapScenario(m, roster) })).filter((x) => x.sc.custom.length > 0 && x.sc.starts!.length > 0);
   const adventures = [...ADVENTURES, ...custom];
   const playable = encounters
     .map((e) => encounterScenario(e.name, e.combatants))
@@ -81,6 +85,12 @@ function ScenarioPicker() {
         <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">Quick skirmish</h3>
         <ul className="grid gap-3 md:grid-cols-3">{SCENARIOS.map(card)}</ul>
       </section>
+      {myMaps.length > 0 && (
+        <section>
+          <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">Your maps</h3>
+          <ul className="grid gap-3 md:grid-cols-3">{myMaps.map((x) => card(x.sc))}</ul>
+        </section>
+      )}
       {playable.length > 0 && (
         <section>
           <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">From your saved encounters</h3>

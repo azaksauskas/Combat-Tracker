@@ -28,6 +28,7 @@ Copy `.env.example` to `.env.local` to configure it. Set `VITE_SYNC_BACKEND=loca
 | `#/info`      | DM reference (conditions)             |
 | `#/play`      | The solo game: party, adventures, skirmishes |
 | `#/adventures`| Adventure editor                      |
+| `#/maps`      | Battle map editor for the game        |
 
 Old `#admin` style links redirect automatically.
 

@@ -17,6 +17,8 @@ export interface Scenario {
   monsters: string[];
   /** 2024 encounter difficulty for a level-1 party of four. */
   difficulty?: "Low" | "Moderate" | "High";
+  /** Hero start squares in order; otherwise the "P" squares of the map. */
+  starts?: Cell[];
 }
 
 export const SCENARIOS: Scenario[] = [
@@ -122,7 +124,7 @@ function uniqueNames(units: UnitSetup[]) {
 
 export function scenarioSetup(sc: Scenario, members: ContentEntry[] = PARTY) {
   const board = boardFromAscii(sc.map.map((r) => r.replace(/[P1-9]/g, ".")));
-  const partyCells = starts(sc.map, (c) => c === "P");
+  const partyCells = sc.starts ?? starts(sc.map, (c) => c === "P");
   const monsterCells = starts(sc.map, (c) => /[1-9]/.test(c));
   const party = members.map((p, i) => unitFrom(`p${i}`, p, "party", partyCells[i] ?? { x: 0, y: i }));
   const monsters = sc.monsters.map((m, i) => unitFrom(`m${i}`, m, "enemy", monsterCells[i] ?? { x: board.width - 1, y: i }));

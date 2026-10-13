@@ -28,6 +28,7 @@
   --color-token-player: var(--token-player);
   --color-token-monster: var(--token-monster);
   --color-monster-line: var(--monster-line);
+  --color-map-bg: var(--map-bg);
   --font-display: "Cinzel", serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }

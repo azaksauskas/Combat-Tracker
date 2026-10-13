@@ -218,3 +218,16 @@ picker into a real sign-in without changing the data model.
     scene. Your adventures appear on the Play page.
   - Not yet: subclass and feat choices, levels above 3, Wizard spell
     choices, images in scenes, and a visual scene graph.
+- **M6 done:** map editor (🧱 Battle maps in the DM menu).
+  - Paint walls and difficult terrain by clicking or dragging (right-click
+    erases), place up to four numbered hero start squares, and place
+    monsters from the SRD list or from your roster (any entry with a stat
+    block). Keys 1–5 switch tools; "Wall the edges" outlines the map; maps
+    from 6×6 to 30×20.
+  - Live summary: monster count, 2024 encounter difficulty for a party of
+    level 1–3, and checks (no starts, no monsters, deleted roster entries,
+    monsters walled off from the heroes).
+  - "Run 20 AI fights" plays the map with your current party and reports
+    the win rate, rounds and heroes downed, for balancing.
+  - Built-in skirmishes can be copied into editable maps. Your maps appear
+    on the Play page and as fights in the adventure editor.

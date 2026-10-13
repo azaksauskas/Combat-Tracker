@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { produce, type Draft } from "immer";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { ADVENTURES } from "../content/adventures";
@@ -13,6 +13,7 @@ import { ITEMS, MAX_LEVEL } from "../game/party";
 import { SCENARIOS } from "../game/scenarios";
 import { SKILLS } from "../game/skills";
 import { update, useGame } from "../store/game";
+import { useLibraryDraft } from "../store/useLibraryDraft";
 
 /**
  * The DM's adventure editor: scenes, choices, skill checks, effects and
@@ -116,39 +117,19 @@ export function AdventureEditorView() {
 
 // --- Editor ------------------------------------------------------------------------------
 
-/** Local draft, saved to the library half a second after the last change. */
-function useAutosave(saved: Adventure) {
-  const [draft, setDraft] = useState(saved);
-  const pending = useRef<Adventure | null>(null);
-  const flush = () => {
-    const next = pending.current;
-    if (!next) return;
-    pending.current = null;
-    update("library", (d) => {
-      const i = d.adventures.findIndex((a) => a.id === next.id);
-      if (i >= 0) d.adventures[i] = next;
-    });
-  };
-  useEffect(() => {
-    if (draft === saved) return;
-    pending.current = draft;
-    const t = setTimeout(flush, 500);
-    return () => clearTimeout(t);
-  }, [draft]);
-  // Save whatever is left when leaving the editor.
-  useEffect(() => flush, []);
-  const edit = (recipe: (d: Draft<Adventure>) => void) => setDraft((a) => produce(a, recipe));
-  return { draft, setDraft, edit, flush };
-}
-
 function Editor({ saved, onDeleted }: { saved: Adventure; onDeleted: () => void }) {
-  const { draft, setDraft, edit, flush } = useAutosave(saved);
+  const { draft, setDraft, edit, flush } = useLibraryDraft("adventures", saved);
   const encounters = useGame((s) => s.library.encounters);
+  const maps = useGame((s) => s.library.maps);
   const navigate = useNavigate();
   const [sceneId, setSceneId] = useState(draft.start in draft.scenes ? draft.start : (Object.keys(draft.scenes)[0] ?? null));
   const fights = useMemo(
-    () => [...SCENARIOS.map((s) => ({ id: s.id, name: s.name })), ...encounters.map((e) => ({ id: `encounter:${e.id}`, name: `Saved: ${e.name}` }))],
-    [encounters],
+    () => [
+      ...SCENARIOS.map((s) => ({ id: s.id, name: s.name })),
+      ...maps.map((m) => ({ id: `map:${m.id}`, name: `Map: ${m.name}` })),
+      ...encounters.map((e) => ({ id: `encounter:${e.id}`, name: `Saved: ${e.name}` })),
+    ],
+    [encounters, maps],
   );
   const issues = useMemo(() => lintAdventure(draft, fights.map((f) => f.id)), [draft, fights]);
   const scene = sceneId ? draft.scenes[sceneId] : undefined;

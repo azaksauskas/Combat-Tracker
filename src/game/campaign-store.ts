@@ -6,6 +6,7 @@ import { acknowledge, choose, finishFight, finishShortRest, startAdventure, Stor
 import { equip, heroSetups, potionStash, unequip } from "./party";
 import { SCENARIOS, encounterScenario, setupFor, type Scenario } from "./scenarios";
 import type { UnitSetup } from "./engine";
+import { mapScenario } from "./maps";
 import { quitGame, startBattle, usePlay } from "./store";
 import { chosenParty } from "./party-store";
 import { useGame } from "../store/game";
@@ -62,8 +63,13 @@ export const unequipItem = (heroKey: string, itemId: string) => {
   if (s) set({ ...s, party: unequip(s.party, heroKey, itemId) });
 };
 
-/** A built-in scenario, or "encounter:<id>" for one of the DM's saved encounters. */
+/** A built-in scenario, "map:<id>" for one of the DM's maps, or "encounter:<id>" for a saved encounter. */
 export function findScenario(id: string): (Scenario & { custom?: UnitSetup[] }) | undefined {
+  if (id.startsWith("map:")) {
+    const { maps, roster } = useGame.getState().library;
+    const map = maps.find((m) => `map:${m.id}` === id);
+    return map ? mapScenario(map, roster) : undefined;
+  }
   if (id.startsWith("encounter:")) {
     const enc = useGame.getState().library.encounters.find((e) => `encounter:${e.id}` === id);
     return enc ? { ...encounterScenario(enc.name, enc.combatants), id } : undefined;

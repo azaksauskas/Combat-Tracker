@@ -2,8 +2,8 @@ import type { Advantage } from "../domain/attack";
 import { parseDice } from "../domain/dice";
 import { actionDamage, type DamagePart, type StatAction } from "../domain/statblock";
 import { distanceFt, fromKey, key, lineOfSight, type Cell } from "./board";
-import { canAct, checkTarget, currentUnit, reachable, type Command } from "./engine";
-import type { GameState, Unit } from "./state";
+import { apply, canAct, checkTarget, currentUnit, reachable, type Command } from "./engine";
+import { GameError, type GameState, type Unit } from "./state";
 
 /**
  * Simple, readable monster tactics, one command at a time:
@@ -128,4 +128,19 @@ export function nextAiCommand(s: GameState): Command {
     return { type: "dash", unitId: u.id };
   }
   return end;
+}
+
+/** Lets the AI play both sides until someone wins (tests, balance checks, the map editor's trial runs). */
+export function autoplay(state: GameState, limit = 2000): GameState {
+  let s = state;
+  for (let i = 0; i < limit && !s.outcome; i++) {
+    const cmd = nextAiCommand(s);
+    try {
+      s = apply(s, cmd).state;
+    } catch (err) {
+      if (err instanceof GameError) throw new Error(`AI issued an invalid command ${JSON.stringify(cmd)}: ${err.message}`);
+      throw err;
+    }
+  }
+  return s;
 }
