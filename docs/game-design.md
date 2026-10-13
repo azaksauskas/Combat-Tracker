@@ -313,6 +313,26 @@ picker into a real sign-in without changing the data model.
     is (shown with its reasons), far more often with a tavern, and judge it
     before staying; a staffed tavern can hire a worker for 20 gold.
 
+- **M10 done:** region and threats.
+  - Factions: four built in (The Red Fang goblins, River Road Bandits, the
+    Restless Dead, the Cult of the Hollow Eye), each with an alignment, a
+    tribute, the renown at which they notice heroes, and a raid battle and
+    a lair battle. 🏴 Factions in the DM menu adds your own, with any
+    skirmish, map or saved encounter as their battles.
+  - Each morning a faction's attention to a town grows with the town's
+    power, faster when the town's reputation offends its alignment and
+    slower with a watchtower. Stages: scouts seen → tribute demanded with a
+    3-day deadline (or, for factions that take no gold, a raid announced) →
+    raid by a set hour. Factions that share the town's outlook turn
+    friendly and send traders.
+  - Answers: pay (they'll be back), refuse (they raid in a day), defend the
+    town on the battle screen, or strike their lair: win and the faction is
+    broken for good, with loot. Undefended or lost raids take a share of
+    gold, food and materials and shake the settlers.
+  - Town battles use the chosen party with its mods and the town's potions,
+    salvage iron and dust, move the clock and go in the chronicle; the DM's
+    Players page shows each town's threats.
+
 ## Future ideas
 
 - **A kids' version for playing with a child**, along the lines of

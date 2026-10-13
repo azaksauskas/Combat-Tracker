@@ -16,6 +16,7 @@ import { POTIONS } from "../game/engine";
 import { distanceFt } from "../game/board";
 import { AdventureView } from "./AdventureView";
 import { AwayReportDialog, TownView } from "./TownView";
+import { finishTownBattle } from "../game/town-store";
 import { CharacterBuilder } from "../components/CharacterBuilder";
 import type { CharacterSpec } from "../domain/character";
 import { newId } from "../domain/combat";
@@ -293,9 +294,12 @@ function Battle({ game }: { game: GameState }) {
             {game.outcome ? (game.outcome === "victory" ? "Victory!" : "Defeat") : aiRunning ? "Monsters are acting…" : active ? `${active.name}'s turn` : ""}
           </p>
         </div>
-        {playMode === "campaign" ? (
+        {playMode === "campaign" || playMode === "town" ? (
           !game.outcome && (
-            <button className="btn btn-ghost" onClick={() => confirm("Retreat? It counts as losing this fight.") && returnFromBattle(true)}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => confirm("Retreat? It counts as losing this fight.") && (playMode === "town" ? finishTownBattle(true) : returnFromBattle(true))}
+            >
               Retreat
             </button>
           )
@@ -654,7 +658,8 @@ function CombatLog({ lines }: { lines: { id: number; text: string; tone: string 
 
 function Outcome({ game }: { game: GameState }) {
   const scenario = usePlay((s) => s.scenario);
-  const campaign = usePlay((s) => s.mode) === "campaign";
+  const playMode = usePlay((s) => s.mode);
+  const campaign = playMode === "campaign";
   const won = game.outcome === "victory";
   const fallen = game.units.filter((u) => u.side === "party" && u.dead).length;
   const downed = game.units.filter((u) => u.side === "party" && !u.dead && u.hp <= 0).length;
@@ -667,7 +672,11 @@ function Outcome({ game }: { game: GameState }) {
           {won && (fallen || downed) ? ` ${fallen ? `${fallen} fallen` : ""}${fallen && downed ? ", " : ""}${downed ? `${downed} unconscious` : ""}.` : ""}
         </p>
         <div className="mt-4 flex flex-col gap-2">
-          {campaign ? (
+          {playMode === "town" ? (
+            <button className="btn btn-primary font-display" onClick={() => finishTownBattle()}>
+              Back to town
+            </button>
+          ) : campaign ? (
             <button className="btn btn-primary font-display" onClick={() => returnFromBattle()}>
               Continue the adventure
             </button>

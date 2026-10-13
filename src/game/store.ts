@@ -21,8 +21,10 @@ export interface Fx {
 interface PlayState {
   game: GameState | null;
   scenario: (Scenario & { custom?: UnitSetup[] }) | null;
-  /** "campaign": the battle belongs to an adventure and reports back to it. */
-  mode: "skirmish" | "campaign";
+  /** "campaign": the battle belongs to an adventure; "town": a raid or a lair attack for the player's town. */
+  mode: "skirmish" | "campaign" | "town";
+  /** For town battles: what's being fought for. */
+  context?: { kind: "raid" | "lair"; faction: string } | null;
   log: LogLine[];
   fx: Fx[];
   aiRunning: boolean;
@@ -99,9 +101,10 @@ export function startBattle(
   units: UnitSetup[],
   opts: GameOptions,
   mode: PlayState["mode"],
+  context: PlayState["context"] = null,
 ) {
   const { state, events } = createGame(board, units, randomSeed(), opts);
-  usePlay.setState({ scenario, mode, log: [], fx: [], aiRunning: false });
+  usePlay.setState({ scenario, mode, context, log: [], fx: [], aiRunning: false });
   record(events, state);
   runAi();
 }
@@ -125,5 +128,5 @@ export function dispatch(cmd: Command): string | null {
 }
 
 export function quitGame() {
-  usePlay.setState({ game: null, scenario: null, mode: "skirmish", log: [], fx: [], aiRunning: false });
+  usePlay.setState({ game: null, scenario: null, mode: "skirmish", context: null, log: [], fx: [], aiRunning: false });
 }

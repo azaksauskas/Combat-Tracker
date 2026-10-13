@@ -17,6 +17,7 @@ const NAV = [
   { to: "/adventures", label: "📖 Adventures" },
   { to: "/maps", label: "🧱 Battle maps" },
   { to: "/players", label: "👥 Players" },
+  { to: "/factions", label: "🏴 Factions" },
 ];
 
 function ThemeButton({ className }: { className?: string }) {

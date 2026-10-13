@@ -30,6 +30,7 @@ Copy `.env.example` to `.env.local` to configure it. Set `VITE_SYNC_BACKEND=loca
 | `#/adventures`| Adventure editor                      |
 | `#/maps`      | Battle map editor for the game        |
 | `#/players`   | Players, their progress, the chronicle |
+| `#/factions`  | Factions that threaten the players' towns |
 
 Old `#admin` style links redirect automatically.
 

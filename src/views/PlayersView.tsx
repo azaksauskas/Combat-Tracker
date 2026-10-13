@@ -8,6 +8,8 @@ import { update, useGame } from "../store/game";
 import { createProfile, deleteProfile, renameProfile, setChronicleStatus, setRole, useActiveProfile, usePlayers } from "../store/players";
 import { DEFAULT_PICKS } from "../game/party-store";
 import { built, clockText, renownOf } from "../game/town";
+import { STAGE_TEXT } from "../game/region";
+import { allFactions } from "../game/town-store";
 
 const KIND_ICON: Record<ChronicleEntry["kind"], string> = { adventure: "📜", fight: "⚔", loot: "💰", level: "⭐", story: "🔖", death: "✝" };
 
@@ -208,6 +210,14 @@ function PlayerCard({ profile: p, doc, onDeleted }: { profile: Profile; doc: Pla
                 {built(doc.town).length} buildings · {doc.town.settlers.length} settlers · {doc.town.gold} gold · {doc.town.food} food
               </div>
               {doc.residence && <div className="text-xs text-warn">Living in {profileName(doc.residence)}'s town</div>}
+              {doc.town.threats.filter((th) => th.stage !== "quiet").length > 0 && (
+                <div className="text-xs text-muted">
+                  {doc.town.threats
+                    .filter((th) => th.stage !== "quiet")
+                    .map((th) => `${allFactions().find((f) => f.id === th.faction)?.name ?? th.faction}: ${STAGE_TEXT[th.stage].toLowerCase()}`)
+                    .join(" · ")}
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-sm text-muted italic">{doc?.residence ? `Lives in ${profileName(doc.residence)}'s town.` : "No town yet."}</p>

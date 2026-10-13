@@ -5,6 +5,8 @@ import { BUILDING_TYPES, type Town } from "../domain/town";
 import type { Profile } from "../domain/players";
 import { BUILDINGS, HIRE_COST, beds, built, cantBuild, clockText, durationText, helpsLeft, isBuilt, opinion, power, renownOf, sleepHours, staffing, type SimContext } from "../game/town";
 import { reputationText } from "../domain/alignment";
+import { allFactions, payTributeTo, refuseTributeTo, startTownBattle } from "../game/town-store";
+import { STAGE_TEXT, threatOf } from "../game/region";
 import { bindTown, hireWorker, brew, build, buy, craftMod, found, goHome, helpOut, joinTown, liveHours, removeMod, renameTown, setOpen, sleep, today, townContext, useTownUi } from "../game/town-store";
 import { BREWS, COMPONENTS, MODS, SLOTS, applyMods, cantAfford, costText, fits, type Component, type Slot } from "../game/crafting";
 import { ITEMS } from "../game/party";
@@ -108,6 +110,8 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
         </dl>
       </header>
 
+      <Alarms town={t} hours={hours} />
+
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-4">
           <section className="rounded-lg border border-line bg-surface p-3 shadow" aria-label="Buildings">
@@ -189,6 +193,7 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
               <input type="checkbox" checked={t.open} onChange={(e) => setOpen(e.target.checked)} /> Other heroes may move in
             </label>
           </section>
+          <Region town={t} renown={renown} />
           <Waystone />
           <section className="rounded-lg border border-line bg-surface p-3 shadow" aria-label="Town log">
             <h3 className="mb-1 text-xs font-bold tracking-wider text-faint uppercase">What's been happening</h3>
@@ -204,6 +209,97 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
         </aside>
       </div>
     </div>
+  );
+}
+
+/** Tribute demands and coming raids, with what the heroes can do about them. */
+function Alarms({ town: t, hours }: { town: Town; hours: number }) {
+  const factions = allFactions();
+  const urgent = t.threats.filter((th) => th.stage === "demanding" || th.stage === "raiding");
+  if (!urgent.length) return null;
+  return (
+    <div className="space-y-2" role="alert">
+      {urgent.map((th) => {
+        const f = factions.find((x) => x.id === th.faction);
+        if (!f) return null;
+        const left = th.dueAt !== undefined ? Math.max(0, th.dueAt - hours) : 0;
+        return (
+          <div key={th.faction} className="flex flex-wrap items-center gap-2 rounded-lg border-2 border-danger bg-danger/10 p-3 text-sm">
+            <span className="text-2xl">{f.icon}</span>
+            <div className="min-w-0 flex-1">
+              <strong className="text-strong">
+                {th.stage === "demanding" ? `${f.name} demand ${th.demand} gold` : `${f.name} are coming to raid the town`}
+              </strong>
+              <div className="text-xs text-muted">
+                {th.dueAt !== undefined && `${durationText(Math.ceil(left))} left (${clockText(th.dueAt)}). `}
+                {th.stage === "raiding" ? "Defend the town, strike their lair first, or brace for losses." : "Pay, refuse (they'll raid), or strike their lair."}
+              </div>
+            </div>
+            {th.stage === "demanding" && (
+              <>
+                <button className="btn text-sm" disabled={t.gold < (th.demand ?? 0)} onClick={() => payTributeTo(f.id)}>
+                  Pay {th.demand} gold
+                </button>
+                <button className="btn text-sm" onClick={() => refuseTributeTo(f.id)}>
+                  Refuse
+                </button>
+              </>
+            )}
+            {th.stage === "raiding" && (
+              <button className="btn btn-primary text-sm font-display" onClick={() => startTownBattle("raid", f.id)}>
+                ⚔ Defend the town
+              </button>
+            )}
+            <button className="btn text-sm" onClick={() => startTownBattle("lair", f.id)}>
+              🏴 Strike their lair
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Every faction of the region and where it stands with this town. */
+function Region({ town: t, renown }: { town: Town; renown: number }) {
+  useGame((s) => s.library.factions);
+  const factions = allFactions();
+  return (
+    <section className="space-y-2 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Region">
+      <h3 className="text-xs font-bold tracking-wider text-faint uppercase">🗺 The region</h3>
+      <ul className="space-y-2">
+        {factions.map((f) => {
+          const th = threatOf(t, f.id);
+          const unknown = renown < f.minRenown && th.stage === "quiet";
+          return (
+            <li key={f.id} className="text-sm">
+              <div className="flex items-baseline justify-between gap-2">
+                <strong className="text-strong">
+                  {f.icon} {f.name}
+                </strong>
+                <span className={clsx("text-xs", th.stage === "friendly" || th.stage === "defeated" ? "text-heal" : th.stage === "quiet" ? "text-faint" : "text-danger")}>
+                  {unknown ? `Far away (renown ${f.minRenown})` : STAGE_TEXT[th.stage]}
+                </span>
+              </div>
+              <div className="text-xs text-muted">
+                {f.alignment} · {f.description}
+              </div>
+              {!unknown && th.stage !== "defeated" && th.stage !== "friendly" && (
+                <div className="mt-1 h-1.5 rounded bg-surface-3" title={`Attention ${Math.round(th.attention)}/100`}>
+                  <div className="h-1.5 rounded bg-danger" style={{ width: `${th.attention}%` }} />
+                </div>
+              )}
+              {th.stage === "watching" && (
+                <button className="btn mt-1 px-2 py-0.5 text-xs" onClick={() => startTownBattle("lair", f.id)}>
+                  🏴 Strike their lair
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="text-xs text-faint">Factions notice a town as its power grows, faster when its reputation offends them. Those who share your outlook turn friendly. A watchtower slows them down.</p>
+    </section>
   );
 }
 

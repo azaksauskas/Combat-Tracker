@@ -1,6 +1,8 @@
 import { MAX_TOWN_LOG, type Building, type BuildingType, type Settler, type Town, type TownEvent } from "../domain/town";
 import { axesOf, reputationText } from "../domain/alignment";
 import { mulberry32 } from "./rng";
+import type { Faction } from "../domain/faction";
+import { regionDay } from "./region";
 
 /**
  * Towns and the world clock. Pure: every function takes a town and returns a
@@ -111,6 +113,7 @@ export function foundTown(name: string, now: number, seed: number, gold = 30, re
     reputation,
     spirit: 0,
     lastTheft: -1000,
+    threats: [],
     buildings: [{ id: "hall", type: "hall" }],
     settlers: [],
     log: [{ at: DAWN, text: `${name.trim() || "The town"} is founded.`, tone: "good" }],
@@ -134,6 +137,8 @@ export interface SimContext {
   residents: number[];
   /** The owner is away living in someone else's town. */
   ownerAway?: boolean;
+  /** The region's factions (built-in and the DM's). */
+  factions?: Faction[];
 }
 
 export const power = (t: Town, ctx: SimContext) => t.settlers.length + 2 * built(t).length + 5 * ctx.renown + 5 * ctx.residents.reduce((n, r) => n + r, 0);
@@ -343,6 +348,8 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
   } else if (rng() < 0.05) {
     say("A traveller asked for a bed, but every bed is taken. Build a house.", "info");
   }
+  // The region takes notice.
+  if (ctx.factions?.length) t = regionDay(t, h, rng, ctx.factions, { power: power(t, ctx), watch: working(t, "watchtower") > 0, renown: ctx.renown }, say);
   // Pride in the heroes fades.
   if (t.spirit !== 0) t = { ...t, spirit: t.spirit - Math.sign(t.spirit) };
   if (rng() < 0.08) {

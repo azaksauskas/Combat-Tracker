@@ -8,6 +8,11 @@ import { BREWS, COMPONENTS, MODS, SLOTS, addComponents, cantAfford, fitMod, pay,
 import { useGame } from "../store/game";
 import { addChronicle, updatePlayer, useActiveProfile, usePlayers } from "../store/players";
 import { randomSeed } from "./rng";
+import type { Faction } from "../domain/faction";
+import { BUILTIN_FACTIONS, lairResult, payTribute, raidResult, refuseTribute } from "./region";
+import { findScenario } from "./campaign-store";
+import { setupFor } from "./scenarios";
+import { quitGame, startBattle, usePlay } from "./store";
 import { chosenParty } from "./party-store";
 import {
   ONLINE_MS_PER_HOUR,
@@ -49,7 +54,7 @@ export function townContext(ownerId: string): SimContext {
   const residents = Object.entries(docs)
     .filter(([id, d]) => id !== ownerId && d.residence === ownerId)
     .map(([, d]) => d.renown);
-  return { renown: owner?.renown ?? 1, residents, ownerAway: !!owner?.residence };
+  return { renown: owner?.renown ?? 1, residents, ownerAway: !!owner?.residence, factions: allFactions() };
 }
 
 function setTown(id: string, change: (t: Town, d: PlayerDoc) => Town) {
@@ -366,4 +371,79 @@ export function hireWorker() {
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   }
+}
+
+// --- The region: tribute, raids and lairs ------------------------------------------------
+
+/** Built-in factions plus the DM's own. */
+export const allFactions = (): Faction[] => [...BUILTIN_FACTIONS, ...useGame.getState().library.factions];
+const factionOf = (fid: string) => allFactions().find((f) => f.id === fid);
+
+function regionAction(fid: string, change: (t: Town, f: Faction) => Town) {
+  const id = me();
+  const f = factionOf(fid);
+  if (!id || !f) return;
+  try {
+    const t = docOf(id)?.town;
+    if (!t) return;
+    const next = change(t, f);
+    updatePlayer(id, (d) => ({ ...d, town: next }));
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export function payTributeTo(fid: string) {
+  regionAction(fid, payTribute);
+  const id = me();
+  const f = factionOf(fid);
+  if (id && f) addChronicle(id, [{ kind: "story", text: `Paid tribute to ${f.name}.` }]);
+}
+
+export function refuseTributeTo(fid: string) {
+  regionAction(fid, refuseTribute);
+  const id = me();
+  const f = factionOf(fid);
+  if (id && f) addChronicle(id, [{ kind: "story", text: `Refused to pay tribute to ${f.name}. A raid is coming.` }]);
+}
+
+/** Defend the town against a raid, or strike the faction's lair, on the battle screen. */
+export function startTownBattle(kind: "raid" | "lair", fid: string) {
+  const id = me();
+  const f = factionOf(fid);
+  const t = docOf(id)?.town;
+  if (!id || !f || !t) return;
+  const sc = findScenario(kind === "raid" ? f.raid : f.lair);
+  if (!sc) return toast.error(`${f.name}'s ${kind === "raid" ? "raid" : "lair"} battle no longer exists. Ask the DM to fix the faction.`);
+  const { board, units } = setupFor(sc, chosenParty());
+  const name = kind === "raid" ? `${f.name} raid ${t.name}` : `${f.name}'s lair`;
+  // Potions from the town's stores are at hand; what's left goes back.
+  startBattle({ ...sc, name }, board, units, { stash: { ...t.stash } }, "town", { kind, faction: fid });
+}
+
+/** Back from a town battle: apply the result to the town. */
+export function finishTownBattle(retreat = false) {
+  const id = me();
+  const { game, context, scenario } = usePlay.getState();
+  const f = context ? factionOf(context.faction) : undefined;
+  if (!id || !game || !context || !f) return quitGame();
+  const won = !retreat && game.outcome === "victory";
+  const result = context.kind === "raid" ? raidResult : lairResult;
+  updatePlayer(id, (d) => (d.town ? { ...d, town: { ...result(d.town, f, won), stash: { ...(game.stash ?? d.town.stash) } } } : d));
+  if (won) salvageBattle(game, scenario?.name ?? f.name);
+  addChronicle(id, [
+    {
+      kind: "fight",
+      text:
+        context.kind === "raid"
+          ? won
+            ? `Drove off a raid by ${f.name}.`
+            : `Failed to stop a raid by ${f.name}; the town was plundered.`
+          : won
+            ? `Broke ${f.name} in their lair. They won't be back.`
+            : `An attack on ${f.name}'s lair failed.`,
+    },
+  ]);
+  passTime(2);
+  quitGame();
 }

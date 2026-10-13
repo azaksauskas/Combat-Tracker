@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AdventureSchema } from "./adventure";
 import { CharacterSpecSchema } from "./character";
 import { SkirmishMapSchema } from "./skirmish-map";
+import { FactionSchema } from "./faction";
 import { PlayersDocSchema, type PlayersDoc } from "./players";
 import { StatBlockSchema } from "./statblock";
 
@@ -140,6 +141,7 @@ export const LibraryDocSchema = z.object({
   adventures: z.array(AdventureSchema).catch([]),
   characters: z.array(CharacterSpecSchema).catch([]),
   maps: z.array(SkirmishMapSchema).catch([]),
+  factions: z.array(FactionSchema).catch([]),
 });
 export type LibraryDoc = z.infer<typeof LibraryDocSchema>;
 

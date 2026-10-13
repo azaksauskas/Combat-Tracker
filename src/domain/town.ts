@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ThreatSchema } from "./faction";
 
 /**
  * A player's town: buildings, settlers, stores and its own clock. Kept in the
@@ -81,6 +82,8 @@ export const TownSchema = z.object({
   spirit: z.number().catch(0),
   /** Game hour of the last theft (safety). */
   lastTheft: z.number().catch(-1000),
+  /** The region's factions and how interested each is in this town. */
+  threats: lenient(ThreatSchema),
   /** Other players may move in. */
   open: z.boolean().catch(true),
   seed: z.number().catch(1),

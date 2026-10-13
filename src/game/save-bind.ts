@@ -17,7 +17,8 @@ import { CLIENT_ID, updatePlayer, useActiveProfile, usePlayers } from "../store/
 interface SavedBattle {
   game: GameState;
   scenario: (Scenario & { custom?: UnitSetup[] }) | null;
-  mode: "skirmish" | "campaign";
+  mode: "skirmish" | "campaign" | "town";
+  context?: { kind: "raid" | "lair"; faction: string } | null;
   log: LogLine[];
 }
 
@@ -35,6 +36,7 @@ function hydrate(id: string) {
     game: battle?.game ?? null,
     scenario: battle?.scenario ?? null,
     mode: battle?.mode ?? "skirmish",
+    context: battle?.context ?? null,
     log: battle?.log ?? [],
     fx: [],
     aiRunning: false,
@@ -75,9 +77,9 @@ function save() {
   timer = null;
   const id = boundTo;
   if (!id) return;
-  const { game, scenario, mode, log } = usePlay.getState();
+  const { game, scenario, mode, context, log } = usePlay.getState();
   const campaign = useCampaign.getState().state;
-  updatePlayer(id, (d) => ({ ...d, campaign, battle: game ? { game, scenario, mode, log } : null }));
+  updatePlayer(id, (d) => ({ ...d, campaign, battle: game ? { game, scenario, mode, context: context ?? null, log } : null }));
   lastRev = usePlayers.getState().docs[id]?.rev ?? lastRev;
 }
 
