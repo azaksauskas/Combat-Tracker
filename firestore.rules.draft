@@ -1,0 +1,35 @@
+// DRAFT, not deployed. Security rules for when logins arrive (after M7).
+//
+// Today the app signs in anonymously and anyone with the link can read and
+// write everything, as before the rewrite. With Firebase Auth:
+//   - a player profile's id becomes the player's auth uid
+//   - the DM gets a custom claim { dm: true } (set once with the Admin SDK)
+//   - each player can write only their own document under players/{uid}
+//
+// Paths match src/sync/firestore.ts.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isDM() { return signedIn() && request.auth.token.dm == true; }
+
+    match /artifacts/{appId}/public/data {
+      // combat, library, notes: the DM's tools. Players can read (player
+      // screen, shared adventures and maps) but only the DM changes them.
+      match /tracker/{doc} {
+        allow read: if signedIn();
+        allow write: if isDM();
+        // The profile directory: players may add or rename themselves.
+        // TODO when building logins: move each profile into its own
+        // players/{uid} document so this rule can check ownership instead.
+      }
+
+      // One document per player: their characters, saves and chronicle.
+      // The DM reads all of them and marks chronicle entries as seen.
+      match /players/{uid} {
+        allow read: if isDM() || (signedIn() && request.auth.uid == uid);
+        allow write: if isDM() || (signedIn() && request.auth.uid == uid);
+      }
+    }
+  }
+}

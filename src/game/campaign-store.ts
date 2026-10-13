@@ -1,6 +1,5 @@
 import { toast } from "sonner";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
 import { ADVENTURES } from "../content/adventures";
 import { acknowledge, choose, finishFight, finishShortRest, startAdventure, StoryError, type Adventure, type CampaignState } from "./adventure";
 import { equip, heroSetups, potionStash, unequip } from "./party";
@@ -9,21 +8,25 @@ import type { UnitSetup } from "./engine";
 import { mapScenario } from "./maps";
 import { quitGame, startBattle, usePlay } from "./store";
 import { chosenParty } from "./party-store";
+import { chronicleFight, chronicleStep } from "./chronicle";
+import { addChronicle, useActiveProfile } from "../store/players";
 import { useGame } from "../store/game";
 
-/** The adventure in progress, auto-saved after every step. */
-export const useCampaign = create<{ state: CampaignState | null }>()(
-  persist(() => ({ state: null as CampaignState | null }), {
-    name: "combat-tracker:campaign",
-    storage: createJSONStorage(() => localStorage),
-  }),
-);
+/** The adventure in progress. Saved to the active player's document after every step (see save-bind.ts). */
+export const useCampaign = create<{ state: CampaignState | null }>()(() => ({ state: null as CampaignState | null }));
 
 /** Built-in adventures first, then the DM's own from the library. */
 export const allAdventures = (): Adventure[] => [...ADVENTURES, ...useGame.getState().library.adventures];
 export const adventureOf = (s: CampaignState | null): Adventure | undefined => allAdventures().find((a) => a.id === s?.adventureId);
 
-const set = (state: CampaignState | null) => useCampaign.setState({ state });
+/** Every change to the adventure goes through here, and leaves a trail in the player's chronicle. */
+function set(state: CampaignState | null) {
+  const before = useCampaign.getState().state;
+  useCampaign.setState({ state });
+  const player = useActiveProfile.getState().id;
+  const title = adventureOf(state ?? before)?.title ?? "an adventure";
+  if (player) addChronicle(player, chronicleStep(before, state, title));
+}
 const current = () => useCampaign.getState().state;
 
 export function beginAdventure(adv: Adventure) {
@@ -97,6 +100,9 @@ export function returnFromBattle(retreat = false) {
   const game = usePlay.getState().game;
   if (!s || !adv || !game) return;
   const done = retreat && !game.outcome ? { ...game, outcome: "defeat" as const } : game;
+  const player = useActiveProfile.getState().id;
+  const battle = usePlay.getState().scenario?.name ?? "a battle";
+  if (player) addChronicle(player, [chronicleFight(adv.title, battle, done.outcome ?? "defeat", retreat && !game.outcome, done.round)]);
   set(finishFight(s, adv, done));
   quitGame();
 }

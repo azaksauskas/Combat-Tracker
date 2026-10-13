@@ -1,5 +1,6 @@
 import { AdventureEditorView } from "./views/AdventureEditorView";
 import { MapsView } from "./views/MapsView";
+import { PlayersView } from "./views/PlayersView";
 import { lazy, Suspense } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router";
 import { Toaster } from "sonner";
@@ -31,6 +32,7 @@ export function App() {
           <Route path="play" element={<PlayView />} />
           <Route path="adventures" element={<AdventureEditorView />} />
           <Route path="maps" element={<MapsView />} />
+          <Route path="players" element={<PlayersView />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

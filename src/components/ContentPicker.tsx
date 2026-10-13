@@ -3,10 +3,13 @@ import { PARTY, SRD_MONSTERS, type ContentEntry } from "../content/srd";
 import { characterEntry } from "../game/builder";
 import * as actions from "../store/actions";
 import { useGame } from "../store/game";
+import { usePlayers } from "../store/players";
 
 /** Built-in SRD monsters and the ready-made party, one click to add. */
 export function ContentPicker() {
   const characters = useGame((s) => s.library.characters);
+  const profiles = useGame((s) => s.players.profiles);
+  const docs = usePlayers((s) => s.docs);
   const add = (e: ContentEntry) => {
     const added = actions.addToCombat(e.build(), { rollInitiative: true });
     if (added) toast.success(`${added.name} joins the fight (init ${added.initiative})`);
@@ -50,7 +53,11 @@ export function ContentPicker() {
           + Add whole party
         </button>,
       )}
-      {characters.length > 0 && section("Your characters", characters.map(characterEntry))}
+      {characters.length > 0 && section("Shared characters", characters.map(characterEntry))}
+      {profiles.map((p) => {
+        const mine = docs[p.id]?.characters ?? [];
+        return mine.length > 0 ? <div key={p.id}>{section(`${p.name}'s characters`, mine.map(characterEntry))}</div> : null;
+      })}
       {section("Monsters (SRD 5.2)", SRD_MONSTERS)}
       <p className="text-xs text-faint">
         Rolls initiative (d20 + Dex) on add. Stat blocks give one-click attacks in the details panel. Monster content from the SRD 5.2 (CC-BY-4.0).

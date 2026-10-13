@@ -10,6 +10,7 @@ import { SCENARIOS } from "../game/scenarios";
 import { startGame } from "../game/store";
 import { update, useGame } from "../store/game";
 import { useLibraryDraft } from "../store/useLibraryDraft";
+import { ensurePlaying } from "../store/players";
 
 /**
  * Map editor for the game: paint walls and difficult terrain, place the
@@ -289,7 +290,7 @@ function MapEditor({ saved, onDeleted }: { saved: SkirmishMap; onDeleted: () => 
               disabled={errors.length > 0}
               onClick={() => {
                 flush();
-                startGame(mapScenario(draft, roster));
+                if (ensurePlaying()) startGame(mapScenario(draft, roster));
                 navigate("/play");
               }}
             >

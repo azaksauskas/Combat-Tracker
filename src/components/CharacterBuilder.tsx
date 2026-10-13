@@ -4,13 +4,13 @@ import { toast } from "sonner";
 import { BACKGROUND_NAMES, CLASS_NAMES, SPECIES_NAMES, STANDARD_ARRAY, type CharacterSpec, type ClassName } from "../domain/character";
 import { ABILITIES, ABILITY_NAMES, abilityMod, describeAction, formatMod, type Ability } from "../domain/statblock";
 import { BACKGROUNDS, CLASSES, SPECIES, buildCharacter, finalAbilities, suggestedSpec, validateSpec } from "../game/builder";
-import { update } from "../store/game";
+import { saveCharacter } from "../game/party-store";
 import { Dialog } from "./Dialog";
 
 /**
  * Level-1 character builder: class, species, background, standard array and
- * the background's +2 / +1, with a live character sheet. Saves to the synced
- * library, so built heroes show up on the Play page and in the tracker.
+ * the background's +2 / +1, with a live character sheet. Saves to the
+ * player's own synced document; the DM sees it in the tracker too.
  */
 export function CharacterBuilder({ initial, onClose }: { initial: CharacterSpec | null; onClose: () => void }) {
   return (
@@ -53,11 +53,7 @@ function BuilderForm({ initial, onClose }: { initial: CharacterSpec; onClose: ()
 
   const saveSpec = () => {
     if (errors.length) return;
-    update("library", (d) => {
-      const i = d.characters.findIndex((c) => c.id === spec.id);
-      if (i >= 0) d.characters[i] = spec;
-      else d.characters.push(spec);
-    });
+    saveCharacter(spec);
     toast.success(`${spec.name} is ready for adventure`);
     onClose();
   };

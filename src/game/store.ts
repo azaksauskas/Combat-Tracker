@@ -1,7 +1,6 @@
 import { chosenParty } from "./party-store";
 import { toast } from "sonner";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
 import { nextAiCommand } from "./ai";
 import type { Board } from "./board";
 import { apply, canAct, createGame, currentUnit, type Command, type GameOptions } from "./engine";
@@ -32,17 +31,8 @@ interface PlayState {
 const MAX_LOG = 300;
 let fxId = 1;
 
-export const usePlay = create<PlayState>()(
-  persist(
-    (): PlayState => ({ game: null, scenario: null, mode: "skirmish", log: [], fx: [], aiRunning: false }),
-    {
-      name: "combat-tracker:game",
-      storage: createJSONStorage(() => localStorage),
-      // The game auto-saves after every command; transient visuals don't.
-      partialize: ({ game, scenario, mode, log }) => ({ game, scenario, mode, log }),
-    },
-  ),
-);
+/** The battle in progress. Saved to the active player's document (see save-bind.ts). */
+export const usePlay = create<PlayState>()((): PlayState => ({ game: null, scenario: null, mode: "skirmish", log: [], fx: [], aiRunning: false }));
 
 function record(events: GameEvent[], state: GameState) {
   const { log } = usePlay.getState();

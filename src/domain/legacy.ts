@@ -44,5 +44,6 @@ export function migrateLegacyState(raw: unknown): Docs {
       })),
     }),
     notes: parseDoc("notes", { campaign: data.dmNotes ?? "" }),
+    players: parseDoc("players", {}),
   };
 }

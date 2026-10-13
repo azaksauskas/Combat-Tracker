@@ -231,3 +231,23 @@ picker into a real sign-in without changing the data model.
     the win rate, rounds and heroes downed, for balancing.
   - Built-in skirmishes can be copied into editable maps. Your maps appear
     on the Play page and as fights in the adventure editor.
+- **M7 done:** player profiles and the bridge to the table.
+  - "Who's playing?" on the Play page: pick or create a profile (the first
+    one is the DM's and takes over anything this browser saved before).
+    Each device remembers who's playing; "Switch" changes it.
+  - Each player has their own synced document: characters they built, the
+    party they picked, the adventure and battle in progress, and their
+    chronicle. Saves follow the player to any device; two open tabs stay in
+    step.
+  - The chronicle records what matters at the table: setting out, loot (gold,
+    items, XP), level-ups, deaths, story flags, battles won, lost or fled,
+    and how an adventure ended.
+  - 👥 Players (DM menu): every player with their characters, current
+    adventure, party HP and gold, and last activity; the chronicle feed
+    (new only or everything, per player) with "→ Notes" to append an entry
+    to the campaign notes, or ✓ to mark it seen. Players' characters also
+    appear in the tracker's content picker, so they can join a real fight.
+  - Logins prepared, not built: profile ids become auth uids, and
+    `firestore.rules.draft` sketches the rules (each player writes only
+    their own document; the DM reads all). Until then anyone with the link
+    can pick any profile.

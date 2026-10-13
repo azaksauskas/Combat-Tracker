@@ -2,7 +2,7 @@ import { produce, type Draft } from "immer";
 import { toast } from "sonner";
 import { create } from "zustand";
 import { migrateLegacyState } from "../domain/legacy";
-import { emptyDocs, parseDoc, type DocKey, type Docs } from "../domain/types";
+import { DOC_KEYS, emptyDocs, parseDoc, type DocKey, type Docs } from "../domain/types";
 import { createSyncAdapter, type SyncAdapter } from "../sync";
 
 /**
@@ -22,6 +22,8 @@ export const useGame = create<GameState>(() => ({
 }));
 
 let adapter: SyncAdapter | null = null;
+/** The connected backend (null until connect() has run). */
+export const getAdapter = () => adapter;
 
 export function update<K extends DocKey>(key: K, recipe: (draft: Draft<Docs[K]>) => void) {
   const prev = useGame.getState()[key];
@@ -61,7 +63,7 @@ export async function connect() {
       (key, raw) => {
         if (!first.has(key)) {
           first.set(key, raw);
-          if (first.size === 3) resolveFirst();
+          if (first.size === DOC_KEYS.length) resolveFirst();
         }
         useGame.setState({ [key]: parseDoc(key, raw) } as Partial<GameState>);
       },

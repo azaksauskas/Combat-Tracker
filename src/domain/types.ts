@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AdventureSchema } from "./adventure";
 import { CharacterSpecSchema } from "./character";
 import { SkirmishMapSchema } from "./skirmish-map";
+import { PlayersDocSchema, type PlayersDoc } from "./players";
 import { StatBlockSchema } from "./statblock";
 
 /**
@@ -151,13 +152,17 @@ export interface Docs {
   combat: CombatDoc;
   library: LibraryDoc;
   notes: NotesDoc;
+  /** Directory of player profiles for the between-session game. */
+  players: PlayersDoc;
 }
 export type DocKey = keyof Docs;
+export const DOC_KEYS: DocKey[] = ["combat", "library", "notes", "players"];
 
 export const DOC_SCHEMAS = {
   combat: CombatDocSchema,
   library: LibraryDocSchema,
   notes: NotesDocSchema,
+  players: PlayersDocSchema,
 } satisfies Record<DocKey, z.ZodType>;
 
 export function parseDoc<K extends DocKey>(key: K, raw: unknown): Docs[K] {
@@ -171,4 +176,5 @@ export const emptyDocs = (): Docs => ({
   combat: parseDoc("combat", {}),
   library: parseDoc("library", {}),
   notes: parseDoc("notes", {}),
+  players: parseDoc("players", {}),
 });

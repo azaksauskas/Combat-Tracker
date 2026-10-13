@@ -8,7 +8,7 @@ import { GameBoard, type BoardMode } from "../game/GameBoard";
 import { SCENARIOS, encounterScenario, type Scenario } from "../game/scenarios";
 import { mapScenario } from "../game/maps";
 import type { GameState, Unit } from "../game/state";
-import { dispatch, quitGame, runAi, startGame, usePlay } from "../game/store";
+import { dispatch, quitGame, startGame, usePlay } from "../game/store";
 import { useGame } from "../store/game";
 import { ADVENTURES } from "../content/adventures";
 import { beginAdventure, returnFromBattle, useCampaign } from "../game/campaign-store";
@@ -19,17 +19,23 @@ import { CharacterBuilder } from "../components/CharacterBuilder";
 import type { CharacterSpec } from "../domain/character";
 import { newId } from "../domain/combat";
 import { characterKey, suggestedSpec } from "../game/builder";
-import { MAX_PARTY, availableMembers, togglePick, usePartyPicks } from "../game/party-store";
-import { update } from "../store/game";
+import { MAX_PARTY, availableMembers, deleteCharacter, togglePick } from "../game/party-store";
+import { bindSaves } from "../game/save-bind";
+import { createProfile, useActiveProfile, usePlayers } from "../store/players";
+import { DEFAULT_PICKS } from "../game/party-store";
 
 /** Solo skirmish: your four heroes against an encounter, monsters run by the computer. */
+bindSaves();
+
 export function PlayView() {
   const game = usePlay((s) => s.game);
   const campaign = useCampaign((s) => s.state);
-  // A reload during the monsters' turn picks up where it left off.
-  useEffect(() => {
-    if (usePlay.getState().game) runAi();
-  }, []);
+  const activeId = useActiveProfile((s) => s.id);
+  const profiles = useGame((s) => s.players.profiles);
+  const loaded = usePlayers((s) => (activeId ? !!s.loaded[activeId] : false));
+  const active = profiles.find((p) => p.id === activeId);
+  if (!active) return <WhoIsPlaying />;
+  if (!loaded) return <p className="mt-20 animate-pulse text-center text-muted">Loading {active.name}'s game…</p>;
   if (game) return <Battle game={game} />;
   if (campaign) return <AdventureView state={campaign} />;
   return <ScenarioPicker />;
@@ -61,7 +67,8 @@ function ScenarioPicker() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8">
-      <header>
+      <header className="relative">
+        <PlayingAs />
         <h2 className="text-3xl font-bold text-accent">Play</h2>
         <p className="text-sm text-muted">A solo skirmish with the 2024 rules. You command the party; the monsters fight back.</p>
       </header>
@@ -104,8 +111,11 @@ function ScenarioPicker() {
 
 /** Choose up to four heroes from the ready-made party and the characters you built. */
 function PartyPicker() {
-  const characters = useGame((s) => s.library.characters);
-  const picks = usePartyPicks((s) => s.picks);
+  const shared = useGame((s) => s.library.characters);
+  const activeId = useActiveProfile((s) => s.id);
+  const mine = usePlayers((s) => (activeId ? s.docs[activeId]?.characters : undefined));
+  const picks = usePlayers((s) => (activeId ? s.docs[activeId]?.picks : undefined)) ?? [];
+  const characters = useMemo(() => [...shared, ...(mine ?? [])], [shared, mine]);
   const [editing, setEditing] = useState<CharacterSpec | null>(null);
   const members = availableMembers(characters);
   const custom = new Map(characters.map((c) => [characterKey(c), c]));
@@ -142,10 +152,7 @@ function PartyPicker() {
                     aria-label={`Delete ${p.label}`}
                     onClick={() => {
                       if (!confirm(`Delete ${p.label}?`)) return;
-                      if (on) togglePick(p.key);
-                      update("library", (d) => {
-                        d.characters = d.characters.filter((c) => c.id !== spec.id);
-                      });
+                      deleteCharacter(spec.id);
                     }}
                   >
                     🗑
@@ -159,6 +166,66 @@ function PartyPicker() {
       {picks.length === 0 && <p className="mt-1 text-xs text-danger">Pick at least one hero (the ready-made party goes otherwise).</p>}
       <CharacterBuilder initial={editing} onClose={() => setEditing(null)} />
     </section>
+  );
+}
+
+/** Pick (or create) who's playing on this device. Becomes a real sign-in later. */
+function WhoIsPlaying() {
+  const profiles = useGame((s) => s.players.profiles);
+  const [name, setName] = useState("");
+  const start = () => createProfile(name, profiles.length === 0 ? "dm" : "player", DEFAULT_PICKS);
+  return (
+    <div className="mx-auto mt-10 w-full max-w-xl space-y-5">
+      <header className="text-center">
+        <h2 className="text-3xl font-bold text-accent">Who's playing?</h2>
+        <p className="text-sm text-muted">Each player has their own heroes, adventures and saves, on any device.</p>
+      </header>
+      {profiles.length > 0 && (
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {profiles.map((p) => (
+            <li key={p.id}>
+              <button className="flex w-full items-center gap-3 rounded-lg border border-line bg-surface p-3 text-left shadow hover:border-accent" onClick={() => useActiveProfile.setState({ id: p.id })}>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-bold text-white" style={{ background: p.color }}>
+                  {p.name.charAt(0).toUpperCase()}
+                </span>
+                <span>
+                  <span className="block font-bold text-strong">{p.name}</span>
+                  <span className="block text-xs text-faint">{p.role === "dm" ? "Dungeon Master" : "Player"}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) start();
+        }}
+      >
+        <input className="field flex-1" placeholder={profiles.length ? "New player's name" : "Your name"} value={name} onChange={(e) => setName(e.target.value)} aria-label="New player's name" />
+        <button className="btn btn-primary font-display" disabled={!name.trim()}>
+          {profiles.length ? "Add player" : "Start"}
+        </button>
+      </form>
+      {profiles.length === 0 && <p className="text-center text-xs text-faint">The first profile is the DM's, and takes over anything this browser saved before.</p>}
+    </div>
+  );
+}
+
+function PlayingAs() {
+  const activeId = useActiveProfile((s) => s.id);
+  const p = useGame((s) => s.players.profiles.find((x) => x.id === activeId));
+  if (!p) return null;
+  return (
+    <div className="absolute top-0 right-0 flex items-center gap-2 text-sm text-muted">
+      <span className="inline-block h-3 w-3 rounded-full" style={{ background: p.color }} />
+      Playing as <strong className="text-strong">{p.name}</strong>
+      <button className="btn btn-ghost px-2 py-0.5 text-xs" onClick={() => useActiveProfile.setState({ id: null })}>
+        Switch
+      </button>
+    </div>
   );
 }
 

@@ -14,6 +14,7 @@ import { SCENARIOS } from "../game/scenarios";
 import { SKILLS } from "../game/skills";
 import { update, useGame } from "../store/game";
 import { useLibraryDraft } from "../store/useLibraryDraft";
+import { ensurePlaying } from "../store/players";
 
 /**
  * The DM's adventure editor: scenes, choices, skill checks, effects and
@@ -137,7 +138,7 @@ function Editor({ saved, onDeleted }: { saved: Adventure; onDeleted: () => void 
 
   const playtest = (from?: string) => {
     flush();
-    beginAdventure(from ? { ...draft, start: from } : draft);
+    if (ensurePlaying()) beginAdventure(from ? { ...draft, start: from } : draft);
     navigate("/play");
   };
 

@@ -29,6 +29,7 @@ Copy `.env.example` to `.env.local` to configure it. Set `VITE_SYNC_BACKEND=loca
 | `#/play`      | The solo game: party, adventures, skirmishes |
 | `#/adventures`| Adventure editor                      |
 | `#/maps`      | Battle map editor for the game        |
+| `#/players`   | Players, their progress, the chronicle |
 
 Old `#admin` style links redirect automatically.
 
@@ -72,7 +73,7 @@ Display preferences (theme, custom colours, sidebar, map layout) are stored per 
 
 ## Known limits / next steps
 
-- **No roles yet.** Anyone with the URL can open `#/admin`, as before. Firebase Auth with DM/player roles and matching Firestore rules is the next step toward a game.
+- **No roles yet.** Anyone with the URL can open `#/admin`, as before, and pick any player profile on the Play page. Firebase Auth with DM/player roles is prepared: each player's saves already live in their own document, and `firestore.rules.draft` sketches the rules.
 - **Last write wins.** Each document is written whole. That's fine for one DM, but simultaneous editors should move to per-combatant documents or transactions.
 - **Portraits are stored inline** as small JPEG data URLs (Firestore caps a document at 1 MiB). Firebase Storage would remove that limit.
 
