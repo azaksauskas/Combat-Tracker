@@ -51,6 +51,60 @@ Rules, classes and monsters come from the System Reference Document 5.2
 (CC-BY-4.0, attribution in the README). Content outside the SRD stays out of
 anything shared publicly. Your own homebrew comes from the roster.
 
+## Phase 2: the bridge between sessions
+
+The game becomes something your players play **between real sessions**.
+Each player has a hero and a town, the world keeps moving while they're
+away, and what happens flows back to the DM's table.
+
+### Renown: levels mean fame
+
+Levels stay as in 5e. A hero's level is also how far their name has
+travelled, scaled down while the game only supports levels 1–3:
+
+| Level | Renown | Opens up |
+| --- | --- | --- |
+| 1 | Unknown, a village name at most | Local errands, a first plot of land |
+| 2 | Known in the valley | People seek you out; found a proper village |
+| 3 | Known across the region | Rivals take notice; regional quests and threats |
+| 4–5 (later) | Known across the realm | Lords, factions, a bigger map |
+
+### Towns
+
+- **Every player has their own town** and can leave it at any time to
+  join another player's. A hero lives in one town at a time.
+- **Buildings** give the other systems a purpose: smithy (weapon and armor
+  mods), apothecary (potions), tavern (rumours, which are new quests, and
+  recruiting), shrine (healing, bringing back the fallen), watchtower and
+  walls (defence), market (selling, weekly income).
+- **Settlers** come from the story: people you rescue or befriend move in
+  and staff buildings.
+- **Power** = town size + the hero's renown. More power brings more
+  attention: tribute demands, raids (fought as skirmishes on the town's own
+  map) and rival factions whose lairs are dungeons the DM builds.
+
+### Time
+
+- The world has a clock. **While a player is in the game it runs in real
+  time** at a rate the DM sets.
+- **Long actions jump it forward:** sleeping (a long rest is 8 hours),
+  travelling by waystone, crafting, building.
+- **While a player is away** nothing waits: on the next visit the game
+  works out how long it's been, simulates the town day by day (income,
+  construction, events, raids) with the seeded RNG, and opens with a
+  "While you were away…" report. Catch-up is capped so a long break
+  doesn't end in ruin.
+- Each town keeps its own clock; a hero who joins another town lives on
+  that town's clock.
+- Open for later: whether the DM's real sessions should also move the
+  clock, so the side game and the table stay in step.
+
+### Logins (prepared, not built yet)
+
+Data is organised per player profile (characters, towns, saves, the
+weekly chronicle) so that adding Firebase Auth later turns the profile
+picker into a real sign-in without changing the data model.
+
 ## Milestones
 
 | | Delivers |
@@ -61,6 +115,12 @@ anything shared publicly. Your own homebrew comes from the roster.
 | **M3** | RPG layer: scenes, choices, skill checks, rests, items, XP, levels 2–3 |
 | **M4** | Spells and conditions with full effects; more classes and monsters |
 | **M5** | Character builder and adventure editor in the DM app |
+| **M6** | Map editor: paint walls, terrain, hero starts and monsters; maps for skirmishes, adventure fights, later towns and lairs |
+| **M7** | Player profiles and bridge prep: ownership of characters and saves, a chronicle of results for the DM (no logins yet) |
+| **M8** | Towns and time: founding a town, buildings, settlers, the world clock, catch-up simulation and the "while you were away" report |
+| **M9** | Mods and crafting through the smithy and apothecary |
+| **M10** | Region and threats: renown tiers, power, factions, raids, lairs as DM-built dungeons |
+| Later | Logins (Firebase Auth, DM and player roles, security rules); levels 4–5 |
 
 ## Status
 
