@@ -3,6 +3,7 @@ import type { CharacterSpec } from "../domain/character";
 import { update, useGame } from "../store/game";
 import { activeDoc, updatePlayer, useActiveProfile } from "../store/players";
 import { characterEntry } from "./builder";
+import { withMods } from "./crafting";
 
 /**
  * Which heroes go on the next adventure or skirmish (1–4), by content key.
@@ -24,8 +25,11 @@ export function resolveParty(picks: string[], characters: CharacterSpec[]): Cont
 /** Characters the active player can pick from: theirs plus any shared ones in the library. */
 export const myCharacters = (): CharacterSpec[] => [...useGame.getState().library.characters, ...(activeDoc()?.characters ?? [])];
 
-/** The party for the next fight or adventure. */
-export const chosenParty = () => resolveParty(activeDoc()?.picks ?? [], myCharacters());
+/** The party for the next fight or adventure, with the mods the smithy fitted. */
+export const chosenParty = () => {
+  const gear = activeDoc()?.gear ?? {};
+  return resolveParty(activeDoc()?.picks ?? [], myCharacters()).map((e) => withMods(e, gear[e.key]));
+};
 
 export function togglePick(key: string) {
   const id = useActiveProfile.getState().id;

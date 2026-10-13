@@ -120,6 +120,7 @@ picker into a real sign-in without changing the data model.
 | **M9** | Mods and crafting through the smithy and apothecary |
 | **M10** | Region and threats: renown tiers, power, factions, raids, lairs as DM-built dungeons |
 | Later | Logins (Firebase Auth, DM and player roles, security rules); levels 4–5 |
+| Idea | A kids' version to play with a child, based on Mausritter (mice adventurers, simpler rules); see "Future ideas" |
 
 ## Status
 
@@ -276,3 +277,30 @@ picker into a real sign-in without changing the data model.
     and back home. Your own town carries on without you; theirs keeps its
     owner's clock.
   - The DM's Players page shows each player's town and renown.
+- **M9 done:** crafting.
+  - Components: iron (salvaged from armed foes in battles won on
+    adventures), arcane dust (from the undead), herbs (gathered daily by a
+    staffed apothecary, and in good harvests). A staffed market sells all
+    three.
+  - Smithy: each hero has a weapon, armour and spell-focus slot; a new mod
+    replaces the old one. Honed edge (+1 damage), Balanced grip (+1 to
+    hit), Fire rune (+1d4 fire), Riveted plates (+1 AC), Focus crystal (+1
+    spell attack and save DC), Splitting lens (one more Magic Missile
+    dart). Mods stay with the hero across adventures and skirmishes, and
+    the chronicle tells the DM.
+  - Apothecary: brew Potions of Healing and Greater Healing to order.
+  - Crafting and brewing take game hours.
+  - Time limits: "Help out" works once per bed in the town per real day;
+    sleep only between 20:00 and 06:00, until dawn.
+  - Not yet: mods on spells learned at level 3 (fitted before levelling,
+    they apply to the spells known then).
+
+## Future ideas
+
+- **A kids' version for playing with a child**, along the lines of
+  Mausritter (brave mice, short rules, three stats, item slots that make
+  inventory physical). The engine can carry a second, simpler ruleset next
+  to 5e: the town, map editor, adventures and time would stay; combat would
+  use Mausritter-style rules (no attack rolls: roll damage, armour reduces
+  it, Strength takes the rest). Check Mausritter's licence for what can be
+  reused before building content from it.

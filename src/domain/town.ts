@@ -58,6 +58,12 @@ export const TownSchema = z.object({
   gold: z.number().catch(0),
   food: z.number().catch(0),
   materials: z.number().catch(0),
+  /** Crafting components: iron (salvaged weapons), herbs, arcane dust. */
+  components: z
+    .object({ iron: z.number().catch(0), herbs: z.number().catch(0), dust: z.number().catch(0) })
+    .catch({ iron: 0, herbs: 0, dust: 0 }),
+  /** "Help out" uses today (real calendar day): at most one per bed. */
+  helps: z.object({ day: z.string().catch(""), used: z.number().catch(0) }).catch({ day: "", used: 0 }),
   /** Potions brewed by the apothecary, waiting for the next adventure. */
   stash: z.record(z.string(), z.number()).catch({}),
   buildings: lenient(BuildingSchema),

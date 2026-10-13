@@ -3,8 +3,11 @@ import { useEffect, useState } from "react";
 import { Dialog } from "../components/Dialog";
 import { BUILDING_TYPES, type Town } from "../domain/town";
 import type { Profile } from "../domain/players";
-import { BUILDINGS, beds, built, cantBuild, clockText, durationText, isBuilt, power, renownOf, staffing } from "../game/town";
-import { bindTown, build, found, goHome, joinTown, liveHours, passTime, renameTown, setOpen, townContext, useTownUi } from "../game/town-store";
+import { BUILDINGS, beds, built, cantBuild, clockText, durationText, helpsLeft, isBuilt, power, renownOf, sleepHours, staffing } from "../game/town";
+import { bindTown, brew, build, buy, craftMod, found, goHome, helpOut, joinTown, liveHours, removeMod, renameTown, setOpen, sleep, today, townContext, useTownUi } from "../game/town-store";
+import { BREWS, COMPONENTS, MODS, SLOTS, applyMods, cantAfford, costText, fits, type Component, type Slot } from "../game/crafting";
+import { ITEMS } from "../game/party";
+import { availableMembers, myCharacters } from "../game/party-store";
 import { useGame } from "../store/game";
 import { useActiveProfile, usePlayers } from "../store/players";
 
@@ -89,12 +92,15 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
             · Renown: {r.title} · Power {power(t, ctx)}
           </p>
         </div>
-        <dl className="flex gap-4 text-center text-sm" aria-label="Stores">
+        <dl className="flex flex-wrap gap-x-4 gap-y-1 text-center text-sm" aria-label="Stores">
           <Stat label="Gold" value={t.gold} icon="🪙" />
           <Stat label="Food" value={t.food} icon="🍞" warn={t.food < t.settlers.length} />
           <Stat label="Materials" value={t.materials} icon="🪵" />
           <Stat label="Settlers" value={`${t.settlers.length}/${beds(t)}`} icon="🧑‍🌾" />
           <Stat label="Potions" value={Object.values(t.stash).reduce((a, b) => a + b, 0)} icon="🧪" />
+          {(Object.keys(COMPONENTS) as Component[]).map((k) => (
+            <Stat key={k} label={COMPONENTS[k].name} value={t.components[k]} icon={COMPONENTS[k].icon} />
+          ))}
         </dl>
       </header>
 
@@ -155,6 +161,8 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
             </ul>
           </section>
 
+          <Workshop town={t} />
+
           <section className="rounded-lg border border-line bg-surface p-3 shadow" aria-label="Settlers">
             <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">Settlers</h3>
             {t.settlers.length === 0 ? (
@@ -183,13 +191,16 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
             <h3 className="text-xs font-bold tracking-wider text-faint uppercase">Time</h3>
             <p className="text-xs text-muted">While you're here, a minute is an hour. While you're away, the town carries on at the pace of the real world.</p>
             <div className="grid grid-cols-2 gap-1">
-              <button className="btn text-sm" onClick={() => passTime(8, "The heroes slept")}>
-                💤 Sleep (8 h)
+              <button className="btn text-sm" onClick={sleep} disabled={sleepHours(hours) === null} title={sleepHours(hours) === null ? "Sleep comes after 20:00" : "Sleep until dawn"}>
+                💤 Sleep{sleepHours(hours) !== null ? ` (${sleepHours(hours)} h)` : ""}
               </button>
-              <button className="btn text-sm" onClick={() => passTime(24, "The heroes spent a day helping around town")}>
+              <button className="btn text-sm" onClick={helpOut} disabled={helpsLeft(t, today()) <= 0} title="Once per bed in town, per real day">
                 🔨 Help out (1 day)
               </button>
             </div>
+            <p className="text-xs text-faint">
+              {sleepHours(hours) === null ? "Sleep comes after 20:00. " : ""}Help out: {helpsLeft(t, today())} of {beds(t)} left today (one per bed).
+            </p>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={t.open} onChange={(e) => setOpen(e.target.checked)} /> Other heroes may move in
             </label>
@@ -207,6 +218,135 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
             </ol>
           </section>
         </aside>
+      </div>
+    </div>
+  );
+}
+
+const staffedOf = (t: Town, type: Town["buildings"][number]["type"]) => {
+  const staff = staffing(t);
+  return built(t).some((b) => b.type === type && staff.get(b.id));
+};
+
+/** Smithy (mods), apothecary (brewing) and market (buying components), once built and staffed. */
+function Workshop({ town: t }: { town: Town }) {
+  const smithy = staffedOf(t, "smithy");
+  const apothecary = staffedOf(t, "apothecary");
+  const market = staffedOf(t, "market");
+  if (!smithy && !apothecary && !market)
+    return (
+      <section className="rounded-lg border border-dashed border-line p-3 text-sm text-muted" aria-label="Workshop">
+        <strong className="text-strong">Workshop.</strong> Build and staff a smithy to fit mods to your heroes, an apothecary to brew potions, or a market to buy iron, herbs and arcane dust. Iron and dust are also salvaged from battles won on adventures.
+      </section>
+    );
+  return (
+    <section className="space-y-4 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Workshop">
+      {smithy && <Smithy town={t} />}
+      {apothecary && (
+        <div>
+          <h3 className="mb-1 text-xs font-bold tracking-wider text-faint uppercase">⚗ Apothecary</h3>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {Object.entries(BREWS).map(([id, b]) => {
+              const why = cantAfford(t, b.cost);
+              return (
+                <li key={id}>
+                  <button className="flex w-full flex-col rounded-md border border-line bg-surface-2 p-2 text-left text-sm hover:border-accent disabled:opacity-50" disabled={!!why} onClick={() => brew(id, ITEMS[id]?.name ?? id)}>
+                    <span className="font-semibold text-strong">🧪 Brew {ITEMS[id]?.name}</span>
+                    <span className="text-xs text-muted">{ITEMS[id]?.description}</span>
+                    <span className="text-xs text-faint">
+                      {costText(b.cost)} · {b.hours} h
+                    </span>
+                    {why && <span className="text-xs text-warn">{why}</span>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+      {market && (
+        <div>
+          <h3 className="mb-1 text-xs font-bold tracking-wider text-faint uppercase">⚖ Market</h3>
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(COMPONENTS) as Component[]).map((k) => (
+              <button key={k} className="btn text-sm" disabled={t.gold < COMPONENTS[k].price} onClick={() => buy(k)}>
+                Buy {COMPONENTS[k].icon} {COMPONENTS[k].name.toLowerCase()} ({COMPONENTS[k].price} gold)
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Smithy({ town: t }: { town: Town }) {
+  const id = useActiveProfile((s) => s.id)!;
+  const gear = usePlayers((s) => s.docs[id]?.gear) ?? {};
+  usePlayers((s) => s.docs[id]?.characters);
+  const heroes = availableMembers(myCharacters());
+  const [heroKey, setHeroKey] = useState(heroes[0]?.key ?? "");
+  const hero = heroes.find((h) => h.key === heroKey) ?? heroes[0];
+  if (!hero) return null;
+  const base = hero.build();
+  const mods = gear[hero.key] ?? [];
+  const modded = applyMods(base, mods);
+  return (
+    <div>
+      <h3 className="mb-1 text-xs font-bold tracking-wider text-faint uppercase">⚒ Smithy</h3>
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
+        <select className="field w-auto py-1" value={hero.key} onChange={(e) => setHeroKey(e.target.value)} aria-label="Hero">
+          {heroes.map((h) => (
+            <option key={h.key} value={h.key}>
+              {h.label}
+            </option>
+          ))}
+        </select>
+        <span className="text-muted">
+          AC {modded.ac}
+          {modded.ac !== base.ac ? ` (was ${base.ac})` : ""} · {modded.stats?.actions.filter((a) => a.kind === "attack" || a.kind === "save" || a.kind === "missile").slice(0, 3).map((a) => a.name).join(", ")}
+        </span>
+      </div>
+      <div className="grid gap-2 md:grid-cols-3">
+        {(Object.keys(SLOTS) as Slot[]).map((slot) => {
+          const fitted = mods.find((m) => MODS[m]?.slot === slot);
+          const options = Object.entries(MODS).filter(([, m]) => m.slot === slot && base.stats && fits(m, base.stats));
+          return (
+            <div key={slot} className="rounded-md border border-line bg-surface-2 p-2 text-sm">
+              <div className="text-xs font-bold text-faint uppercase">{SLOTS[slot]}</div>
+              {fitted ? (
+                <div className="flex items-start justify-between gap-1">
+                  <span>
+                    <strong className="text-strong">{MODS[fitted]!.name}</strong>
+                    <span className="block text-xs text-muted">{MODS[fitted]!.description}</span>
+                  </span>
+                  <button className="text-faint hover:text-danger" onClick={() => removeMod(hero.key, fitted)} aria-label={`Remove ${MODS[fitted]!.name}`} title="Remove (the mod is lost)">
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted italic">{options.length ? "Empty" : "Nothing fits this hero"}</p>
+              )}
+              <ul className="mt-1 space-y-1">
+                {options
+                  .filter(([mid]) => mid !== fitted)
+                  .map(([mid, m]) => {
+                    const why = cantAfford(t, m.cost);
+                    return (
+                      <li key={mid}>
+                        <button className="w-full rounded border border-line bg-surface px-2 py-1 text-left text-xs hover:border-accent disabled:opacity-50" disabled={!!why} onClick={() => craftMod(hero.key, hero.label, mid)} title={why ?? (fitted ? `Replaces ${MODS[fitted]!.name}` : "Fit it")}>
+                          <span className="font-semibold text-strong">{m.name}</span> — {m.description}
+                          <span className="block text-faint">
+                            {costText(m.cost)} · {m.hours} h{why ? ` · ${why}` : ""}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+              </ul>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

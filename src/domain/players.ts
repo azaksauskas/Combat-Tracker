@@ -72,6 +72,8 @@ export const PlayerDocSchema = z.object({
   town: TownSchema.nullable().catch(null),
   /** Whose town the player lives in: another profile's id, or null for their own. */
   residence: z.string().nullable().catch(null),
+  /** Mods fitted at the smithy, per hero (content key): they stay with the hero. */
+  gear: z.record(z.string(), z.array(z.string())).catch({}),
   /** Renown = the highest level any of the player's heroes has reached. */
   renown: z.number().catch(1),
   /** Which open page wrote last, so a page ignores the echo of its own save. */

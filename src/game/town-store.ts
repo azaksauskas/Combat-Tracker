@@ -2,7 +2,9 @@ import { toast } from "sonner";
 import { create } from "zustand";
 import { newId } from "../domain/combat";
 import type { PlayerDoc } from "../domain/players";
-import type { BuildingType, Town } from "../domain/town";
+import { MAX_TOWN_LOG, type BuildingType, type Town } from "../domain/town";
+import type { GameState } from "./state";
+import { BREWS, COMPONENTS, MODS, SLOTS, addComponents, cantAfford, fitMod, pay, salvage, type Component, type Cost } from "./crafting";
 import { useGame } from "../store/game";
 import { addChronicle, updatePlayer, useActiveProfile, usePlayers } from "../store/players";
 import { randomSeed } from "./rng";
@@ -14,7 +16,10 @@ import {
   catchUp,
   durationText,
   foundTown,
+  helpsLeft,
+  sleepHours,
   startBuilding,
+  useHelp,
   takeStash,
   welcome,
   type AwayReport,
@@ -251,4 +256,85 @@ export function homecoming(title: string, gold: number, potions: Record<string, 
 export function noteLevel(level: number) {
   const id = me();
   if (id) updatePlayer(id, (d) => (level > d.renown ? { ...d, renown: level } : d));
+}
+
+// --- Daily limits ---------------------------------------------------------------------
+
+export const today = () => new Date().toLocaleDateString("en-CA");
+
+/** A day's work around town: once per bed per real day. */
+export function helpOut() {
+  const id = me();
+  const t = docOf(id)?.town;
+  if (!id || !t) return;
+  if (helpsLeft(t, today()) <= 0) return toast.info("Everyone's had enough of your help for today. Come back tomorrow, or build more houses.");
+  setTown(id, (x) => useHelp(x, today()));
+  passTime(24, "The heroes spent a day helping around town");
+}
+
+/** Sleep through the night, until dawn. */
+export function sleep() {
+  const t = docOf(me())?.town;
+  if (!t) return;
+  const hours = sleepHours(liveHours(t));
+  if (hours === null) return toast.info("It's broad daylight. Sleep comes after 20:00.");
+  passTime(hours, "The heroes slept until dawn");
+}
+
+// --- Crafting -----------------------------------------------------------------------
+
+function work(cost: Cost, hours: number, what: string, change: (t: Town) => Town) {
+  const id = me();
+  const t = docOf(id)?.town;
+  if (!id || !t) return false;
+  const why = cantAfford(t, cost);
+  if (why) {
+    toast.error(why);
+    return false;
+  }
+  setTown(id, (x) => change(pay(x, cost)));
+  passTime(hours, what);
+  return true;
+}
+
+/** Fit a mod to one of the player's heroes at the smithy. */
+export function craftMod(heroKey: string, heroName: string, modId: string) {
+  const mod = MODS[modId];
+  const id = me();
+  if (!mod || !id) return;
+  if (!work(mod.cost, mod.hours, `The smith fitted ${heroName}'s ${SLOTS[mod.slot].toLowerCase()} with: ${mod.name}`, (t) => t)) return;
+  updatePlayer(id, (d) => ({ ...d, gear: { ...d.gear, [heroKey]: fitMod(d.gear[heroKey] ?? [], modId) } }));
+  addChronicle(id, [{ kind: "loot", text: `${heroName}'s ${SLOTS[mod.slot].toLowerCase()} now has: ${mod.name} (${mod.description.replace(/\.$/, "")}).` }]);
+}
+
+export function removeMod(heroKey: string, modId: string) {
+  const id = me();
+  if (id) updatePlayer(id, (d) => ({ ...d, gear: { ...d.gear, [heroKey]: (d.gear[heroKey] ?? []).filter((m) => m !== modId) } }));
+}
+
+export function brew(itemId: string, name: string) {
+  const b = BREWS[itemId];
+  if (!b) return;
+  work(b.cost, b.hours, `The apothecary brewed a ${name}`, (t) => ({ ...t, stash: { ...t.stash, [itemId]: (t.stash[itemId] ?? 0) + 1 } }));
+}
+
+export function buy(component: Component, n = 1) {
+  const id = me();
+  const t = docOf(id)?.town;
+  if (!id || !t) return;
+  const price = COMPONENTS[component].price * n;
+  if (t.gold < price) return toast.error(`Needs ${price} gold`);
+  setTown(id, (x) => addComponents({ ...x, gold: x.gold - price }, { [component]: n }));
+}
+
+/** Iron and dust from a won battle go to the town's stores. */
+export function salvageBattle(game: GameState, battle: string) {
+  const id = me();
+  const doc = docOf(id);
+  if (!id || !doc?.town) return;
+  const found = salvage(game);
+  const parts = (Object.entries(found) as [Component, number][]).filter(([, n]) => n > 0);
+  if (!parts.length) return;
+  const text = `Salvaged ${parts.map(([k, n]) => `${n} ${COMPONENTS[k].name.toLowerCase()}`).join(" and ")} from ${battle}.`;
+  setTown(id, (t) => ({ ...addComponents(t, found), log: [...t.log, { at: t.hours, text, tone: "good" as const }].slice(-MAX_TOWN_LOG) }));
 }

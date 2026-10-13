@@ -10,7 +10,7 @@ import { quitGame, startBattle, usePlay } from "./store";
 import { chosenParty } from "./party-store";
 import { chronicleFight, chronicleStep } from "./chronicle";
 import { addChronicle, useActiveProfile } from "../store/players";
-import { homecoming, noteLevel, packForAdventure, passTime } from "./town-store";
+import { homecoming, noteLevel, packForAdventure, passTime, salvageBattle } from "./town-store";
 import { useGame } from "../store/game";
 
 /** The adventure in progress. Saved to the active player's document after every step (see save-bind.ts). */
@@ -126,6 +126,7 @@ export function returnFromBattle(retreat = false) {
   const player = useActiveProfile.getState().id;
   const battle = usePlay.getState().scenario?.name ?? "a battle";
   if (player) addChronicle(player, [chronicleFight(adv.title, battle, done.outcome ?? "defeat", retreat && !game.outcome, done.round)]);
+  salvageBattle(done, battle);
   set(finishFight(s, adv, done));
   passTime(1);
   quitGame();

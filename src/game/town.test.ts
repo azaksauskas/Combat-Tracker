@@ -16,7 +16,7 @@ describe("towns", () => {
 
   it("building costs resources, takes time, one project at a time, limited by renown", () => {
     let t = { ...foundTown("A", T0, 1), gold: 100, materials: 100 };
-    expect(cantBuild(t, "smithy", 1)).toMatch(/M9/);
+    expect(cantBuild({ ...t, gold: 10 }, "smithy", 1)).toMatch(/50 gold/);
     expect(cantBuild(t, "hall", 1)).toMatch(/one hall/);
     t = startBuilding(t, "farm", 1, "b1");
     expect([t.gold, t.materials]).toEqual([90, 94]);

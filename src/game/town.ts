@@ -52,9 +52,9 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
   lumber: { name: "Lumber camp", icon: "🪓", description: "3 materials a day for building.", cost: { gold: 10, materials: 0 }, hours: 8, staffed: true },
   market: { name: "Market", icon: "⚖", description: "2 gold a day, plus 1 for every two settlers. Caravans pay better.", cost: { gold: 25, materials: 15 }, hours: 16, staffed: true, max: 1 },
   tavern: { name: "Tavern", icon: "🍺", description: "2 gold a day, and travellers looking for a home stop by far more often.", cost: { gold: 30, materials: 15 }, hours: 16, staffed: true, max: 1 },
-  apothecary: { name: "Apothecary", icon: "⚗", description: "Brews a Potion of Healing every 3 days. Your next adventure takes them along.", cost: { gold: 40, materials: 10 }, hours: 20, staffed: true, max: 1 },
+  apothecary: { name: "Apothecary", icon: "⚗", description: "Gathers a herb a day and brews a Potion of Healing every 3 days; brews more to order. Your next adventure takes the potions along.", cost: { gold: 40, materials: 10 }, hours: 20, staffed: true, max: 1 },
   watchtower: { name: "Watchtower", icon: "🗼", description: "Halves the chance of thieves.", cost: { gold: 20, materials: 20 }, hours: 16, staffed: true, max: 2 },
-  smithy: { name: "Smithy", icon: "⚒", description: "Weapon and armour mods.", cost: { gold: 50, materials: 25 }, hours: 24, staffed: true, max: 1, locked: "Crafting comes in the next update (M9)." },
+  smithy: { name: "Smithy", icon: "⚒", description: "Fits mods to your heroes' weapons, armour and spell foci.", cost: { gold: 50, materials: 25 }, hours: 24, staffed: true, max: 1 },
 };
 
 export const isBuilt = (b: Building) => b.readyAt === undefined;
@@ -104,6 +104,8 @@ export function foundTown(name: string, now: number, seed: number, gold = 30): T
     food: 6,
     materials: 10,
     stash: {},
+    components: { iron: 0, herbs: 0, dust: 0 },
+    helps: { day: "", used: 0 },
     buildings: [{ id: "hall", type: "hall" }],
     settlers: [],
     log: [{ at: DAWN, text: `${name.trim() || "The town"} is founded.`, tone: "good" }],
@@ -179,6 +181,8 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
   materials += 1 + 3 * working(t, "lumber");
   const markets = working(t, "market");
   gold += markets * (2 + Math.floor(t.settlers.length / 2)) + 2 * working(t, "tavern");
+  let components = t.components;
+  if (working(t, "apothecary")) components = { ...components, herbs: components.herbs + 1 };
   if (working(t, "apothecary") && day(h) % 3 === 0) {
     stash["potion-healing"] = (stash["potion-healing"] ?? 0) + 1;
     say("The apothecary brewed a Potion of Healing.", "good");
@@ -193,7 +197,7 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
       say(`Food ran out. ${leaver.name} the ${leaver.trade || "settler"} left to find a better life.`, "bad");
     }
   }
-  t = { ...t, gold, food, materials, stash, settlers };
+  t = { ...t, gold, food, materials, stash, settlers, components };
 
   // Events.
   const p = power(t, ctx);
@@ -224,10 +228,24 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
     say(`A storm battered the town: ${lost} materials ruined.`, "bad");
   }
   if (working(t, "farm") && rng() < 0.06) {
-    t = { ...t, food: t.food + 5 };
-    say("A bumper harvest: +5 food.", "good");
+    t = { ...t, food: t.food + 5, components: { ...t.components, herbs: t.components.herbs + 1 } };
+    say("A bumper harvest: +5 food and a basket of herbs.", "good");
   }
   return t;
+}
+
+// --- Skipping time ---------------------------------------------------------------------
+
+/** "Help out" (a day's work) can be used once per bed in the town, per real day. */
+export const helpsLeft = (t: Town, today: string) => Math.max(0, beds(t) - (t.helps.day === today ? t.helps.used : 0));
+export const useHelp = (t: Town, today: string): Town => ({ ...t, helps: { day: today, used: (t.helps.day === today ? t.helps.used : 0) + 1 } });
+
+/** Sleep is for the night (20:00–06:00) and lasts until dawn; null during the day. */
+export function sleepHours(hours: number): number | null {
+  const h = Math.floor(hours) % 24;
+  if (h >= 20) return 24 - h + DAWN;
+  if (h < DAWN) return DAWN - h;
+  return null;
 }
 
 // --- Actions --------------------------------------------------------------------------
