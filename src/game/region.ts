@@ -1,6 +1,7 @@
 import { axesOf } from "../domain/alignment";
 import type { Faction, Threat } from "../domain/faction";
 import { MAX_TOWN_LOG, type Town, type TownEvent } from "../domain/town";
+import { num } from "./tuning";
 
 /**
  * The region around a town: factions that notice it as it grows. Each day
@@ -94,9 +95,9 @@ const logged = (t: Town, at: number, text: string, tone: TownEvent["tone"]): Tow
 
 /** What an undefended (or lost) raid costs. */
 function raidLosses(t: Town, f: Faction, h: number): { town: Town; text: string } {
-  const gold = Math.round(t.gold * 0.35);
-  const food = Math.round(t.food * 0.3);
-  const materials = Math.round(t.materials * 0.25);
+  const gold = Math.round(t.gold * num("region.raidGold"));
+  const food = Math.round(t.food * num("region.raidFood"));
+  const materials = Math.round(t.materials * num("region.raidMaterials"));
   const town: Town = {
     ...t,
     gold: t.gold - gold,
@@ -140,8 +141,9 @@ export function regionDay(t: Town, h: number, rng: () => number, factions: Facti
 
     // Deadlines.
     if (th.stage === "demanding" && th.dueAt !== undefined && h >= th.dueAt) {
-      th = { ...th, stage: "raiding", dueAt: h + 24, demand: undefined };
-      say(`${f.icon} The tribute was never paid. ${f.name} are coming: a raid is expected by ${clock(h + 24)}.`, "bad");
+      const notice = num("region.raidNoticeHours");
+      th = { ...th, stage: "raiding", dueAt: h + notice, demand: undefined };
+      say(`${f.icon} The tribute was never paid. ${f.name} are coming: a raid is expected by ${clock(h + notice)}.`, "bad");
     } else if (th.stage === "raiding" && th.dueAt !== undefined && h >= th.dueAt) {
       const r = raidLosses(t, f, h);
       t = r.town;
@@ -153,19 +155,21 @@ export function regionDay(t: Town, h: number, rng: () => number, factions: Facti
 
     // Attention grows with power; an offended faction grows hungrier faster.
     const opposed = clamp(-kin, 0, 1);
-    const gain = (1 + info.power / 15) * (1 + opposed) * (info.watch ? 0.7 : 1) * (0.6 + rng() * 0.8);
+    const gain = num("region.attentionRate") * (1 + info.power / 15) * (1 + opposed) * (info.watch ? 0.7 : 1) * (0.6 + rng() * 0.8);
     th = { ...th, attention: clamp(th.attention + gain, 0, 100) };
-    if (th.stage === "quiet" && th.attention >= 25) {
+    if (th.stage === "quiet" && th.attention >= num("region.scoutsAt")) {
       th = { ...th, stage: "watching" };
       say(`${f.icon} Scouts of ${f.name} were seen watching the town.`, "info");
-    } else if (th.stage === "watching" && th.attention >= 55) {
+    } else if (th.stage === "watching" && th.attention >= num("region.demandAt")) {
+      const notice = num("region.raidNoticeHours");
       if (f.tribute > 0) {
-        const demand = Math.round(f.tribute * (1 + info.power / 40));
-        th = { ...th, stage: "demanding", demand, dueAt: h + 72 };
-        say(`${f.icon} ${f.name} demand ${demand} gold by ${clock(h + 72)}, or they will take it.`, "bad");
+        const demand = Math.round(f.tribute * num("region.tributeMultiplier") * (1 + info.power / 40));
+        const due = num("region.deadlineHours");
+        th = { ...th, stage: "demanding", demand, dueAt: h + due };
+        say(`${f.icon} ${f.name} demand ${demand} gold by ${clock(h + due)}, or they will take it.`, "bad");
       } else {
-        th = { ...th, stage: "raiding", dueAt: h + 24 };
-        say(`${f.icon} ${f.name} are gathering. They will strike by ${clock(h + 24)}.`, "bad");
+        th = { ...th, stage: "raiding", dueAt: h + notice };
+        say(`${f.icon} ${f.name} are gathering. They will strike by ${clock(h + notice)}.`, "bad");
       }
     }
     t = setThreat(t, th);
@@ -185,7 +189,7 @@ export function payTribute(t: Town, f: Faction): Town {
 export function refuseTribute(t: Town, f: Faction): Town {
   const th = threatOf(t, f.id);
   if (th.stage !== "demanding") throw new Error("Nobody is asking for tribute");
-  const due = Math.floor(t.hours) + 24;
+  const due = Math.floor(t.hours) + num("region.raidNoticeHours");
   return logged(setThreat(t, { ...th, stage: "raiding", dueAt: due, demand: undefined }), t.hours, `Refused ${f.name}'s demand. They will come by ${clock(due)}.`, "bad");
 }
 

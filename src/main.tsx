@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./index.css";
 import { connect } from "./store/game";
+import "./store/tuning-bind";
 import { syncThemeToDocument } from "./store/ui";
 
 // Keep old bookmarks working: "#admin" -> "#/admin".

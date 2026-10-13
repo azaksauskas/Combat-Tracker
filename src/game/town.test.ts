@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TownSchema, type Town } from "../domain/town";
-import { HIRE_COST, appeal, applyDeeds, hire, lift, opinion, startingReputation, BUILDINGS, DAWN, MAX_CATCH_UP_HOURS, OFFLINE_MS_PER_HOUR, advance, awayReport, beds, bringHome, cantBuild, catchUp, clockText, durationText, foundTown, power, staffing, startBuilding, takeStash, welcome } from "./town";
+import { hireCost, appeal, applyDeeds, hire, lift, opinion, startingReputation, BUILDINGS, DAWN, maxCatchUpHours, offlineMsPerHour, advance, awayReport, beds, bringHome, cantBuild, catchUp, clockText, durationText, foundTown, power, staffing, startBuilding, takeStash, welcome } from "./town";
 
 const ctx = { renown: 1, residents: [] };
 const T0 = 1_000_000;
@@ -71,12 +71,12 @@ describe("towns", () => {
 
   it("time away runs at real speed and is capped", () => {
     const t = foundTown("A", T0, 5);
-    const back = catchUp(t, T0 + 10 * OFFLINE_MS_PER_HOUR, ctx);
+    const back = catchUp(t, T0 + 10 * offlineMsPerHour(), ctx);
     expect(back.hours).toBeCloseTo(10);
     expect(back.town.hours).toBeCloseTo(DAWN + 10);
-    expect(back.town.at).toBe(T0 + 10 * OFFLINE_MS_PER_HOUR);
-    const year = catchUp(t, T0 + 365 * 24 * OFFLINE_MS_PER_HOUR, ctx);
-    expect(year.hours).toBe(MAX_CATCH_UP_HOURS);
+    expect(back.town.at).toBe(T0 + 10 * offlineMsPerHour());
+    const year = catchUp(t, T0 + 365 * 24 * offlineMsPerHour(), ctx);
+    expect(year.hours).toBe(maxCatchUpHours());
     const report = awayReport(t, year.town, year.events, year.hours);
     expect(durationText(report.hours)).toBe("30 days");
   });
@@ -146,7 +146,28 @@ describe("settlers' opinions", () => {
     t = welcome(t, { name: "Barkeep", trade: "brewer", from: "x" }, "b");
     t = hire(t);
     expect(t.settlers).toHaveLength(2);
-    expect(t.gold).toBe(50 - HIRE_COST);
+    expect(t.gold).toBe(50 - hireCost());
     expect(t.settlers[1]!.from).toBe("Hired at the tavern");
+  });
+});
+
+describe("tuning", () => {
+  it("the DM's balance settings change the rules; unknown or bad values are ignored", async () => {
+    const { setTuning, num } = await import("./tuning");
+    try {
+      setTuning({ "prod.farmFood": 10, "building.farm.gold": 99, "town.houseBeds": 5, nonsense: 3, "prod.hallFood": "lots" as unknown as number });
+      expect(num("prod.farmFood")).toBe(10);
+      expect(num("prod.hallFood")).toBe(1);
+      expect(BUILDINGS.farm.cost.gold).toBe(99);
+      expect(BUILDINGS.farm.description).toMatch(/^10 food a day/);
+      let t: Town = { ...foundTown("A", T0, 1), food: 0, buildings: [{ id: "hall", type: "hall" }, { id: "f", type: "farm" }, { id: "h", type: "house" }] };
+      expect(beds(t)).toBe(2 + 5);
+      t = welcome(t, { name: "F", trade: "farmer", from: "x" }, "f1");
+      // Dawn: hall 1 + farm 10 − 1 eaten.
+      expect(advance(t, 24, T0, ctx).town.food).toBeGreaterThanOrEqual(10);
+    } finally {
+      setTuning({});
+    }
+    expect(BUILDINGS.farm.cost.gold).toBe(10);
   });
 });

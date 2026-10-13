@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Dialog } from "../components/Dialog";
 import { BUILDING_TYPES, type Town } from "../domain/town";
 import type { Profile } from "../domain/players";
-import { BUILDINGS, HIRE_COST, beds, built, cantBuild, clockText, durationText, helpsLeft, isBuilt, opinion, power, renownOf, sleepHours, staffing, type SimContext } from "../game/town";
+import { BUILDINGS, hireCost, beds, built, cantBuild, clockText, durationText, helpsLeft, isBuilt, opinion, power, renownOf, sleepHours, staffing, type SimContext } from "../game/town";
 import { reputationText } from "../domain/alignment";
 import { allFactions, payTributeTo, refuseTributeTo, startTownBattle } from "../game/town-store";
 import { STAGE_TEXT, canStrike, threatOf } from "../game/region";
@@ -12,6 +12,7 @@ import { BREWS, COMPONENTS, MODS, SLOTS, applyMods, cantAfford, costText, fits, 
 import { ITEMS, withProgress } from "../game/party";
 import { availableMembers, myCharacters } from "../game/party-store";
 import { useGame } from "../store/game";
+import { num } from "../game/tuning";
 import { useActiveProfile, usePlayers } from "../store/players";
 
 bindTown();
@@ -177,7 +178,7 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
         <aside className="space-y-4">
           <section className="space-y-2 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Time">
             <h3 className="text-xs font-bold tracking-wider text-faint uppercase">Time</h3>
-            <p className="text-xs text-muted">While you're here, a minute is an hour. While you're away, the town carries on at the pace of the real world.</p>
+            <p className="text-xs text-muted">While you're here, {num("time.onlineMinutesPerHour") === 1 ? "a minute" : `${num("time.onlineMinutesPerHour")} minutes`} of real time is an hour. While you're away, the town carries on{num("time.offlineHoursPerHour") === 1 ? " at the pace of the real world" : ` (a real hour is ${(1 / num("time.offlineHoursPerHour")).toFixed(1)} game hours)`}.</p>
             <div className="grid grid-cols-2 gap-1">
               <button className="btn text-sm" onClick={sleep} disabled={sleepHours(hours) === null} title={sleepHours(hours) === null ? "Sleep comes after 20:00" : "Sleep until dawn"}>
                 💤 Sleep{sleepHours(hours) !== null ? ` (${sleepHours(hours)} h)` : ""}
@@ -187,7 +188,7 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
               </button>
             </div>
             <p className="text-xs text-faint">
-              {sleepHours(hours) === null ? "Sleep comes after 20:00. " : ""}Help out: {helpsLeft(t, today())} of {beds(t)} left today (one per bed).
+              {sleepHours(hours) === null ? `Sleep comes after ${num("time.sleepFrom")}:00. ` : ""}Help out: {helpsLeft(t, today())} of {beds(t)} left today (one per bed).
             </p>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={t.open} onChange={(e) => setOpen(e.target.checked)} /> Other heroes may move in
@@ -357,8 +358,8 @@ function Settlers({ town: t, ctx, residents }: { town: Town; ctx: SimContext; re
         <p className="mt-1 text-xs text-faint">
           Travellers come more often to an appealing town, and far more with a tavern. Each settler also judges the heroes' deeds by their own beliefs; content settlers invite friends, miserable ones leave.
         </p>
-        <button className="btn mt-2 text-sm" disabled={!tavern || free <= 0 || t.gold < HIRE_COST} onClick={hireWorker} title={!tavern ? "Needs a staffed tavern" : free <= 0 ? "No free bed" : ""}>
-          🍺 Hire a worker ({HIRE_COST} gold){!tavern ? " · needs a staffed tavern" : ""}
+        <button className="btn mt-2 text-sm" disabled={!tavern || free <= 0 || t.gold < hireCost()} onClick={hireWorker} title={!tavern ? "Needs a staffed tavern" : free <= 0 ? "No free bed" : ""}>
+          🍺 Hire a worker ({hireCost()} gold){!tavern ? " · needs a staffed tavern" : ""}
         </button>
       </div>
     </section>

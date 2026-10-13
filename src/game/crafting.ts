@@ -3,6 +3,7 @@ import type { StatAction, StatBlock } from "../domain/statblock";
 import type { Town } from "../domain/town";
 import type { CombatantDraft } from "../store/actions";
 import type { GameState } from "./state";
+import { num } from "./tuning";
 
 /**
  * Crafting in the town: mods fitted at the smithy (one per slot per hero:
@@ -13,9 +14,9 @@ import type { GameState } from "./state";
 
 export type Component = "iron" | "herbs" | "dust";
 export const COMPONENTS: Record<Component, { name: string; icon: string; price: number }> = {
-  iron: { name: "Iron", icon: "⛓", price: 6 },
-  herbs: { name: "Herbs", icon: "🌿", price: 4 },
-  dust: { name: "Arcane dust", icon: "✨", price: 15 },
+  iron: { name: "Iron", icon: "⛓", get price() { return num("price.iron"); } },
+  herbs: { name: "Herbs", icon: "🌿", get price() { return num("price.herbs"); } },
+  dust: { name: "Arcane dust", icon: "✨", get price() { return num("price.dust"); } },
 };
 
 export interface Cost {
@@ -37,7 +38,7 @@ export interface ModDef {
   hours: number;
 }
 
-export const MODS: Record<string, ModDef> = {
+const STATIC_MODS: Record<string, ModDef> = {
   "mod-sharp": { name: "Honed edge", slot: "weapon", description: "+1 damage with weapon attacks.", cost: { gold: 10, iron: 2 }, hours: 3 },
   "mod-balanced": { name: "Balanced grip", slot: "weapon", description: "+1 to hit with weapon attacks.", cost: { gold: 15, iron: 3 }, hours: 4 },
   "mod-flame": { name: "Fire rune", slot: "weapon", description: "Weapon hits deal an extra 1d4 fire damage.", cost: { gold: 30, iron: 2, dust: 2 }, hours: 6 },
@@ -52,10 +53,28 @@ export interface BrewDef {
 }
 
 /** Item ids from party.ts ITEMS. */
-export const BREWS: Record<string, BrewDef> = {
+const STATIC_BREWS: Record<string, BrewDef> = {
   "potion-healing": { cost: { gold: 5, herbs: 2 }, hours: 2 },
   "potion-greater-healing": { cost: { gold: 20, herbs: 4, dust: 1 }, hours: 6 },
 };
+
+const tunedCost = (prefix: string): Cost => ({ gold: num(`${prefix}.gold`), iron: num(`${prefix}.iron`), herbs: num(`${prefix}.herbs`), dust: num(`${prefix}.dust`) });
+
+/** Mods with costs and hours from the DM's tuning. */
+export const MODS: Record<string, ModDef> = Object.fromEntries(
+  Object.entries(STATIC_MODS).map(([id, m]) => [
+    id,
+    Object.defineProperties({ ...m }, { cost: { get: () => tunedCost(id), enumerable: true }, hours: { get: () => num(`${id}.hours`), enumerable: true } }),
+  ]),
+);
+
+/** Brews with costs and hours from the DM's tuning. */
+export const BREWS: Record<string, BrewDef> = Object.fromEntries(
+  Object.entries(STATIC_BREWS).map(([id, b]) => [
+    id,
+    Object.defineProperties({ ...b }, { cost: { get: () => ({ gold: num(`brew.${id}.gold`), herbs: num(`brew.${id}.herbs`), dust: num(`brew.${id}.dust`) }), enumerable: true }, hours: { get: () => num(`brew.${id}.hours`), enumerable: true } }),
+  ]),
+);
 
 const isSpell = (a: StatAction) => !!a.slot || !!a.cantrip;
 const isWeapon = (a: StatAction) => a.kind === "attack" && !isSpell(a);

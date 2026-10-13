@@ -356,6 +356,14 @@ picker into a real sign-in without changing the data model.
   - With the AI playing the party: Crypt Depths 60% at level 3, Hollow
     Sanctum 85% at level 4, Gnoll Warband 77% at level 4.
 
+- **Game balance page** (⚙️ Game balance in the DM menu): every tunable
+  number of the between-session game, grouped (time, founding, buildings,
+  production, settlers, events, factions, crafting, heroes), each with its
+  default and a short explanation. Search, "only changed", reset per field
+  or all, export and import as JSON. Saved in the synced library and applied
+  live for every player; the rules read them through `num()` in
+  `src/game/tuning.ts`, where new tunables are added.
+
 ## Future ideas
 
 - **A kids' version for playing with a child**, along the lines of

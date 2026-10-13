@@ -1,3 +1,4 @@
+import { num } from "./tuning";
 import { toast } from "sonner";
 import { create } from "zustand";
 import { ADVENTURES } from "../content/adventures";
@@ -69,7 +70,7 @@ export function pickChoice(choiceId: string, heroKey?: string) {
     // Each choice takes about an hour; a night's camp takes eight more.
     const choice = adv.scenes[s.sceneId]?.choices.find((c) => c.id === choiceId);
     const sleeps = [choice?.success, choice?.failure].some((o) => o?.effects?.some((e) => e.type === "rest" && e.kind === "long"));
-    passTime(sleeps ? 9 : 1);
+    passTime(num("time.choiceHours") + (sleeps ? 8 : 0));
   } catch (err) {
     if (err instanceof StoryError) toast.error(err.message);
     else throw err;

@@ -18,6 +18,7 @@ const NAV = [
   { to: "/maps", label: "🧱 Battle maps" },
   { to: "/players", label: "👥 Players" },
   { to: "/factions", label: "🏴 Factions" },
+  { to: "/balance", label: "⚙️ Game balance" },
 ];
 
 function ThemeButton({ className }: { className?: string }) {

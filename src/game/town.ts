@@ -3,6 +3,7 @@ import { axesOf, reputationText } from "../domain/alignment";
 import { mulberry32 } from "./rng";
 import type { Faction } from "../domain/faction";
 import { regionDay } from "./region";
+import { num } from "./tuning";
 
 /**
  * Towns and the world clock. Pure: every function takes a town and returns a
@@ -14,21 +15,30 @@ import { regionDay } from "./region";
  * catching up is capped at 30 game days.
  */
 
-export const ONLINE_MS_PER_HOUR = 60_000;
-export const OFFLINE_MS_PER_HOUR = 3_600_000;
-export const MAX_CATCH_UP_HOURS = 30 * 24;
+/** Real milliseconds per game hour while playing / while away, and the catch-up cap (all tunable). */
+export const onlineMsPerHour = () => num("time.onlineMinutesPerHour") * 60_000;
+export const offlineMsPerHour = () => num("time.offlineHoursPerHour") * 3_600_000;
+export const maxCatchUpHours = () => num("time.maxCatchUpDays") * 24;
 /** Daily production and events happen at this hour (morning). */
 export const DAWN = 6;
 
 // --- Renown --------------------------------------------------------------------------
 
+const tier = (level: number, title: string, reach: string) => ({
+  level,
+  title,
+  reach,
+  get maxBuildings() {
+    return num(`renown.buildings${level}`);
+  },
+});
 export const RENOWN = [
-  { level: 1, title: "Unknown", reach: "a village name at most", maxBuildings: 4 },
-  { level: 2, title: "Known in the valley", reach: "people come looking for you", maxBuildings: 7 },
-  { level: 3, title: "Known across the region", reach: "rivals take notice", maxBuildings: 11 },
-  { level: 4, title: "Known across the realm", reach: "lords and factions take notice", maxBuildings: 15 },
-  { level: 5, title: "A hero of the realm", reach: "songs are sung in far-off taverns", maxBuildings: 20 },
-] as const;
+  tier(1, "Unknown", "a village name at most"),
+  tier(2, "Known in the valley", "people come looking for you"),
+  tier(3, "Known across the region", "rivals take notice"),
+  tier(4, "Known across the realm", "lords and factions take notice"),
+  tier(5, "A hero of the realm", "songs are sung in far-off taverns"),
+];
 export const renownOf = (level: number) => RENOWN[Math.min(RENOWN.length, Math.max(1, level)) - 1]!;
 
 // --- Buildings ------------------------------------------------------------------------
@@ -50,7 +60,7 @@ export interface BuildingDef {
   locked?: string;
 }
 
-export const BUILDINGS: Record<BuildingType, BuildingDef> = {
+const STATIC_BUILDINGS: Record<BuildingType, BuildingDef> = {
   hall: { name: "Town hall", icon: "🏛", description: "The heart of the town. Beds for 2; gathers 1 food and 1 materials a day.", cost: { gold: 0, materials: 0 }, hours: 0, staffed: false, beds: 2, max: 1 },
   house: { name: "House", icon: "🏠", description: "Beds for 3 more settlers.", cost: { gold: 15, materials: 10 }, hours: 8, staffed: false, beds: 3 },
   farm: { name: "Farm", icon: "🌾", description: "4 food a day. Each settler eats 1.", cost: { gold: 10, materials: 6 }, hours: 10, staffed: true },
@@ -61,6 +71,33 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
   watchtower: { name: "Watchtower", icon: "🗼", description: "Halves the chance of thieves.", cost: { gold: 20, materials: 20 }, hours: 16, staffed: true, max: 2 },
   smithy: { name: "Smithy", icon: "⚒", description: "Fits mods to your heroes' weapons, armour and spell foci.", cost: { gold: 50, materials: 25 }, hours: 24, staffed: true, max: 1 },
 };
+
+/** Descriptions that quote tunable numbers. */
+const DESCRIPTIONS: Partial<Record<BuildingType, () => string>> = {
+  hall: () => `The heart of the town. Beds for ${num("town.hallBeds")}; gathers ${num("prod.hallFood")} food and ${num("prod.hallMaterials")} materials a day.`,
+  house: () => `Beds for ${num("town.houseBeds")} more settlers.`,
+  farm: () => `${num("prod.farmFood")} food a day. Each settler eats ${num("prod.foodPerSettler")}.`,
+  lumber: () => `${num("prod.lumberMaterials")} materials a day for building.`,
+  market: () => `${num("prod.marketGold")} gold a day, plus 1 for every ${num("prod.marketSettlersPerGold")} settlers. Caravans pay better.`,
+  tavern: () => `${num("prod.tavernGold")} gold a day, and travellers looking for a home stop by far more often.`,
+  apothecary: () => `Gathers ${num("prod.apothecaryHerbs")} herb a day and brews a Potion of Healing every ${num("prod.potionEveryDays")} days; brews more to order. Your next adventure takes the potions along.`,
+};
+
+/** The building catalogue, with costs, build times and beds read from the DM's tuning. */
+export const BUILDINGS = Object.fromEntries(
+  (Object.entries(STATIC_BUILDINGS) as [BuildingType, BuildingDef][]).map(([type, def]) => [
+    type,
+    Object.defineProperties(
+      { ...def },
+      {
+        cost: { get: () => (type === "hall" ? def.cost : { gold: num(`building.${type}.gold`), materials: num(`building.${type}.materials`) }), enumerable: true },
+        hours: { get: () => (type === "hall" ? 0 : num(`building.${type}.hours`)), enumerable: true },
+        beds: { get: () => (type === "hall" ? num("town.hallBeds") : type === "house" ? num("town.houseBeds") : undefined), enumerable: true },
+        description: { get: () => DESCRIPTIONS[type]?.() ?? def.description, enumerable: true },
+      },
+    ),
+  ]),
+) as Record<BuildingType, BuildingDef>;
 
 export const isBuilt = (b: Building) => b.readyAt === undefined;
 export const built = (t: Town) => t.buildings.filter(isBuilt);
@@ -100,15 +137,15 @@ export function cantBuild(t: Town, type: BuildingType, renown: number): string |
 // --- Founding and the clock -------------------------------------------------------------
 
 /** `reputation` starts from the founding heroes' alignments (see startingReputation). */
-export function foundTown(name: string, now: number, seed: number, gold = 30, reputation = { law: 0, good: 0 }): Town {
+export function foundTown(name: string, now: number, seed: number, gold = num("town.startGold"), reputation = { law: 0, good: 0 }): Town {
   return {
     name: name.trim() || "New town",
     hours: DAWN,
     at: now,
     simulated: DAWN,
     gold,
-    food: 6,
-    materials: 10,
+    food: num("town.startFood"),
+    materials: num("town.startMaterials"),
     stash: {},
     components: { iron: 0, herbs: 0, dust: 0 },
     helps: { day: "", used: 0 },
@@ -162,7 +199,7 @@ export function advance(town: Town, hours: number, now: number, ctx: SimContext)
 
 /** Brings the town up to now after time away (real speed, capped). */
 export function catchUp(town: Town, now: number, ctx: SimContext) {
-  const away = Math.min(MAX_CATCH_UP_HOURS, Math.max(0, (now - town.at) / OFFLINE_MS_PER_HOUR));
+  const away = Math.min(maxCatchUpHours(), Math.max(0, (now - town.at) / offlineMsPerHour()));
   return { ...advance(town, away, now, ctx), hours: away };
 }
 
@@ -249,19 +286,19 @@ function newcomer(t: Town, h: number, rng: () => number, from: string): Settler 
 }
 
 /** A staffed tavern can hire a worker on the spot. */
-export const HIRE_COST = 20;
+export const hireCost = () => num("settlers.hireCost");
 export function hire(t: Town): Town {
   if (!working(t, "tavern")) throw new Error("Hiring needs a staffed tavern");
   if (t.settlers.length >= beds(t)) throw new Error("No free bed for a new worker");
-  if (t.gold < HIRE_COST) throw new Error(`Needs ${HIRE_COST} gold`);
+  if (t.gold < hireCost()) throw new Error(`Needs ${hireCost()} gold`);
   const seeded = mulberry32(t.seed);
   const s = newcomer(t, Math.floor(t.hours), seeded.rng, "Hired at the tavern");
   return {
     ...t,
-    gold: t.gold - HIRE_COST,
+    gold: t.gold - hireCost(),
     seed: seeded.seed(),
     settlers: [...t.settlers, { ...s, mood: 55, mind: "Here for the wages" }],
-    log: [...t.log, { at: t.hours, text: `Hired ${s.name}, a ${s.trade}, for ${HIRE_COST} gold.`, tone: "good" as const }].slice(-MAX_TOWN_LOG),
+    log: [...t.log, { at: t.hours, text: `Hired ${s.name}, a ${s.trade}, for ${hireCost()} gold.`, tone: "good" as const }].slice(-MAX_TOWN_LOG),
   };
 }
 
@@ -288,20 +325,20 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
   // --- A new day: production, mouths to feed, then whatever the day brings.
   let { gold, food, materials } = t;
   const stash = { ...t.stash };
-  food += 1 + 4 * working(t, "farm");
-  materials += 1 + 3 * working(t, "lumber");
+  food += num("prod.hallFood") + num("prod.farmFood") * working(t, "farm");
+  materials += num("prod.hallMaterials") + num("prod.lumberMaterials") * working(t, "lumber");
   const markets = working(t, "market");
-  gold += markets * (2 + Math.floor(t.settlers.length / 2)) + 2 * working(t, "tavern");
+  gold += markets * (num("prod.marketGold") + Math.floor(t.settlers.length / Math.max(1, num("prod.marketSettlersPerGold")))) + num("prod.tavernGold") * working(t, "tavern");
   let components = t.components;
-  if (working(t, "apothecary")) components = { ...components, herbs: components.herbs + 1 };
-  if (working(t, "apothecary") && day(h) % 3 === 0) {
+  if (working(t, "apothecary")) components = { ...components, herbs: components.herbs + num("prod.apothecaryHerbs") };
+  if (working(t, "apothecary") && day(h) % Math.max(1, Math.round(num("prod.potionEveryDays"))) === 0) {
     stash["potion-healing"] = (stash["potion-healing"] ?? 0) + 1;
     say("The apothecary brewed a Potion of Healing.", "good");
   }
   // Everyone eats; whoever goes without is miserable.
   const settlers: Settler[] = t.settlers;
   let hungry = 0;
-  food -= settlers.length;
+  food -= settlers.length * num("prod.foodPerSettler");
   if (food < 0) {
     hungry = -food;
     food = 0;
@@ -312,7 +349,7 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
   // Events.
   const p = power(t, ctx);
   const watch = working(t, "watchtower");
-  const thiefChance = (0.06 + p / 400) * (watch ? 0.5 : 1) * (ctx.ownerAway ? 1.5 : 1);
+  const thiefChance = (num("events.thief") + p / Math.max(1, num("events.thiefPowerDivisor"))) * (watch ? 0.5 : 1) * (ctx.ownerAway ? 1.5 : 1);
   if (t.gold >= 10 && rng() < thiefChance) {
     const lost = Math.max(1, Math.round(t.gold * (0.1 + rng() * 0.15)));
     t = { ...t, gold: t.gold - lost, lastTheft: h };
@@ -321,28 +358,28 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
   // Moods drift towards what each settler thinks of the town; the unhappy leave, the happy bring others.
   const moods = t.settlers.map((s0) => {
     const o = opinion(t, s0.alignment, ctx, h);
-    const mood = clamp(Math.round(s0.mood + (o.target - s0.mood) * 0.3 - (hungry > 0 ? 15 : 0)), 0, 100);
+    const mood = clamp(Math.round(s0.mood + (o.target - s0.mood) * num("settlers.moodDrift") - (hungry > 0 ? 15 : 0)), 0, 100);
     return { ...s0, mood, mind: say1(o, mood < 50 ? "bad" : "good") };
   });
   // At most one person gives up each day: the unhappiest, if they're miserable.
   const unhappiest = [...moods].sort((a, b) => a.mood - b.mood)[0];
-  if (unhappiest && unhappiest.mood < 20 && rng() < 0.6) {
+  if (unhappiest && unhappiest.mood < num("settlers.leaveBelow") && rng() < num("settlers.leaveChance")) {
     say(`${unhappiest.name} the ${unhappiest.trade || "settler"} packed up and left: "${unhappiest.mind || "This isn't the place for me"}."`, "bad");
     t = { ...t, settlers: moods.filter((s) => s.id !== unhappiest.id) };
   } else t = { ...t, settlers: moods };
   const free = beds(t) - t.settlers.length;
-  const happy = t.settlers.filter((s) => s.mood >= 80).length;
-  if (free > 0 && happy && rng() < 0.08 * happy) {
+  const happy = t.settlers.filter((s) => s.mood >= num("settlers.inviteFrom")).length;
+  if (free > 0 && happy && rng() < num("settlers.inviteChance") * happy) {
     const s = newcomer(t, h, rng, "Invited by a happy neighbour");
     t = { ...t, settlers: [...t.settlers, { ...s, mood: 70, mind: "Heard good things" }] };
     say(`${s.name}, a ${s.trade}, came because a friend here wrote how good life is.`, "good");
   } else if (free > 0) {
     // Travellers: the more appealing the town, the more stop by; the tavern spreads the word.
-    const chance = clamp((appeal(t, ctx) - 30) / 150, 0.02, 0.3) + (working(t, "tavern") ? 0.15 : 0);
+    const chance = clamp((appeal(t, ctx) - 30) / 150, num("settlers.travellerMin"), num("settlers.travellerMax")) + (working(t, "tavern") ? num("settlers.tavernBonus") : 0);
     if (rng() < chance) {
       const s = newcomer(t, h, rng, working(t, "tavern") ? "Heard about the town at the tavern" : "Wandered in from the road");
       const o = opinion(t, s.alignment, ctx, h);
-      if (o.target >= 35) {
+      if (o.target >= num("settlers.stayAt")) {
         t = { ...t, settlers: [...t.settlers, { ...s, mood: o.target, mind: say1(o, "good") }] };
         say(`${s.name}, a ${s.trade} (${s.alignment}), arrived and asked to stay.`, "good");
       } else say(`${s.name}, a ${s.trade}, looked around and moved on: "${say1(o, "bad") || "Not for me"}."`, "info");
@@ -354,17 +391,17 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
   if (ctx.factions?.length) t = regionDay(t, h, rng, ctx.factions, { power: power(t, ctx), watch: working(t, "watchtower") > 0, renown: ctx.renown }, say);
   // Pride in the heroes fades.
   if (t.spirit !== 0) t = { ...t, spirit: t.spirit - Math.sign(t.spirit) };
-  if (rng() < 0.08) {
+  if (rng() < num("events.caravan")) {
     const paid = roll(1, 10, rng) + (markets ? 10 : 2);
     t = { ...t, gold: t.gold + paid };
     say(`A merchant caravan passed through${markets ? " and traded at the market" : ""}: +${paid} gold.`, "good");
   }
-  if (rng() < 0.05 && t.materials > 0) {
+  if (rng() < num("events.storm") && t.materials > 0) {
     const lost = Math.min(t.materials, roll(1, 6, rng));
     t = { ...t, materials: t.materials - lost };
     say(`A storm battered the town: ${lost} materials ruined.`, "bad");
   }
-  if (working(t, "farm") && rng() < 0.06) {
+  if (working(t, "farm") && rng() < num("events.harvest")) {
     t = { ...t, food: t.food + 5, components: { ...t.components, herbs: t.components.herbs + 1 } };
     say("A bumper harvest: +5 food and a basket of herbs.", "good");
   }
@@ -374,13 +411,13 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
 // --- Skipping time ---------------------------------------------------------------------
 
 /** "Help out" (a day's work) can be used once per bed in the town, per real day. */
-export const helpsLeft = (t: Town, today: string) => Math.max(0, beds(t) - (t.helps.day === today ? t.helps.used : 0));
+export const helpsLeft = (t: Town, today: string) => Math.max(0, Math.floor(beds(t) * num("time.helpsPerBed")) - (t.helps.day === today ? t.helps.used : 0));
 export const useHelp = (t: Town, today: string): Town => ({ ...t, helps: { day: today, used: (t.helps.day === today ? t.helps.used : 0) + 1 } });
 
 /** Sleep is for the night (20:00–06:00) and lasts until dawn; null during the day. */
 export function sleepHours(hours: number): number | null {
   const h = Math.floor(hours) % 24;
-  if (h >= 20) return 24 - h + DAWN;
+  if (h >= num("time.sleepFrom")) return 24 - h + DAWN;
   if (h < DAWN) return DAWN - h;
   return null;
 }

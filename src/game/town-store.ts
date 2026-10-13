@@ -1,3 +1,4 @@
+import { num } from "./tuning";
 import { toast } from "sonner";
 import { create } from "zustand";
 import { newId } from "../domain/combat";
@@ -16,7 +17,7 @@ import { quitGame, startBattle, usePlay } from "./store";
 import { chosenParty } from "./party-store";
 import { MAX_LEVEL, XP_BY_CR, XP_FOR_LEVEL, levelForXp } from "./party";
 import {
-  ONLINE_MS_PER_HOUR,
+  onlineMsPerHour,
   advance,
   awayReport,
   applyDeeds,
@@ -71,7 +72,7 @@ let lastTick = 0;
 let onlineSince = 0;
 
 /** Game hours earned online since the town was last saved. */
-const onlineHours = (t: Town, now: number) => (lastTick ? Math.max(0, (now - Math.max(t.at, onlineSince)) / ONLINE_MS_PER_HOUR) : 0);
+const onlineHours = (t: Town, now: number) => (lastTick ? Math.max(0, (now - Math.max(t.at, onlineSince)) / onlineMsPerHour()) : 0);
 
 /** Game time right now, for display: the saved hours plus online time since. */
 export function liveHours(t: Town, now = Date.now()): number {
@@ -457,7 +458,7 @@ export function finishTownBattle(retreat = false) {
 function awardXp(id: string, game: GameState, keys: string[], milestone: number | undefined) {
   if (!keys.length) return;
   const monsterXp = game.units.filter((u) => u.side === "enemy" && u.dead).reduce((n, u) => n + (XP_BY_CR[u.stats.cr ?? ""] ?? 0), 0);
-  const share = Math.floor(monsterXp / keys.length);
+  const share = Math.floor((monsterXp * num("xp.battleMultiplier")) / keys.length);
   const names = new Map(chosenParty().map((e) => [e.key, e.label]));
   const ups: string[] = [];
   let best = 0;

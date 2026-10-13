@@ -31,6 +31,7 @@ Copy `.env.example` to `.env.local` to configure it. Set `VITE_SYNC_BACKEND=loca
 | `#/maps`      | Battle map editor for the game        |
 | `#/players`   | Players, their progress, the chronicle |
 | `#/factions`  | Factions that threaten the players' towns |
+| `#/balance`   | Game balance: every tunable number      |
 
 Old `#admin` style links redirect automatically.
 

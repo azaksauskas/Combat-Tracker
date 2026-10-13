@@ -1,3 +1,4 @@
+import { num } from "./tuning";
 import { PARTY, type ContentEntry } from "../content/srd";
 import { secureRng, type Rng } from "../domain/dice";
 import { ActionSchema, abilityMod, type Ability, type Feature, type StatAction, type StatBlock } from "../domain/statblock";
@@ -440,7 +441,7 @@ export function applyFight(party: Party, game: GameState): FightResult {
   const monsterXp = game.units
     .filter((u) => u.side === "enemy" && u.dead)
     .reduce((n, u) => n + (XP_BY_CR[u.stats.cr ?? ""] ?? 0), 0);
-  const xpEach = Math.floor(monsterXp / Math.max(1, party.heroes.length));
+  const xpEach = Math.floor((monsterXp * num("xp.adventureMultiplier")) / Math.max(1, party.heroes.length));
   const items = { ...party.items };
   for (const [id, n] of Object.entries(game.stash ?? {})) items[id] = n;
   return { party: { ...party, heroes, items }, xpEach, fallen };

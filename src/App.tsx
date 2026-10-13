@@ -2,6 +2,7 @@ import { AdventureEditorView } from "./views/AdventureEditorView";
 import { MapsView } from "./views/MapsView";
 import { PlayersView } from "./views/PlayersView";
 import { FactionsView } from "./views/FactionsView";
+import { BalanceView } from "./views/BalanceView";
 import { lazy, Suspense } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router";
 import { Toaster } from "sonner";
@@ -35,6 +36,7 @@ export function App() {
           <Route path="maps" element={<MapsView />} />
           <Route path="players" element={<PlayersView />} />
           <Route path="factions" element={<FactionsView />} />
+          <Route path="balance" element={<BalanceView />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

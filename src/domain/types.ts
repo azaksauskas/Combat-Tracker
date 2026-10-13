@@ -142,6 +142,8 @@ export const LibraryDocSchema = z.object({
   characters: z.array(CharacterSpecSchema).catch([]),
   maps: z.array(SkirmishMapSchema).catch([]),
   factions: z.array(FactionSchema).catch([]),
+  /** The DM's game balance overrides (see src/game/tuning.ts): key → number. */
+  tuning: z.record(z.string(), z.number()).catch({}),
 });
 export type LibraryDoc = z.infer<typeof LibraryDocSchema>;
 
