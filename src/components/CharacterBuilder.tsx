@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ALIGNMENTS } from "../domain/alignment";
 import { BACKGROUND_NAMES, CLASS_NAMES, SPECIES_NAMES, STANDARD_ARRAY, type CharacterSpec, type ClassName } from "../domain/character";
 import { ABILITIES, ABILITY_NAMES, abilityMod, describeAction, formatMod, type Ability } from "../domain/statblock";
 import { BACKGROUNDS, CLASSES, SPECIES, buildCharacter, finalAbilities, suggestedSpec, validateSpec } from "../game/builder";
@@ -66,7 +67,7 @@ function BuilderForm({ initial, onClose }: { initial: CharacterSpec; onClose: ()
           <input className="field" value={spec.name} onChange={(e) => set({ name: e.target.value })} autoFocus />
         </label>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-4">
           <label className="block">
             <span className="field-label">Class</span>
             <select className="field" value={spec.className} onChange={(e) => changeClass(e.target.value as ClassName)}>
@@ -88,6 +89,14 @@ function BuilderForm({ initial, onClose }: { initial: CharacterSpec; onClose: ()
             <select className="field" value={spec.background} onChange={(e) => changeBackground(e.target.value as CharacterSpec["background"])}>
               {BACKGROUND_NAMES.map((c) => (
                 <option key={c}>{c}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="field-label">Alignment</span>
+            <select className="field" value={spec.alignment} onChange={(e) => set({ alignment: e.target.value as CharacterSpec["alignment"] })}>
+              {ALIGNMENTS.filter((a) => a !== "Unaligned").map((a) => (
+                <option key={a}>{a}</option>
               ))}
             </select>
           </label>
@@ -164,7 +173,7 @@ function BuilderForm({ initial, onClose }: { initial: CharacterSpec; onClose: ()
           <>
             <div className="font-display text-lg font-bold text-accent">{sheet.name}</div>
             <div className="text-xs text-faint">
-              Level 1 {spec.className} · {spec.species} {spec.background}
+              Level 1 {spec.className} · {spec.species} {spec.background} · {spec.alignment}
             </div>
             <div className="flex gap-3 text-strong">
               <span>

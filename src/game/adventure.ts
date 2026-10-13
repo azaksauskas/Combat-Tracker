@@ -40,6 +40,8 @@ export interface CampaignState {
   ended: null | "victory" | "defeat";
   /** People who will move to the player's town when the adventure ends. */
   recruits?: { name: string; trade?: string }[];
+  /** Deeds done on this adventure (summed), for the town's reputation. */
+  deeds?: { law: number; good: number };
   rngSeed: number;
   nextId: number;
 }
@@ -142,6 +144,11 @@ function applyEffects(s: CampaignState, effects: Effect[], rng: () => number) {
       case "flag":
         if (!s.flags.includes(e.name)) s.flags = [...s.flags, e.name];
         break;
+      case "deed": {
+        const d = s.deeds ?? { law: 0, good: 0 };
+        s.deeds = { law: d.law + e.law, good: d.good + e.good };
+        break;
+      }
       case "settler":
         if (!(s.recruits ?? []).some((r) => r.name === e.name)) {
           s.recruits = [...(s.recruits ?? []), { name: e.name, ...(e.trade ? { trade: e.trade } : {}) }];

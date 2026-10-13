@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TownSchema, type Town } from "../domain/town";
-import { BUILDINGS, DAWN, MAX_CATCH_UP_HOURS, OFFLINE_MS_PER_HOUR, advance, awayReport, beds, bringHome, cantBuild, catchUp, clockText, durationText, foundTown, power, staffing, startBuilding, takeStash, welcome } from "./town";
+import { HIRE_COST, appeal, applyDeeds, hire, lift, opinion, startingReputation, BUILDINGS, DAWN, MAX_CATCH_UP_HOURS, OFFLINE_MS_PER_HOUR, advance, awayReport, beds, bringHome, cantBuild, catchUp, clockText, durationText, foundTown, power, staffing, startBuilding, takeStash, welcome } from "./town";
 
 const ctx = { renown: 1, residents: [] };
 const T0 = 1_000_000;
@@ -53,12 +53,12 @@ describe("towns", () => {
     expect(next.gold - before.gold).not.toBe(0);
   });
 
-  it("hunger drives settlers away", () => {
+  it("hunger drives settlers away over a few days, and they say why", () => {
     let t = { ...foundTown("A", T0, 3), food: 0 };
-    for (const n of ["A", "B", "C"]) t = welcome(t, { name: n, trade: "", from: "x" }, n);
-    const { town, events } = advance(t, 24, T0, ctx);
+    for (const n of ["A", "B", "C"]) t = welcome(t, { name: n, trade: "", from: "x", mood: 50 }, n);
+    const { town, events } = advance(t, 24 * 6, T0, ctx);
     expect(town.settlers.length).toBeLessThan(3);
-    expect(events.some((e) => e.tone === "bad" && /Food ran out/.test(e.text))).toBe(true);
+    expect(events.some((e) => e.tone === "bad" && /left: "We're going hungry/.test(e.text))).toBe(true);
   });
 
   it("the same seed gives the same history", () => {
@@ -101,5 +101,52 @@ describe("towns", () => {
     expect(durationText(0)).toBe("0 hours");
     expect(durationText(1)).toBe("1 hour");
     expect(durationText(26.5)).toBe("1 day, 2 hours");
+  });
+});
+
+describe("settlers' opinions", () => {
+  const base = () => ({ ...foundTown("A", T0, 1), food: 30, buildings: [{ id: "hall", type: "hall" as const }, { id: "h", type: "house" as const }] });
+
+  it("food, crowding, safety and pride move the mood", () => {
+    const t = base();
+    expect(opinion(t, "Neutral", ctx).target).toBe(55 + 6);
+    expect(opinion({ ...t, food: 0 }, "Neutral", ctx).reasons[0]!.text).toBe("We're going hungry");
+    expect(opinion({ ...t, lastTheft: t.hours - 10 }, "Neutral", ctx).reasons.map((r) => r.text)).toContain("Thieves were here this week");
+    expect(opinion(lift(t, 12), "Neutral", ctx).reasons.map((r) => r.text)).toContain("Proud of our heroes");
+    expect(opinion(t, "Neutral", { ...ctx, ownerAway: true }).reasons.map((r) => r.text)).toContain("The hall stands empty");
+  });
+
+  it("beliefs: good folk like kind heroes and dislike cruel ones", () => {
+    const kind = applyDeeds(base(), { law: 0, good: 6 });
+    expect(kind.log.at(-1)!.text).toMatch(/known as kind/);
+    expect(opinion(kind, "Neutral Good", ctx).target).toBeGreaterThan(opinion(kind, "Neutral Evil", ctx).target);
+    const cruel = applyDeeds(base(), { law: 0, good: -10 });
+    expect(opinion(cruel, "Lawful Good", ctx).reasons.some((r) => r.delta < 0 && /Can't stand/.test(r.text))).toBe(true);
+    expect(applyDeeds(base(), { law: 50, good: 0 }).reputation.law).toBe(10);
+  });
+
+  it("starting reputation comes from the founders' alignments", () => {
+    expect(startingReputation(["Lawful Good", "Chaotic Good", "Neutral Good", "Neutral"])).toEqual({ law: 0, good: 2 });
+    expect(startingReputation([])).toEqual({ law: 0, good: 0 });
+  });
+
+  it("an appealing town with a tavern fills its beds; a grim one doesn't", () => {
+    const nice: Town = { ...base(), gold: 0, buildings: [...base().buildings, { id: "t", type: "tavern" }, { id: "f", type: "farm" }, { id: "f2", type: "farm" }, { id: "h2", type: "house" }] };
+    let staffed = welcome(nice, { name: "Barkeep", trade: "brewer", from: "x" }, "b");
+    staffed = welcome(welcome(staffed, { name: "Farmer", trade: "farmer", from: "x" }, "f"), { name: "Farmer 2", trade: "farmer", from: "x" }, "f2");
+    const after = advance(staffed, 24 * 15, T0, ctx).town;
+    expect(after.settlers.length).toBeGreaterThan(5);
+    const grim = { ...base(), food: 0, lastTheft: 1e9 };
+    expect(appeal(grim, ctx)).toBeLessThan(appeal(base(), ctx));
+  });
+
+  it("the tavern hires a worker for gold when there's a bed", () => {
+    let t: Town = { ...base(), gold: 50, buildings: [...base().buildings, { id: "t", type: "tavern" }] };
+    expect(() => hire(t)).toThrow(/staffed tavern/);
+    t = welcome(t, { name: "Barkeep", trade: "brewer", from: "x" }, "b");
+    t = hire(t);
+    expect(t.settlers).toHaveLength(2);
+    expect(t.gold).toBe(50 - HIRE_COST);
+    expect(t.settlers[1]!.from).toBe("Hired at the tavern");
   });
 });

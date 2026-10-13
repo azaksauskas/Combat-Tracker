@@ -1,3 +1,4 @@
+import { ALIGNMENTS } from "../domain/alignment";
 import clsx from "clsx";
 import { newId } from "../domain/combat";
 import { parseDice } from "../domain/dice";
@@ -76,7 +77,16 @@ export function StatBlockEditor({ value, onChange }: { value: StatBlock; onChang
         ))}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
+        <label>
+          <span className="field-label">Alignment</span>
+          <select className="field" value={value.alignment ?? ""} onChange={(e) => set("alignment", e.target.value || null)}>
+            <option value="">—</option>
+            {ALIGNMENTS.map((a) => (
+              <option key={a}>{a}</option>
+            ))}
+          </select>
+        </label>
         <label>
           <span className="field-label">Proficiency bonus</span>
           <input type="number" className="field" value={value.proficiency} onChange={(e) => set("proficiency", num(e.target.value, 2))} />

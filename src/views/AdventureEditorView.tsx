@@ -609,6 +609,7 @@ const EFFECT_LABELS: Record<Effect["type"], string> = {
   damage: "Trap / damage",
   rest: "Rest",
   settler: "Settler for the town",
+  deed: "Deed (reputation)",
 };
 
 const blankEffect = (type: Effect["type"]): Effect =>
@@ -621,6 +622,7 @@ const blankEffect = (type: Effect["type"]): Effect =>
     damage: { type: "damage", dice: "2d6", damageType: "piercing", save: { ability: "dex", dc: 12 } },
     rest: { type: "rest", kind: "short" },
     settler: { type: "settler", name: "", trade: "" },
+    deed: { type: "deed", law: 0, good: 1 },
   })[type] as Effect;
 
 function EffectsEditor({ effects, onChange }: { effects: Effect[]; onChange: (e: Effect[]) => void }) {
@@ -679,6 +681,25 @@ function EffectFields({ effect: e, onChange }: { effect: Effect; onChange: (e: E
       );
     case "flag":
       return <input className="field w-40 py-0.5" placeholder="e.g. found-map" value={e.name} aria-label="Flag name" onChange={(x) => onChange({ ...e, name: x.target.value.trim() })} />;
+    case "deed":
+      return (
+        <>
+          <select className="field w-auto py-0.5" value={e.law} aria-label="Law" onChange={(x) => onChange({ ...e, law: Number(x.target.value) })}>
+            {[-2, -1, 0, 1, 2].map((n) => (
+              <option key={n} value={n}>
+                {n > 0 ? `lawful +${n}` : n < 0 ? `chaotic ${-n}` : "law: —"}
+              </option>
+            ))}
+          </select>
+          <select className="field w-auto py-0.5" value={e.good} aria-label="Good" onChange={(x) => onChange({ ...e, good: Number(x.target.value) })}>
+            {[-2, -1, 0, 1, 2].map((n) => (
+              <option key={n} value={n}>
+                {n > 0 ? `good +${n}` : n < 0 ? `evil ${-n}` : "good: —"}
+              </option>
+            ))}
+          </select>
+        </>
+      );
     case "settler":
       return (
         <>

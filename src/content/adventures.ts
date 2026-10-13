@@ -99,7 +99,7 @@ export const GOBLIN_TRAIL: Adventure = {
           id: "pay",
           label: "Pay the toll (20 gp)",
           costGold: 20,
-          success: { text: "The bandits count the coins twice and wave you through, laughing.", next: { scene: "crypt-approach" } },
+          success: { text: "The bandits count the coins twice and wave you through, laughing.", effects: [{ type: "deed", law: 1, good: 0 }], next: { scene: "crypt-approach" } },
         },
         {
           id: "intimidate",
@@ -118,7 +118,7 @@ export const GOBLIN_TRAIL: Adventure = {
         {
           id: "attack",
           label: "Attack first",
-          success: { text: "You don't wait for an answer.", next: { fight: { scenarioId: "bandit-camp", surprised: "enemy" }, victory: "bandit-loot", defeat: "captured" } },
+          success: { text: "You don't wait for an answer.", effects: [{ type: "deed", law: -1, good: 0 }], next: { fight: { scenarioId: "bandit-camp", surprised: "enemy" }, victory: "bandit-loot", defeat: "captured" } },
         },
       ],
     },
@@ -224,7 +224,7 @@ export const GOBLIN_TRAIL: Adventure = {
           label: "Bring her home to Millbrook",
           success: {
             text: "The whole village turns out with torches. Hobb weeps, the reeve pays up, and Edda the hunter buys the first round. Somewhere beyond the hill, something that sent the dead walking is still out there — but that's a story for another day.",
-            effects: [{ type: "gold", amount: 50 }, { type: "milestone", level: 3 }, { type: "settler", name: "Tamsin", trade: "miller's daughter" }],
+            effects: [{ type: "gold", amount: 50 }, { type: "milestone", level: 3 }, { type: "settler", name: "Tamsin", trade: "miller's daughter" }, { type: "deed", law: 0, good: 2 }],
             next: { end: "victory" },
           },
         },
@@ -238,7 +238,7 @@ export const GOBLIN_TRAIL: Adventure = {
         "You wake in the mud hours later, bruised and bleeding, gear scattered. Whoever beat you didn't stay to finish the job. The trail is cold — but Tamsin is still out there.",
       choices: [
         { id: "back", label: "Limp back to Millbrook and try again", success: { effects: [{ type: "rest", kind: "long" }], next: { scene: "trail" } } },
-        { id: "give-up", label: "Give up", success: { text: "Millbrook will remember you as the ones who failed.", next: { end: "defeat" } } },
+        { id: "give-up", label: "Give up", success: { text: "Millbrook will remember you as the ones who failed.", effects: [{ type: "deed", law: 0, good: -1 }], next: { end: "defeat" } } },
       ],
     },
   },

@@ -65,6 +65,18 @@ export function chronicleStep(before: CampaignState | null, after: CampaignState
   for (const r of after.recruits ?? [])
     if (!(before.recruits ?? []).some((x) => x.name === r.name)) out.push({ kind: "story", adventure: title, text: `${r.name}${r.trade ? `, ${r.trade},` : ""} will move to the heroes' town.` });
 
+  // Deeds that will colour the town's reputation.
+  const d0 = before.deeds ?? { law: 0, good: 0 };
+  const d1 = after.deeds ?? { law: 0, good: 0 };
+  const dl = d1.law - d0.law;
+  const dg = d1.good - d0.good;
+  if (dl || dg)
+    out.push({
+      kind: "story",
+      adventure: title,
+      text: `A ${[dg > 0 ? "kind" : dg < 0 ? "cruel" : "", dl > 0 ? "lawful" : dl < 0 ? "lawless" : ""].filter(Boolean).join(", ")} deed (${[dl ? `law ${dl > 0 ? "+" : ""}${dl}` : "", dg ? `good ${dg > 0 ? "+" : ""}${dg}` : ""].filter(Boolean).join(", ")}).`,
+    });
+
   // Story flags the DM may want to know about.
   const flags = after.flags.filter((f) => !before.flags.includes(f));
   if (flags.length) out.push({ kind: "story", adventure: title, text: `Story: ${flags.join(", ")}.`, flags });

@@ -295,6 +295,24 @@ picker into a real sign-in without changing the data model.
   - Not yet: mods on spells learned at level 3 (fitted before levelling,
     they apply to the spells known then).
 
+- **Alignment and settlers (after M9):**
+  - Alignment on characters (builder), the ready-made heroes and monsters
+    (stat blocks, also in the tracker).
+  - Deeds: adventure choices can carry a deed (lawful/chaotic, good/evil;
+    new "Deed" effect in the editor; The Goblin Trail is tagged). At the end
+    of an adventure, deeds move the town's reputation ("known as kind and
+    law-abiding"). A new town starts with its founders' alignment.
+  - Settlers have an alignment, a mood and something on their mind. Every
+    morning their mood drifts towards their opinion of the town: food,
+    crowding, thefts this week, a watchtower, tavern and market, pride in
+    the heroes (up after victories, down after defeats and deaths), an empty
+    hall when the owner lives elsewhere, and whether the heroes' deeds suit
+    their beliefs. The unhappiest leaves when miserable (one a day, saying
+    why); happy settlers invite friends.
+  - Getting workers: travellers come more often the more appealing the town
+    is (shown with its reasons), far more often with a tavern, and judge it
+    before staying; a staffed tavern can hire a worker for 20 gold.
+
 ## Future ideas
 
 - **A kids' version for playing with a child**, along the lines of

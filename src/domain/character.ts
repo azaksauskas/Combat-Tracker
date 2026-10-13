@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ALIGNMENTS } from "./alignment";
 import { ABILITIES, type Ability } from "./statblock";
 
 /**
@@ -30,5 +31,6 @@ export const CharacterSpecSchema = z.object({
   /** Background ability increases: +2 to one, +1 to another. */
   plus2: z.enum(ABILITIES).catch("str"),
   plus1: z.enum(ABILITIES).catch("con"),
+  alignment: z.enum(ALIGNMENTS).catch("Neutral"),
 });
 export type CharacterSpec = z.infer<typeof CharacterSpecSchema>;

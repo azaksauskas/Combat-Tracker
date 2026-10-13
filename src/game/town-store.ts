@@ -8,12 +8,17 @@ import { BREWS, COMPONENTS, MODS, SLOTS, addComponents, cantAfford, fitMod, pay,
 import { useGame } from "../store/game";
 import { addChronicle, updatePlayer, useActiveProfile, usePlayers } from "../store/players";
 import { randomSeed } from "./rng";
+import { chosenParty } from "./party-store";
 import {
   ONLINE_MS_PER_HOUR,
   advance,
   awayReport,
+  applyDeeds,
   bringHome,
   catchUp,
+  hire,
+  lift,
+  startingReputation,
   durationText,
   foundTown,
   helpsLeft,
@@ -180,7 +185,9 @@ export function passTime(hours: number, what?: string) {
 export function found(name: string) {
   const id = me();
   if (!id) return;
-  updatePlayer(id, (d) => ({ ...d, town: foundTown(name, Date.now(), randomSeed()), residence: null }));
+  // The town starts with the reputation of the heroes who founded it.
+  const alignments = chosenParty().map((e) => e.build().stats?.alignment ?? "Neutral");
+  updatePlayer(id, (d) => ({ ...d, town: foundTown(name, Date.now(), randomSeed(), 30, startingReputation(alignments)), residence: null }));
   lastTick = onlineSince = Date.now();
 }
 
@@ -239,13 +246,22 @@ export function packForAdventure(): Record<string, number> {
 }
 
 /** When an adventure ends: gold and potions come home, rescued people move in, renown grows. */
-export function homecoming(title: string, gold: number, potions: Record<string, number>, recruits: { name: string; trade?: string }[], level: number) {
+export function homecoming(
+  title: string,
+  gold: number,
+  potions: Record<string, number>,
+  recruits: { name: string; trade?: string }[],
+  level: number,
+  result: { outcome: "victory" | "defeat" | "abandoned"; deaths: number; deeds?: { law: number; good: number } },
+) {
   const id = me();
   if (!id) return;
   updatePlayer(id, (d) => {
     let town = d.town;
     if (town) {
       town = bringHome(town, gold, potions, title);
+      town = lift(town, (result.outcome === "victory" ? 8 : result.outcome === "defeat" ? -8 : -2) - 5 * result.deaths);
+      if (result.deeds) town = applyDeeds(town, result.deeds);
       for (const r of recruits) town = welcome(town, { name: r.name, trade: r.trade ?? "", from: `Met the heroes in ${title}` }, newId());
     }
     return { ...d, town, renown: Math.max(d.renown, level) };
@@ -337,4 +353,17 @@ export function salvageBattle(game: GameState, battle: string) {
   if (!parts.length) return;
   const text = `Salvaged ${parts.map(([k, n]) => `${n} ${COMPONENTS[k].name.toLowerCase()}`).join(" and ")} from ${battle}.`;
   setTown(id, (t) => ({ ...addComponents(t, found), log: [...t.log, { at: t.hours, text, tone: "good" as const }].slice(-MAX_TOWN_LOG) }));
+}
+
+/** Hire a worker at the tavern (gold, a free bed). */
+export function hireWorker() {
+  const id = me();
+  const t = docOf(id)?.town;
+  if (!id || !t) return;
+  try {
+    const next = hire(t);
+    updatePlayer(id, (d) => ({ ...d, town: next }));
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err));
+  }
 }

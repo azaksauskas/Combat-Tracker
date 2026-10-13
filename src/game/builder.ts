@@ -180,7 +180,7 @@ export function suggestedSpec(className: ClassName, id: string, name = "New hero
   const allowed = BACKGROUNDS[background].abilities;
   const plus2 = allowed.includes(order[0]!) ? order[0]! : allowed[0];
   const plus1 = allowed.find((a) => a !== plus2 && a === order[1]) ?? allowed.find((a) => a !== plus2)!;
-  return { id, name, className, species: "Human", background, base, plus2, plus1 };
+  return { id, name, className, species: "Human", background, base, plus2, plus1, alignment: "Neutral Good" };
 }
 
 /** What's wrong with these choices (empty when the character is legal). */
@@ -228,6 +228,7 @@ export function buildCharacter(spec: CharacterSpec): CombatantDraft {
     features: cls.features,
     spellSlots: cls.spellSlots ?? [],
     traits: [...cls.traits(m, prof), ...sp.traits, bg.feat, { name: "Armor", text: cls.armor }],
+    alignment: spec.alignment,
   });
   return creature({ name: spec.name.trim() || "Hero", isMonster: false, ac: cls.ac(m.dex), hpMax, speed: sp.speed }, block);
 }
@@ -239,7 +240,7 @@ export function characterEntry(spec: CharacterSpec): ContentEntry {
   return {
     key: characterKey(spec),
     label: spec.name,
-    subtitle: `Level 1 ${spec.className} · ${spec.species} ${spec.background}`,
+    subtitle: `Level 1 ${spec.className} · ${spec.species} ${spec.background} · ${spec.alignment}`,
     build: () => buildCharacter(spec),
   };
 }

@@ -35,6 +35,12 @@ export const SettlerSchema = z.object({
   /** Where they came from: "Rescued in The Goblin Trail", "Arrived with a caravan". */
   from: z.string().catch(""),
   arrivedAt: z.number().catch(0),
+  /** What they believe in (see domain/alignment.ts). */
+  alignment: z.string().catch("Neutral"),
+  /** 0 (about to leave) … 100 (couldn't be happier). */
+  mood: z.number().catch(60),
+  /** What's on their mind, in their words. */
+  mind: z.string().catch(""),
 });
 export type Settler = z.infer<typeof SettlerSchema>;
 
@@ -69,6 +75,12 @@ export const TownSchema = z.object({
   buildings: lenient(BuildingSchema),
   settlers: lenient(SettlerSchema),
   log: lenient(TownEventSchema),
+  /** How the town is known, from its heroes' deeds: law (−10 chaotic … +10 lawful), good (−10 evil … +10 good). */
+  reputation: z.object({ law: z.number().catch(0), good: z.number().catch(0) }).catch({ law: 0, good: 0 }),
+  /** Pride in the heroes (−20 … +20): up after triumphs, down after defeats and deaths; fades day by day. */
+  spirit: z.number().catch(0),
+  /** Game hour of the last theft (safety). */
+  lastTheft: z.number().catch(-1000),
   /** Other players may move in. */
   open: z.boolean().catch(true),
   seed: z.number().catch(1),

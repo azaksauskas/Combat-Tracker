@@ -34,6 +34,9 @@ export function StatBlockView({ combatant: c, stats, onRoll }: Props) {
 
   return (
     <div className="space-y-4 text-sm">
+      {(stats.alignment || stats.creatureType) && (
+        <p className="text-xs text-muted italic">{[stats.creatureType, stats.alignment].filter(Boolean).join(", ")}</p>
+      )}
       <div className="grid grid-cols-6 gap-1 text-center">
         {ABILITIES.map((a) => {
           const mod = abilityMod(stats.abilities[a]);

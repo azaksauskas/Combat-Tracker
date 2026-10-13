@@ -35,6 +35,8 @@ export const EffectSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("rest"), kind: z.enum(["short", "long"]) }),
   /** Someone the party met moves to the player's town when the adventure ends. */
   z.object({ type: z.literal("settler"), name: z.string(), trade: z.string().optional() }),
+  /** A deed that shapes the heroes' town's reputation: law (+ lawful / − chaotic), good (+ good / − evil). */
+  z.object({ type: z.literal("deed"), law: z.number().catch(0), good: z.number().catch(0) }),
 ]);
 export type Effect = z.infer<typeof EffectSchema>;
 

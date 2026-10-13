@@ -3,8 +3,9 @@ import { useEffect, useState } from "react";
 import { Dialog } from "../components/Dialog";
 import { BUILDING_TYPES, type Town } from "../domain/town";
 import type { Profile } from "../domain/players";
-import { BUILDINGS, beds, built, cantBuild, clockText, durationText, helpsLeft, isBuilt, power, renownOf, sleepHours, staffing } from "../game/town";
-import { bindTown, brew, build, buy, craftMod, found, goHome, helpOut, joinTown, liveHours, removeMod, renameTown, setOpen, sleep, today, townContext, useTownUi } from "../game/town-store";
+import { BUILDINGS, HIRE_COST, beds, built, cantBuild, clockText, durationText, helpsLeft, isBuilt, opinion, power, renownOf, sleepHours, staffing, type SimContext } from "../game/town";
+import { reputationText } from "../domain/alignment";
+import { bindTown, hireWorker, brew, build, buy, craftMod, found, goHome, helpOut, joinTown, liveHours, removeMod, renameTown, setOpen, sleep, today, townContext, useTownUi } from "../game/town-store";
 import { BREWS, COMPONENTS, MODS, SLOTS, applyMods, cantAfford, costText, fits, type Component, type Slot } from "../game/crafting";
 import { ITEMS } from "../game/party";
 import { availableMembers, myCharacters } from "../game/party-store";
@@ -89,7 +90,10 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
             <span className="font-semibold text-strong tabular-nums" aria-label="Town clock">
               🕯 {clockText(hours)}
             </span>{" "}
-            · Renown: {r.title} · Power {power(t, ctx)}
+            · Renown: {r.title} · Power {power(t, ctx)} · Known as{" "}
+            <span className="text-strong" title={`Law ${t.reputation.law}, good ${t.reputation.good} (from −10 to +10)`}>
+              {reputationText(t.reputation)}
+            </span>
           </p>
         </div>
         <dl className="flex flex-wrap gap-x-4 gap-y-1 text-center text-sm" aria-label="Stores">
@@ -163,27 +167,7 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
 
           <Workshop town={t} />
 
-          <section className="rounded-lg border border-line bg-surface p-3 shadow" aria-label="Settlers">
-            <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">Settlers</h3>
-            {t.settlers.length === 0 ? (
-              <p className="text-sm text-muted italic">Nobody lives here yet. Travellers come when there are beds; people you help on adventures may follow you home.</p>
-            ) : (
-              <ul className="grid gap-1 text-sm sm:grid-cols-2">
-                {t.settlers.map((s) => (
-                  <li key={s.id}>
-                    <strong className="text-strong">{s.name}</strong>
-                    {s.trade && <span className="text-muted">, {s.trade}</span>}
-                    <span className="block text-xs text-faint">{s.from}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {residents.length > 0 && (
-              <p className="mt-2 text-sm">
-                Heroes living here: {residents.map((p) => p.name).join(", ")}
-              </p>
-            )}
-          </section>
+          <Settlers town={t} ctx={ctx} residents={residents} />
         </div>
 
         <aside className="space-y-4">
@@ -220,6 +204,68 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
         </aside>
       </div>
     </div>
+  );
+}
+
+const FACES = ["😠", "🙁", "😐", "🙂", "😄"];
+const face = (mood: number) => FACES[Math.min(4, Math.floor(mood / 20))]!;
+
+/** Who lives here, how they feel and why; how the town looks to newcomers; hiring. */
+function Settlers({ town: t, ctx, residents }: { town: Town; ctx: SimContext; residents: Profile[] }) {
+  const look = opinion(t, "Neutral", ctx);
+  const free = beds(t) - t.settlers.length;
+  const tavern = staffedOf(t, "tavern");
+  const workers = [...staffing(t).values()];
+  const idle = workers.filter((x) => !x).length;
+  return (
+    <section className="space-y-3 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Settlers">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-xs font-bold tracking-wider text-faint uppercase">
+          Settlers · {t.settlers.length}/{beds(t)} beds
+        </h3>
+        {idle > 0 && <span className="text-xs text-warn">{idle} building{idle === 1 ? " needs a worker" : "s need workers"}</span>}
+      </div>
+      {t.settlers.length === 0 ? (
+        <p className="text-sm text-muted italic">Nobody lives here yet.</p>
+      ) : (
+        <ul className="grid gap-2 text-sm sm:grid-cols-2">
+          {t.settlers.map((s) => (
+            <li key={s.id} className="flex gap-2">
+              <span className="text-xl" title={`Mood ${s.mood}/100`} aria-label={`Mood ${s.mood} of 100`}>
+                {face(s.mood)}
+              </span>
+              <span>
+                <strong className="text-strong">{s.name}</strong>
+                {s.trade && <span className="text-muted">, {s.trade}</span>} <span className="text-xs text-faint">· {s.alignment}</span>
+                {s.mind && <span className={clsx("block text-xs italic", s.mood < 40 ? "text-danger" : "text-muted")}>“{s.mind}”</span>}
+                <span className="block text-xs text-faint">{s.from}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {residents.length > 0 && <p className="text-sm">Heroes living here: {residents.map((p) => p.name).join(", ")}</p>}
+      <div className="rounded-md border border-line bg-surface-2/60 p-2 text-sm" aria-label="Appeal">
+        <div>
+          <strong className="text-strong">How the town looks to newcomers: {look.target}/100</strong>
+          <span className="text-xs text-muted"> · {free > 0 ? `${free} free bed${free === 1 ? "" : "s"}` : "no free beds: build a house"}</span>
+        </div>
+        <ul className="mt-1 flex flex-wrap gap-x-3 text-xs">
+          {look.reasons.length === 0 && <li className="text-muted">Nothing special either way.</li>}
+          {look.reasons.map((r) => (
+            <li key={r.text} className={r.delta > 0 ? "text-heal" : "text-danger"}>
+              {r.delta > 0 ? "▲" : "▼"} {r.text}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-1 text-xs text-faint">
+          Travellers come more often to an appealing town, and far more with a tavern. Each settler also judges the heroes' deeds by their own beliefs; content settlers invite friends, miserable ones leave.
+        </p>
+        <button className="btn mt-2 text-sm" disabled={!tavern || free <= 0 || t.gold < HIRE_COST} onClick={hireWorker} title={!tavern ? "Needs a staffed tavern" : free <= 0 ? "No free bed" : ""}>
+          🍺 Hire a worker ({HIRE_COST} gold){!tavern ? " · needs a staffed tavern" : ""}
+        </button>
+      </div>
+    </section>
   );
 }
 

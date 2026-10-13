@@ -37,7 +37,12 @@ function set(state: CampaignState | null) {
     const potions = Object.fromEntries(Object.entries(last.party.items).filter(([k, n]) => k.startsWith("potion") && n > 0));
     // The adventure's starting purse stays behind; what they earned comes home.
     const earned = Math.max(0, last.party.gold - (adventureOf(last)?.startingGold ?? 0));
-    homecoming(title, earned, potions, state?.ended === "victory" ? (last.recruits ?? []) : [], best(last));
+    const deaths = last.party.heroes.filter((h) => h.dead).length;
+    homecoming(title, earned, potions, state?.ended === "victory" ? (last.recruits ?? []) : [], best(last), {
+      outcome: state?.ended ?? "abandoned",
+      deaths,
+      deeds: last.deeds,
+    });
   }
 }
 const current = () => useCampaign.getState().state;

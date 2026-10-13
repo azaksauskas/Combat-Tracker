@@ -203,6 +203,8 @@ export const StatBlockSchema = z.object({
   spellSlots: z.array(z.number()).catch([]),
   /** "undead", "beast", "humanoid"… (Turn Undead needs to know). */
   creatureType: z.string().nullable().catch(null),
+  /** "Lawful Good", "Neutral Evil", "Unaligned"… (see domain/alignment.ts). */
+  alignment: z.string().nullable().catch(null),
 });
 export type StatBlock = z.infer<typeof StatBlockSchema>;
 

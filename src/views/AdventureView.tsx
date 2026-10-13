@@ -156,6 +156,7 @@ function HeroCard({ hero: h }: { hero: Hero }) {
           {h.className} {h.level}
         </span>
       </div>
+      {h.stats.alignment && <div className="text-[11px] text-faint italic">{h.stats.alignment}</div>}
       {h.dead ? (
         <p className="text-xs text-danger">Fallen</p>
       ) : (

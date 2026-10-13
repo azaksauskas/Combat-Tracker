@@ -64,6 +64,7 @@ export const SRD_MONSTERS: ContentEntry[] = [
       creature(
         { name: "Goblin Warrior", isMonster: true, ac: 15, hpMax: 10, speed: 30 },
         stats({
+          alignment: "Chaotic Neutral",
           abilities: { str: 8, dex: 15, con: 10, int: 10, wis: 8, cha: 8 },
           proficiency: 2,
           cr: "1/4",
@@ -88,6 +89,7 @@ export const SRD_MONSTERS: ContentEntry[] = [
       creature(
         { name: "Wolf", isMonster: true, ac: 12, hpMax: 11, speed: 40 },
         stats({
+          alignment: "Unaligned",
           abilities: { str: 14, dex: 15, con: 12, int: 3, wis: 12, cha: 6 },
           proficiency: 2,
           cr: "1/4",
@@ -106,6 +108,7 @@ export const SRD_MONSTERS: ContentEntry[] = [
       creature(
         { name: "Skeleton", isMonster: true, ac: 14, hpMax: 13, speed: 30 },
         stats({
+          alignment: "Lawful Evil",
           abilities: { str: 10, dex: 16, con: 15, int: 6, wis: 8, cha: 5 },
           proficiency: 2,
           cr: "1/4",
@@ -129,6 +132,7 @@ export const SRD_MONSTERS: ContentEntry[] = [
       creature(
         { name: "Zombie", isMonster: true, ac: 8, hpMax: 15, speed: 20 },
         stats({
+          alignment: "Neutral Evil",
           abilities: { str: 13, dex: 6, con: 16, int: 3, wis: 6, cha: 5 },
           proficiency: 2,
           cr: "1/4",
@@ -156,6 +160,7 @@ export const SRD_MONSTERS: ContentEntry[] = [
       creature(
         { name: "Bandit", isMonster: true, ac: 12, hpMax: 11, speed: 30 },
         stats({
+          alignment: "Neutral",
           abilities: { str: 11, dex: 12, con: 12, int: 10, wis: 10, cha: 10 },
           proficiency: 2,
           cr: "1/8",
@@ -175,6 +180,7 @@ export const SRD_MONSTERS: ContentEntry[] = [
       creature(
         { name: "Giant Rat", isMonster: true, ac: 13, hpMax: 7, speed: 30 },
         stats({
+          alignment: "Unaligned",
           abilities: { str: 7, dex: 15, con: 11, int: 2, wis: 10, cha: 4 },
           proficiency: 2,
           cr: "1/8",
@@ -197,6 +203,7 @@ export const SRD_MONSTERS: ContentEntry[] = [
       creature(
         { name: "Cultist", isMonster: true, ac: 12, hpMax: 9, speed: 30 },
         stats({
+          alignment: "Neutral Evil",
           abilities: { str: 11, dex: 12, con: 10, int: 10, wis: 11, cha: 10 },
           proficiency: 2,
           cr: "1/8",
@@ -222,6 +229,7 @@ export const PARTY: ContentEntry[] = [
       creature(
         { name: "Brann Ironside", isMonster: false, ac: 17, hpMax: 12, speed: 30 },
         stats({
+          alignment: "Lawful Good",
           // Standard array; Soldier +2 STR, +1 CON.
           abilities: { str: 17, dex: 13, con: 15, int: 8, wis: 12, cha: 10 },
           proficiency: 2,
@@ -251,6 +259,7 @@ export const PARTY: ContentEntry[] = [
       creature(
         { name: "Pip Thistlefoot", isMonster: false, ac: 14, hpMax: 10, speed: 30 },
         stats({
+          alignment: "Chaotic Good",
           // Standard array; Criminal +2 DEX, +1 CON.
           abilities: { str: 8, dex: 17, con: 15, int: 12, wis: 13, cha: 10 },
           proficiency: 2,
@@ -280,6 +289,7 @@ export const PARTY: ContentEntry[] = [
       creature(
         { name: "Sister Maren", isMonster: false, ac: 15, hpMax: 11, speed: 30 },
         stats({
+          alignment: "Neutral Good",
           // Standard array; Acolyte +2 WIS, +1 CHA.
           abilities: { str: 13, dex: 10, con: 14, int: 8, wis: 17, cha: 13 },
           proficiency: 2,
@@ -323,6 +333,7 @@ export const PARTY: ContentEntry[] = [
       creature(
         { name: "Ezra Vell", isMonster: false, ac: 11, hpMax: 8, speed: 30 },
         stats({
+          alignment: "Neutral",
           // Standard array; Sage +2 INT, +1 CON.
           abilities: { str: 8, dex: 13, con: 15, int: 17, wis: 12, cha: 10 },
           proficiency: 2,
