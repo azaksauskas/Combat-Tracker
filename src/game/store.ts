@@ -20,11 +20,13 @@ export interface Fx {
 
 /** What a town battle is for: defending against a raid, a lair, a patrol, or a job from the board. */
 export interface TownBattleContext {
-  kind: "raid" | "lair" | "patrol" | "contract";
+  kind: "raid" | "lair" | "patrol" | "contract" | "reclaim";
   /** Raids and lairs. */
   faction?: string;
   /** Contracts. */
   contract?: string;
+  /** Taking the town back from a guild. */
+  guild?: string;
   /** Hero keys, in the order of the party's units (p0, p1, …). */
   heroes?: string[];
 }

@@ -229,3 +229,13 @@ export function readLegacySaves(storage: Pick<Storage, "getItem">): Partial<Pick
 function clearLegacySaves(storage: Pick<Storage, "removeItem">) {
   for (const k of Object.values(LEGACY)) storage.removeItem(k);
 }
+
+// Dev-only handle for automated browser tests: read and change player documents.
+if (import.meta.env.DEV && typeof window !== "undefined")
+  Object.assign(window, {
+    __players: {
+      get: (id?: string) => (id ? usePlayers.getState().docs[id] : usePlayers.getState()),
+      me: () => useActiveProfile.getState().id,
+      update: (id: string, change: (d: PlayerDoc) => PlayerDoc) => updatePlayer(id, change),
+    },
+  });

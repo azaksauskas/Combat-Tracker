@@ -462,6 +462,34 @@ picker into a real sign-in without changing the data model.
   - The return after time away is a chest: what the town gathered, then
     what happened. Stores show "+3" / "−17" rising when they change.
   - All numbers under "Upgrades" on the balance page.
+- **Feedback round, phase E: spies, guilds and the slow takeover.**
+  - Every player writes only their own save, so cross-player effects are
+    settled where they belong: a spy mission and its result live in the
+    sender's document (decided from the target as the sender's game sees
+    it, with a seeded roll); the target's game applies it to its own town
+    once (`seenMissions`). Guild membership lives in each member's
+    document; influence is worked out from what everyone can see. The
+    owner's game applies the takeover stages to its own town.
+  - 🕵 Spies (need a staffed tavern; take an hour of real time): scout
+    (stores, defences, guilds), sabotage (burns 15% of food and
+    materials), stir unrest (−3 spirit; counts for the sender's guild
+    there). Watchtowers catch spies; a caught spy names its sender.
+    Factions send spies too: watched towns may be scouted (+attention) or
+    the watch catches them (−attention).
+  - 🏛 Guilds: a hero living in another player's town founds one (30 gold
+    from their own town); others living there join. Influence grows per
+    member per real day (more with renown), per day's work for the guild,
+    and per unrest stirred; the owner's crackdowns take it away.
+  - Authority of the owner: 20 + 10 × renown + spirit + settlers' mood ×
+    0.2 + 5 per staffed watchtower, −15 while living elsewhere.
+  - Stages by influence ÷ authority: ½ tithe (production −25%); ¾ the
+    guild blocks the market, hiring, notices and upgrades; 1 the guild
+    runs the town (no building, workers, crafting, help, opening) and its
+    founder collects a tithe for their own town each real day.
+  - The owner answers: crack down (30 gold, every 12 real hours), banish
+    the guild while it's weak (members are sent home), or, once the town
+    is lost, fight to take it back (removes 60% of the guild's influence).
+  - All numbers under "Spies & guilds" on the balance page.
 
 ## Future ideas
 

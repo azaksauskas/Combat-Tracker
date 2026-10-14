@@ -137,6 +137,12 @@ export const TownSchema = z.object({
   stats: z.record(z.string(), z.number()).catch({}),
   /** Goals already rewarded (see game/goals.ts). */
   goals: z.array(z.string()).catch([]),
+  /** Influence taken from each guild by the owner (guild id → amount). */
+  crackdowns: z.record(z.string(), z.number()).catch({}),
+  /** When the owner last cracked down (real ms). */
+  lastCrackdown: z.number().catch(0),
+  /** Players not welcome here any more. */
+  banned: z.array(z.string()).catch([]),
   /** Raids to tell the player about. */
   raidNews: lenient(RaidNewsSchema),
   /** Other players may move in. */

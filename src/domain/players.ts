@@ -67,6 +67,45 @@ export const AccountProfileSchema = z.object({
 });
 export type AccountProfile = z.infer<typeof AccountProfileSchema>;
 
+export const MISSION_KINDS = ["scout", "sabotage", "unrest"] as const;
+export type MissionKind = (typeof MISSION_KINDS)[number];
+
+/** A spy sent to another player's town (kept by the sender; the target applies what it did). */
+export const MissionSchema = z.object({
+  id,
+  kind: z.enum(MISSION_KINDS).catch("scout"),
+  /** The target town's owner. */
+  target: z.string(),
+  /** Real time (ms). */
+  sentAt: z.number().catch(0),
+  arriveAt: z.number().catch(0),
+  seed: z.number().catch(1),
+  /** Filled in by the sender's game when the spy arrives. */
+  result: z
+    .object({
+      at: z.number().catch(0),
+      caught: z.boolean().catch(false),
+      /** What a scout saw. */
+      report: z.record(z.string(), z.union([z.number(), z.string()])).optional().catch(undefined),
+      /** What saboteurs destroyed. */
+      damage: z.object({ food: z.number().catch(0), materials: z.number().catch(0) }).optional().catch(undefined),
+    })
+    .optional()
+    .catch(undefined),
+});
+export type Mission = z.infer<typeof MissionSchema>;
+
+/** Membership of a guild in someone's town. The guild's id is its founder's account id. */
+export const GuildMembershipSchema = z.object({
+  id: z.string(),
+  name: z.string().catch("A guild"),
+  /** The town's owner. */
+  town: z.string(),
+  /** Real time (ms) they joined. */
+  joinedAt: z.number().catch(0),
+});
+export type GuildMembership = z.infer<typeof GuildMembershipSchema>;
+
 /** One player's document: their characters, chosen party, saves and chronicle. */
 export const PlayerDocSchema = z.object({
   /** Absent on saves from before logins (they can be claimed by an account). */
@@ -93,6 +132,16 @@ export const PlayerDocSchema = z.object({
   fallen: z.array(z.string()).catch([]),
   /** Adventures this player has completed (ids): they move to "Completed" and replay without rewards. */
   completed: z.array(z.string()).catch([]),
+  /** Spies this player sent (newest last). */
+  missions: lenient(MissionSchema),
+  /** Missions against this player's town that have already been applied. */
+  seenMissions: z.array(z.string()).catch([]),
+  /** The guild this player belongs to, if any. */
+  guild: GuildMembershipSchema.nullable().catch(null),
+  /** Days of work for the guild: the last real day worked, and the total. */
+  guildWork: z.object({ day: z.string().catch(""), total: z.number().catch(0) }).catch({ day: "", total: 0 }),
+  /** When a guild founder last collected the tithe of a town their guild runs (real ms). */
+  lastTithe: z.number().catch(0),
   /** Renown = the highest level any of the player's heroes has reached. */
   renown: z.number().catch(1),
   /** Which open page wrote last, so a page ignores the echo of its own save. */

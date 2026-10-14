@@ -214,6 +214,17 @@ export function regionDay(t: Town, h: number, rng: () => number, factions: Facti
     }
     if (th.stage === "friendly") th = { faction: f.id, attention: 10, stage: "quiet" };
 
+    // Their spies come to look the town over; a watch may catch them.
+    if (th.stage === "watching" && rng() < num("spy.factionChance")) {
+      if (info.towers > 0 && rng() < Math.min(0.9, 0.4 * info.towers)) {
+        th = { ...th, attention: clamp(th.attention - 10, 0, 100) };
+        say(`${f.icon} The watch caught a spy of ${f.name} counting the town's spears. They'll think twice.`, "good");
+      } else {
+        th = { ...th, attention: clamp(th.attention + 5, 0, 100) };
+        say(`${f.icon} Strangers were asking about the town's defences. ${f.name} know more than they did.`, "info");
+      }
+    }
+
     // Attention grows with power; an offended faction grows hungrier faster.
     const opposed = clamp(-kin, 0, 1);
     const gain = num("region.attentionRate") * (1 + info.power / 15) * (1 + opposed) * (info.towers ? 0.7 : 1) * (0.6 + rng() * 0.8);

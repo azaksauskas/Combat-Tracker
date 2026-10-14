@@ -25,6 +25,8 @@ import { num } from "../game/tuning";
 import { useActiveProfile, usePlayers } from "../store/players";
 import { militiaChances } from "./RaidAlerts";
 import { RegionMap } from "./RegionMap";
+import { IntrigueTab, ResidentGuild, Spies, TakeoverBanner } from "./IntrigueView";
+import { titheShare, townStage } from "../game/guilds";
 import { usePlay } from "../game/store";
 
 bindTown();
@@ -80,7 +82,7 @@ function FoundTown({ renown }: { renown: number }) {
   );
 }
 
-type TownTab = "town" | "build" | "people" | "workshop" | "jobs" | "region" | "log";
+type TownTab = "town" | "build" | "people" | "workshop" | "jobs" | "region" | "intrigue" | "log";
 
 function useTownTab(): [TownTab, (t: TownTab) => void] {
   const [tab, setTabState] = useState<TownTab>(() => {
@@ -110,6 +112,7 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
   const [selected, setSelected] = useState<string | null>(null);
   const urgent = t.threats.filter((th) => th.stage === "demanding" || th.stage === "raiding").length;
   const unhappy = t.settlers.filter((x) => x.mood < 40).length;
+  const guildStage = townStage(ownerId, usePlayers.getState().docs, now);
   const tabs: { id: TownTab; label: string; badge?: number; tone?: "warn" | "danger" | "info" }[] = [
     { id: "town", label: "🏡 Village" },
     { id: "build", label: "🔨 Build" },
@@ -117,14 +120,16 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
     { id: "workshop", label: "⚒ Workshop" },
     { id: "jobs", label: "📜 Jobs", badge: t.contracts.length || undefined, tone: "info" as const },
     { id: "region", label: "🗺 Region", badge: urgent || undefined, tone: "danger" as const },
+    { id: "intrigue", label: "🕵 Intrigue", badge: guildStage || undefined, tone: "danger" as const },
     { id: "log", label: "📖 Events" },
   ];
   const current = tab;
 
   return (
     <div className="space-y-3">
-      <TownHeader town={t} hours={hours} renown={renown} ctx={ctx} />
+      <TownHeader town={t} hours={hours} renown={renown} ctx={ctx} tithe={titheShare(guildStage)} />
       <Alarms town={t} hours={hours} />
+      <TakeoverBanner ownerId={ownerId} onOpen={() => setTab("intrigue")} />
       <div className="flex flex-wrap gap-1 border-b border-line" role="tablist" aria-label="Town">
         {tabs.map((x) => (
           <button
@@ -172,16 +177,17 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
           </div>
         </div>
       )}
+      {current === "intrigue" && <IntrigueTab ownerId={ownerId} />}
       {current === "log" && <TownLog town={t} />}
     </div>
   );
 }
 
 /** Name, clock, fame and the stores, with how each changes per day. */
-function TownHeader({ town: t, hours, renown, ctx }: { town: Town; hours: number; renown: number; ctx: SimContext }) {
+function TownHeader({ town: t, hours, renown, ctx, tithe }: { town: Town; hours: number; renown: number; ctx: SimContext; tithe: number }) {
   const [name, setName] = useState(t.name);
   useEffect(() => setName(t.name), [t.name]);
-  const daily = dailyChange(t);
+  const daily = dailyChange(t, tithe);
   const h = Math.floor(hours) % 24;
   const night = h >= 20 || h < 6;
   const potions = Object.values(t.stash).reduce((a, b) => a + b, 0);
@@ -995,6 +1001,10 @@ function HostTown({ hostId, host }: { hostId: string; host: Profile | undefined 
           <p className="text-sm text-muted">
             {t.settlers.length} settlers · heroes here: {[host?.name, ...residents.map((p) => p.name)].filter(Boolean).join(", ")}
           </p>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <ResidentGuild hostId={hostId} />
+            <Spies />
+          </div>
           <ol className="max-h-60 space-y-0.5 overflow-y-auto text-sm">
             {[...t.log]
               .reverse()

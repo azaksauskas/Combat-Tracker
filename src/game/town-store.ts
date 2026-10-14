@@ -19,6 +19,7 @@ import { INJURIES, aftermath } from "./injuries";
 import { completeContract, notePatrol, patrolBounty, rewardText, tradeAtMarket, type Good } from "./economy";
 import { PATROL_FOES, foeBattle } from "./patrol";
 import { claimGoal } from "./goals";
+import { BLOCKED_FROM, blockedBy, titheShare, townStage } from "./guilds";
 import { MAX_LEVEL, XP_BY_CR, XP_FOR_LEVEL, levelForXp } from "./party";
 import {
   onlineMsPerHour,
@@ -65,7 +66,16 @@ export function townContext(ownerId: string): SimContext {
   const residents = Object.entries(docs)
     .filter(([id, d]) => id !== ownerId && d.residence === ownerId)
     .map(([, d]) => d.renown);
-  return { renown: owner?.renown ?? 1, residents, ownerAway: !!owner?.residence, factions: allFactions() };
+  return { renown: owner?.renown ?? 1, residents, ownerAway: !!owner?.residence, factions: allFactions(), tithe: titheShare(townStage(ownerId, docs, Date.now())) };
+}
+
+/** A guild's hold may forbid this in the player's own town: says why and returns false. */
+function allowed(action: keyof typeof BLOCKED_FROM): boolean {
+  const id = me();
+  if (!id) return false;
+  const why = blockedBy(townStage(id, usePlayers.getState().docs, Date.now()), action);
+  if (why) toast.error(why);
+  return !why;
 }
 
 function setTown(id: string, change: (t: Town, d: PlayerDoc) => Town) {
@@ -92,12 +102,17 @@ export function liveHours(t: Town, now = Date.now()): number {
 const onPlayPage = () => location.hash.startsWith("#/play");
 
 let ticking = false;
+/** Other systems that check in on every tick (spies, guilds). */
+const tickHooks: (() => void)[] = [];
+export const onTownTick = (f: () => void) => void tickHooks.push(f);
+
 function tick() {
   // Saving below notifies subscribers, which would call tick again.
   if (ticking) return;
   ticking = true;
   try {
     step();
+    for (const f of tickHooks) f();
   } finally {
     ticking = false;
   }
@@ -232,7 +247,7 @@ export function found(name: string) {
 export function build(type: BuildingType) {
   const id = me();
   const doc = docOf(id);
-  if (!id || !doc?.town) return;
+  if (!id || !doc?.town || !allowed("build")) return;
   try {
     // Bank online time so the work starts now, not at the last save.
     const now = Date.now();
@@ -249,6 +264,7 @@ export const renameTown = (name: string) => {
 };
 
 export const setOpen = (open: boolean) => {
+  if (!allowed("open")) return;
   const id = me();
   if (id) setTown(id, (t) => ({ ...t, open }));
 };
@@ -318,6 +334,7 @@ export const today = () => new Date().toLocaleDateString("en-CA");
 
 /** A day's work around town: once per bed per real day. */
 export function helpOut() {
+  if (!allowed("help")) return;
   const id = me();
   const t = docOf(id)?.town;
   if (!id || !t) return;
@@ -339,6 +356,7 @@ export function sleep() {
 
 /** A job at a workplace: pay, then wait (longer without a worker of the right trade). */
 function work(at: BuildingType, cost: Cost, baseHours: number, what: string, change: (t: Town) => Town) {
+  if (!allowed("craft")) return false;
   const id = me();
   const t = docOf(id)?.town;
   if (!id || !t) return false;
@@ -389,11 +407,13 @@ export function salvageBattle(game: GameState, battle: string) {
 
 /** Hire a worker at the tavern (gold, a free bed); naming a trade costs more. */
 export function hireWorker(trade?: string) {
+  if (!allowed("hire")) return;
   townAction((t) => hire(t, trade));
 }
 
 /** Start upgrading a building to its next level. */
 export function upgradeBuilding(buildingId: string) {
+  if (!allowed("upgrade")) return;
   const id = me();
   townAction((t) => startUpgrade(t, buildingId, docOf(id)?.renown ?? 1));
 }
@@ -406,16 +426,19 @@ export function claimTownGoal(goalId: string) {
 
 /** Put up a notice at the hall asking for someone of a trade. */
 export function postNotice(trade: string) {
+  if (!allowed("notice")) return;
   townAction((t) => postCall(t, trade));
 }
 
 /** Move a settler to a workplace, tell them to rest ("rest"), or let them choose (null). */
 export function assignSettler(settlerId: string, job: string | null) {
+  if (!allowed("assign")) return;
   townAction((t) => assign(t, settlerId, job));
 }
 
 /** Buy (n > 0) or sell (n < 0) at the market. */
 export function marketTrade(good: Good, n: number) {
+  if (!allowed("market")) return;
   townAction((t) => tradeAtMarket(t, good, n));
 }
 
@@ -512,6 +535,10 @@ export function startTownBattle(kind: "raid" | "lair", fid: string) {
   startBattle({ ...sc, name }, board, units, { stash: { ...t.stash } }, "town", { kind, faction: fid, heroes: party.map((e) => e.key) });
 }
 
+let reclaimHook: ((guildId: string, won: boolean) => void) | null = null;
+/** The guild system's answer to a fight for the town (set by intrigue-store, which depends on this module). */
+export const onReclaim = (f: (guildId: string, won: boolean) => void) => void (reclaimHook = f);
+
 /** Back from a town battle: apply the result to the town. */
 export function finishTownBattle(retreat = false) {
   const id = me();
@@ -523,6 +550,15 @@ export function finishTownBattle(retreat = false) {
   recordAftermath(aftermath(game, (uid) => (/^p\d+$/.test(uid) ? keys[Number(uid.slice(1))] : undefined)));
   const battle = scenario?.name ?? "a fight";
   const keepStash = (t: Town): Town => ({ ...t, stash: { ...(game.stash ?? t.stash) } });
+
+  if (context.kind === "reclaim") {
+    if (won) salvageBattle(game, battle);
+    reclaimHook?.(context.guild ?? "", won);
+    updatePlayer(id, (d) => (d.town ? { ...d, town: keepStash(d.town) } : d));
+    addChronicle(id, [{ kind: "fight", text: won ? `Won ${battle}.` : `Lost ${battle}.` }]);
+    passTime(2);
+    return quitGame();
+  }
 
   if (context.kind === "patrol" || context.kind === "contract") {
     const town = docOf(id)?.town;

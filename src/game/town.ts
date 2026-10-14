@@ -345,6 +345,9 @@ export function foundTown(name: string, now: number, seed: number, gold = num("t
     missed: 0,
     stats: {},
     goals: [],
+    crackdowns: {},
+    lastCrackdown: 0,
+    banned: [],
     patrols: { day: 0, count: 0 },
     contracts: [],
     buildings: [{ id: "hall", type: "hall" }],
@@ -372,6 +375,8 @@ export interface SimContext {
   ownerAway?: boolean;
   /** The region's factions (built-in and the DM's). */
   factions?: Faction[];
+  /** Share of production a guild skims (see game/guilds.ts). */
+  tithe?: number;
 }
 
 export const power = (t: Town, ctx: SimContext) => t.settlers.length + 2 * built(t).length + 5 * ctx.renown + 5 * ctx.residents.reduce((n, r) => n + r, 0);
@@ -525,7 +530,7 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
     };
   }
   // Every hour, each workplace makes a little and everyone eats a little.
-  t = produceHour(t);
+  t = produceHour(t, ctx.tithe ?? 0);
   // Raiders and deadlines keep their hour.
   if (ctx.factions?.length) t = regionHour(t, h, rng, ctx.factions, { towers: output(t, "watchtower") }, say);
   if (h % 24 !== DAWN) return t;
@@ -659,8 +664,9 @@ export function production(t: Town): Yield & { eaten: number } {
 }
 
 /** The day's change in each store, for the town's header (random events aside). */
-export function dailyChange(t: Town) {
+export function dailyChange(t: Town, tithe = 0) {
   const p = production(t);
+  for (const k of STORES) p[k] *= 1 - tithe;
   const r = (n: number) => Math.round(n * 10) / 10;
   return { gold: r(p.gold), food: r(p.food - p.eaten), materials: r(p.materials), herbs: r(p.herbs) };
 }
@@ -669,7 +675,7 @@ export function dailyChange(t: Town) {
  * One hour of work: every building adds a 24th of its day to what it has in
  * progress, and hands over whole units; the settlers eat the same way.
  */
-export function produceHour(t: Town): Town {
+export function produceHour(t: Town, tithe = 0): Town {
   const who = assignments(t);
   const acc = { ...t.acc };
   let { food, materials, gold } = t;
@@ -679,7 +685,7 @@ export function produceHour(t: Town): Town {
     for (const k of STORES) {
       if (!y[k]) continue;
       const key = `${b.id}:${k}`;
-      let v = (acc[key] ?? 0) + y[k] / 24;
+      let v = (acc[key] ?? 0) + (y[k] * (1 - tithe)) / 24;
       const whole = Math.floor(v + 1e-9);
       v -= whole;
       acc[key] = v < 1e-9 ? 0 : v;
