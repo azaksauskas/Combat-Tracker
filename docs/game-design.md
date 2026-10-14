@@ -249,10 +249,7 @@ picker into a real sign-in without changing the data model.
     (new only or everything, per player) with "→ Notes" to append an entry
     to the campaign notes, or ✓ to mark it seen. Players' characters also
     appear in the tracker's content picker, so they can join a real fight.
-  - Logins prepared, not built: profile ids become auth uids, and
-    `firestore.rules.draft` sketches the rules (each player writes only
-    their own document; the DM reads all). Until then anyone with the link
-    can pick any profile.
+  - Logins came in phase D (below).
 - **M8 done:** towns and time (the 🏘 Town tab on the Play page).
   - Found a town: a hall, some gold, food and materials. Build houses,
     farms, a lumber camp, market, tavern, apothecary and watchtowers (the
@@ -433,6 +430,21 @@ picker into a real sign-in without changing the data model.
     factions that need more renown; unknown ones are "?"). Dotted lines
     are scouts, red animated arrows are raids on their way, green lines
     are friends, a crossed lair is broken. Click a known lair to strike.
+- **Feedback round, phase D: logins.**
+  - Sign in with a name and a password (Firebase Email/Password; the name
+    becomes a never-mailed address). New players sign up themselves; no
+    e-mail is needed. Password change in the menu.
+  - A player's document id is their account id, and holds their profile
+    (name, colour) next to their saves. "Who's playing?" is gone: the
+    signed-in account plays.
+  - DMs are listed in `roles/dm`. The first account to press "👑 I'm the
+    DM" takes the role; DMs can make others DMs on the Players page.
+    Players see only Play and the player screen; DM tools redirect them.
+  - Saves from before logins can be claimed once ("That was me: …"). A
+    forgotten password: make a new account; the DM moves the old save over.
+  - `firestore.rules`: everything needs an account; only DMs write the
+    shared documents and the roles; each player writes only their own
+    document (DMs any); everyone signed in reads all players' documents.
 
 ## Future ideas
 

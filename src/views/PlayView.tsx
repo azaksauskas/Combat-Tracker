@@ -24,8 +24,7 @@ import { newId } from "../domain/combat";
 import { characterKey, suggestedSpec } from "../game/builder";
 import { MAX_PARTY, availableMembers, deleteCharacter, togglePick } from "../game/party-store";
 import { bindSaves } from "../game/save-bind";
-import { createProfile, useActiveProfile, usePlayers } from "../store/players";
-import { DEFAULT_PICKS } from "../game/party-store";
+import { claimSave, legacySaves, useActiveProfile, usePlayers } from "../store/players";
 import { withProgress } from "../game/party";
 import { INJURIES } from "../game/injuries";
 import { num } from "../game/tuning";
@@ -37,11 +36,10 @@ export function PlayView() {
   const game = usePlay((s) => s.game);
   const campaign = useCampaign((s) => s.state);
   const activeId = useActiveProfile((s) => s.id);
-  const profiles = useGame((s) => s.players.profiles);
+  const profiles = usePlayers((s) => s.profiles);
   const loaded = usePlayers((s) => (activeId ? !!s.loaded[activeId] : false));
   const active = profiles.find((p) => p.id === activeId);
-  if (!active) return <WhoIsPlaying />;
-  if (!loaded) return <p className="mt-20 animate-pulse text-center text-muted">Loading {active.name}'s game…</p>;
+  if (!active || !loaded) return <p className="mt-20 animate-pulse text-center text-muted">Loading your game…</p>;
   return (
     <>
       {game ? (
@@ -65,6 +63,7 @@ function Home() {
   const [tab, setTab] = useState<"town" | "adventure">("town");
   return (
     <div className="mx-auto w-full max-w-6xl space-y-4">
+      <ClaimOldSave />
       <div className="relative flex items-center gap-1 border-b border-line" role="tablist">
         {(
           [
@@ -257,62 +256,34 @@ function PartyPicker() {
   );
 }
 
-/** Pick (or create) who's playing on this device. Becomes a real sign-in later. */
-function WhoIsPlaying() {
-  const profiles = useGame((s) => s.players.profiles);
-  const [name, setName] = useState("");
-  const start = () => createProfile(name, profiles.length === 0 ? "dm" : "player", DEFAULT_PICKS);
+/** Saves from before logins that this player can take over. */
+function ClaimOldSave() {
+  usePlayers((s) => s.docs);
+  useGame((s) => s.players);
+  const old = legacySaves();
+  if (!old.length) return null;
   return (
-    <div className="mx-auto mt-10 w-full max-w-xl space-y-5">
-      <header className="text-center">
-        <h2 className="text-3xl font-bold text-accent">Who's playing?</h2>
-        <p className="text-sm text-muted">Each player has their own heroes, adventures and saves, on any device.</p>
-      </header>
-      {profiles.length > 0 && (
-        <ul className="grid gap-2 sm:grid-cols-2">
-          {profiles.map((p) => (
-            <li key={p.id}>
-              <button className="flex w-full items-center gap-3 rounded-lg border border-line bg-surface p-3 text-left shadow hover:border-accent" onClick={() => useActiveProfile.setState({ id: p.id })}>
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-bold text-white" style={{ background: p.color }}>
-                  {p.name.charAt(0).toUpperCase()}
-                </span>
-                <span>
-                  <span className="block font-bold text-strong">{p.name}</span>
-                  <span className="block text-xs text-faint">{p.role === "dm" ? "Dungeon Master" : "Player"}</span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (name.trim()) start();
-        }}
-      >
-        <input className="field flex-1" placeholder={profiles.length ? "New player's name" : "Your name"} value={name} onChange={(e) => setName(e.target.value)} aria-label="New player's name" />
-        <button className="btn btn-primary font-display" disabled={!name.trim()}>
-          {profiles.length ? "Add player" : "Start"}
-        </button>
-      </form>
-      {profiles.length === 0 && <p className="text-center text-xs text-faint">The first profile is the DM's, and takes over anything this browser saved before.</p>}
+    <div className="rounded-lg border border-accent/60 bg-accent/5 p-3 text-sm" aria-label="Old saves">
+      <strong className="text-strong">Played here before logins?</strong> <span className="text-muted">Take over your old save: heroes, town and progress. It replaces what this account has.</span>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {old.map((o) => (
+          <button key={o.id} className="btn text-sm" onClick={() => confirm(`Is "${o.name}" you? Your account takes over that save.`) && claimSave(o.id)}>
+            That was me: {o.name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
 function PlayingAs() {
   const activeId = useActiveProfile((s) => s.id);
-  const p = useGame((s) => s.players.profiles.find((x) => x.id === activeId));
+  const p = usePlayers((s) => s.profiles.find((x) => x.id === activeId));
   if (!p) return null;
   return (
     <div className="flex items-center gap-2 text-sm text-muted">
       <span className="inline-block h-3 w-3 rounded-full" style={{ background: p.color }} />
       Playing as <strong className="text-strong">{p.name}</strong>
-      <button className="btn btn-ghost px-2 py-0.5 text-xs" onClick={() => useActiveProfile.setState({ id: null })}>
-        Switch
-      </button>
     </div>
   );
 }

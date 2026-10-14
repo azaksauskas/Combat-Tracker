@@ -6,6 +6,7 @@ import type { GameState } from "./state";
 import type { UnitSetup } from "./engine";
 import { runAi, usePlay, type TownBattleContext } from "./store";
 import { CLIENT_ID, updatePlayer, useActiveProfile, usePlayers } from "../store/players";
+import { onBeforeSignOut } from "../store/game";
 
 /**
  * Keeps the game's in-memory stores (the battle and the adventure) in step
@@ -102,6 +103,7 @@ export function bindSaves() {
   started = true;
   useActiveProfile.subscribe(follow);
   usePlayers.subscribe(follow);
+  onBeforeSignOut(flush);
   usePlay.subscribe((s, prev) => {
     if (s.game !== prev.game || s.scenario !== prev.scenario || s.mode !== prev.mode) schedule();
   });

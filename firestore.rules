@@ -1,0 +1,56 @@
+// Firestore security rules for Combat Tracker.
+//
+// Paste into Firebase Console → Firestore Database → Rules → Publish.
+// (Paths match src/sync/firestore.ts.)
+//
+// - Everything needs a signed-in account (name + password); the old
+//   anonymous sign-in no longer counts.
+// - The DMs are listed in roles/dm. The first account to press "I'm the DM"
+//   creates that list; after that only a DM can change it.
+// - The DM's tools (combat, library, notes) can be read by every player
+//   (player screen, adventures, maps, factions, balance) but only DMs write.
+// - Each player writes only their own document players/{their account id};
+//   DMs can write anyone's (chronicle, moving a save). Everyone signed in can
+//   read all players' documents: towns see their neighbours.
+// - Saves from before logins (no "profile" field) can be claimed: any
+//   signed-in player may delete them after copying, and the old directory
+//   (tracker/players) can be trimmed by anyone signed in.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    match /artifacts/{appId}/public/data {
+      function rolesDoc() {
+        return /databases/$(database)/documents/artifacts/$(appId)/public/data/roles/dm;
+      }
+      function isDM() {
+        return signedIn() && exists(rolesDoc()) && request.auth.uid in get(rolesDoc()).data.uids;
+      }
+
+      match /tracker/{doc} {
+        allow read: if signedIn();
+        allow write: if isDM() || (doc == 'players' && signedIn());
+      }
+
+      // The single document of the original app, read once to import it.
+      match /encounter/{doc} {
+        allow read: if signedIn();
+      }
+
+      match /roles/dm {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.uids == [request.auth.uid];
+        allow update: if isDM() && request.resource.data.uids.size() > 0;
+      }
+
+      match /players/{uid} {
+        allow read: if signedIn();
+        allow create, update: if signedIn() && (request.auth.uid == uid || isDM());
+        allow delete: if isDM() || (signedIn() && !('profile' in resource.data));
+      }
+    }
+  }
+}

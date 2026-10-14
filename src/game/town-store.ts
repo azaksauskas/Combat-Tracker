@@ -6,7 +6,7 @@ import type { PlayerDoc } from "../domain/players";
 import { MAX_TOWN_LOG, type BuildingType, type Town } from "../domain/town";
 import type { GameState } from "./state";
 import { BREWS, COMPONENTS, MODS, SLOTS, addComponents, cantAfford, fitMod, pay, salvage, type Component, type Cost } from "./crafting";
-import { useGame } from "../store/game";
+import { onBeforeSignOut, useGame } from "../store/game";
 import { addChronicle, updatePlayer, useActiveProfile, usePlayers } from "../store/players";
 import { randomSeed } from "./rng";
 import type { Faction } from "../domain/faction";
@@ -166,10 +166,17 @@ export function bindTown() {
   setInterval(tick, 2_000);
   document.addEventListener("visibilitychange", tick);
   window.addEventListener("hashchange", tick);
-  window.addEventListener("pagehide", () => {
+  const bank = () => {
     const id = me();
     const t = docOf(id)?.town;
     if (id && t && lastTick && !docOf(id)?.residence) commitOnline(id, t, Date.now());
+  };
+  window.addEventListener("pagehide", bank);
+  // Signing out: bank the time played, and the next account starts its own clock.
+  onBeforeSignOut(() => {
+    bank();
+    lastTick = 0;
+    boundTo = null;
   });
   // React after the save that changed the document has finished, never in the
   // middle of it: a nested save would be overwritten by the outer one.
@@ -249,7 +256,7 @@ export function joinTown(ownerId: string) {
   if (!id || ownerId === id) return;
   passTime(6, "Travelled by waystone");
   updatePlayer(id, (d) => ({ ...d, residence: ownerId }));
-  const owner = useGame.getState().players.profiles.find((p) => p.id === ownerId);
+  const owner = usePlayers.getState().profiles.find((p) => p.id === ownerId);
   addChronicle(id, [{ kind: "story", text: `Moved to ${docOf(ownerId)?.town?.name ?? "another town"}${owner ? `, ${owner.name}'s town` : ""}.` }]);
 }
 

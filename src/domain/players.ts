@@ -3,10 +3,11 @@ import { CharacterSpecSchema } from "./character";
 import { TownSchema } from "./town";
 
 /**
- * Players of the between-session game. A small shared directory lists the
- * profiles; each player's saves live in a document of their own. When logins
- * arrive, a profile id becomes the signed-in user's id and security rules can
- * say "only you write your own document" (see firestore.rules.draft).
+ * Players of the between-session game. Each player signs in with an account;
+ * their document (id = account id) holds who they are and all their saves.
+ * Security rules let only them (and the DM) write it (see firestore.rules).
+ * The old shared directory (PlayersDoc) only lists saves from before logins,
+ * so their owners can claim them.
  */
 
 const id = z.union([z.string(), z.number()]).transform(String);
@@ -17,7 +18,7 @@ export const ProfileSchema = z.object({
   id,
   name: z.string().catch("Player"),
   color: z.string().catch(PROFILE_COLORS[0]),
-  /** The DM can see everyone's saves and the chronicle; players see their own. */
+  /** The DM can use every tool and see everyone's saves; players play. */
   role: z.enum(["dm", "player"]).catch("player"),
   createdAt: z.number().catch(0),
 });
@@ -58,8 +59,18 @@ const lenient = <T extends z.ZodType>(item: T) =>
       return r.success ? [r.data as z.infer<T>] : [];
     }));
 
+/** Who a player is, kept in their own document (the document id is their account id). */
+export const AccountProfileSchema = z.object({
+  name: z.string().catch("Player"),
+  color: z.string().catch(PROFILE_COLORS[0]),
+  createdAt: z.number().catch(0),
+});
+export type AccountProfile = z.infer<typeof AccountProfileSchema>;
+
 /** One player's document: their characters, chosen party, saves and chronicle. */
 export const PlayerDocSchema = z.object({
+  /** Absent on saves from before logins (they can be claimed by an account). */
+  profile: AccountProfileSchema.optional().catch(undefined),
   characters: lenient(CharacterSpecSchema),
   /** Content keys of the heroes going on the next adventure (empty: the ready-made party). */
   picks: z.array(z.string()).catch([]),

@@ -73,9 +73,16 @@ Shared state is split into three Firestore documents under the original path, `a
 
 Display preferences (theme, custom colours, sidebar, map layout) are stored per device instead of being synced, so a DM changing their layout no longer changes every player's screen.
 
+### Accounts and roles
+
+Everyone signs in with a name and a password (Firebase Authentication, **Email/Password** provider: the name becomes a never-mailed address like `aurimas@players.combat-tracker`). Each player's saves live in `players/{account id}`. The DMs are listed in `roles/dm`: the first account to press **👑 I'm the DM** gets the role, and a DM can make others DMs on the Players page. Players see only the Play page and the player screen; DMs see every tool.
+
+Security rules are in [`firestore.rules`](firestore.rules). Publish them in Firebase Console → Firestore Database → Rules (paste the file, then **Publish**) once the DM has signed up and pressed "I'm the DM". Forgotten password: the player makes a new account and the DM moves the old save to it (Players page → "Move this save to").
+
+With `VITE_SYNC_BACKEND=local` accounts are kept in the browser (for development and tests only).
+
 ## Known limits / next steps
 
-- **No roles yet.** Anyone with the URL can open `#/admin`, as before, and pick any player profile on the Play page. Firebase Auth with DM/player roles is prepared: each player's saves already live in their own document, and `firestore.rules.draft` sketches the rules.
 - **Last write wins.** Each document is written whole. That's fine for one DM, but simultaneous editors should move to per-combatant documents or transactions.
 - **Portraits are stored inline** as small JPEG data URLs (Firestore caps a document at 1 MiB). Firebase Storage would remove that limit.
 

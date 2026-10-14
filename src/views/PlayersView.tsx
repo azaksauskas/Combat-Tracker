@@ -4,9 +4,8 @@ import { toast } from "sonner";
 import type { ChronicleEntry, PlayerDoc, Profile } from "../domain/players";
 import type { CampaignState } from "../game/adventure";
 import { allAdventures } from "../game/campaign-store";
-import { update, useGame } from "../store/game";
-import { createProfile, deleteProfile, renameProfile, setChronicleStatus, setRole, useActiveProfile, usePlayers } from "../store/players";
-import { DEFAULT_PICKS } from "../game/party-store";
+import { update } from "../store/game";
+import { deleteProfile, moveSave, renameProfile, setChronicleStatus, setRole, usePlayers } from "../store/players";
 import { built, clockText, renownOf } from "../game/town";
 import { STAGE_TEXT } from "../game/region";
 import { allFactions } from "../game/town-store";
@@ -30,12 +29,11 @@ export const when = (ms: number) => {
  * notes for the next real session.
  */
 export function PlayersView() {
-  const profiles = useGame((s) => s.players.profiles);
+  const profiles = usePlayers((s) => s.profiles);
   const docs = usePlayers((s) => s.docs);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"new" | "all">("new");
   const [who, setWho] = useState<string>("");
-  const [name, setName] = useState("");
 
   const feed = useMemo(
     () =>
@@ -85,23 +83,10 @@ export function PlayersView() {
               </li>
             ))}
           </ul>
-          <form
-            className="flex gap-1"
-            onSubmit={(e) => {
-              e.preventDefault();
-              // Adding a player here shouldn't change who's playing on this device.
-              const prev = useActiveProfile.getState().id;
-              createProfile(name, profiles.length === 0 ? "dm" : "player", DEFAULT_PICKS);
-              useActiveProfile.setState({ id: prev });
-              setName("");
-            }}
-          >
-            <input className="field flex-1 py-1" placeholder="New player's name" value={name} onChange={(e) => setName(e.target.value)} aria-label="New player's name" />
-            <button className="btn px-2 text-sm" disabled={!name.trim()}>
-              Add
-            </button>
-          </form>
-          <p className="text-xs text-faint">Players pick their profile on the Play page. Logins come later; for now anyone with the link can pick any profile.</p>
+          <p className="text-xs text-faint">
+            Players join by signing up with a name and password on the sign-in screen; they appear here once they have. Only DMs can use the DM tools and change other
+            players' saves.
+          </p>
         </aside>
 
         <div className="min-w-0 space-y-4">
@@ -164,11 +149,45 @@ export function PlayersView() {
   );
 }
 
+/** For a forgotten password: the player makes a new account, and the DM moves the old save over. */
+function MoveSave({ from }: { from: Profile }) {
+  const profiles = usePlayers((s) => s.profiles);
+  const [to, setTo] = useState("");
+  const others = profiles.filter((x) => x.id !== from.id);
+  if (!others.length) return null;
+  return (
+    <label className="block">
+      <span className="field-label">Move this save to</span>
+      <span className="flex gap-1">
+        <select className="field w-auto py-1" value={to} onChange={(e) => setTo(e.target.value)} aria-label="Move save to">
+          <option value="">…another account</option>
+          {others.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.name}
+            </option>
+          ))}
+        </select>
+        <button
+          className="btn px-2 text-sm"
+          disabled={!to}
+          title="E.g. after a forgotten password: the player signs up again, then you move their old save to the new account"
+          onClick={() => {
+            const target = others.find((x) => x.id === to);
+            if (target && confirm(`Move ${from.name}'s whole save to ${target.name}? It replaces ${target.name}'s save, and ${from.name} starts afresh.`)) moveSave(from.id, to);
+          }}
+        >
+          Move
+        </button>
+      </span>
+    </label>
+  );
+}
+
 function Dot({ profile, small }: { profile: Profile; small?: boolean }) {
   return <span className={clsx("inline-block shrink-0 rounded-full", small ? "h-2 w-2" : "h-3 w-3")} style={{ background: profile.color }} />;
 }
 
-const profileName = (id: string) => useGame.getState().players.profiles.find((p) => p.id === id)?.name ?? "another player";
+const profileName = (id: string) => usePlayers.getState().profiles.find((p) => p.id === id)?.name ?? "another player";
 
 function PlayerCard({ profile: p, doc, onDeleted }: { profile: Profile; doc: PlayerDoc | undefined; onDeleted: () => void }) {
   const [name, setName] = useState(p.name);
@@ -184,20 +203,21 @@ function PlayerCard({ profile: p, doc, onDeleted }: { profile: Profile; doc: Pla
         </label>
         <label className="block">
           <span className="field-label">Role</span>
-          <select className="field w-auto py-1" value={p.role} onChange={(e) => setRole(p.id, e.target.value as Profile["role"])}>
+          <select className="field w-auto py-1" value={p.role} onChange={(e) => setRole(p.id, e.target.value as Profile["role"])} aria-label="Role">
             <option value="player">Player</option>
             <option value="dm">Dungeon Master</option>
           </select>
         </label>
+        <MoveSave from={p} />
         <button
           className="btn btn-danger ml-auto"
           onClick={() => {
-            if (!confirm(`Delete ${p.name} and all their saves?`)) return;
+            if (!confirm(`Delete ${p.name}'s save? Their heroes, town and progress are lost. (Their account stays: signing in again starts afresh.)`)) return;
             deleteProfile(p.id);
             onDeleted();
           }}
         >
-          Delete player
+          Delete save
         </button>
       </div>
       <div className="grid gap-3 md:grid-cols-3">

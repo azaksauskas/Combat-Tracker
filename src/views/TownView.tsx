@@ -40,7 +40,7 @@ function useNow(ms = 1000) {
 export function TownView() {
   const id = useActiveProfile((s) => s.id)!;
   const doc = usePlayers((s) => s.docs[id]);
-  const profiles = useGame((s) => s.players.profiles);
+  const profiles = usePlayers((s) => s.profiles);
   if (!doc) return null;
   if (doc.residence) {
     const host = profiles.find((p) => p.id === doc.residence);
@@ -719,7 +719,7 @@ function Stat({ label, value, icon, warn }: { label: string; value: number | str
 }
 
 function useResidents(ownerId: string): Profile[] {
-  const profiles = useGame((s) => s.players.profiles);
+  const profiles = usePlayers((s) => s.profiles);
   const docs = usePlayers((s) => s.docs);
   return profiles.filter((p) => p.id !== ownerId && docs[p.id]?.residence === ownerId);
 }
@@ -727,7 +727,7 @@ function useResidents(ownerId: string): Profile[] {
 /** Other players' towns you can travel to and live in. */
 function Waystone() {
   const me = useActiveProfile((s) => s.id);
-  const profiles = useGame((s) => s.players.profiles);
+  const profiles = usePlayers((s) => s.profiles);
   const docs = usePlayers((s) => s.docs);
   const towns = profiles.filter((p) => p.id !== me && docs[p.id]?.town && !docs[p.id]?.residence);
   if (towns.length === 0) return null;

@@ -2,7 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./index.css";
-import { connect } from "./store/game";
+import { start } from "./store/game";
+import "./store/players";
 import "./store/tuning-bind";
 import { syncThemeToDocument } from "./store/ui";
 
@@ -10,7 +11,7 @@ import { syncThemeToDocument } from "./store/ui";
 if (/^#[a-z]/.test(location.hash)) location.replace(`#/${location.hash.slice(1)}`);
 
 syncThemeToDocument();
-void connect();
+void start();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

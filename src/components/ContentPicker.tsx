@@ -8,7 +8,7 @@ import { usePlayers } from "../store/players";
 /** Built-in SRD monsters and the ready-made party, one click to add. */
 export function ContentPicker() {
   const characters = useGame((s) => s.library.characters);
-  const profiles = useGame((s) => s.players.profiles);
+  const profiles = usePlayers((s) => s.profiles);
   const docs = usePlayers((s) => s.docs);
   const add = (e: ContentEntry) => {
     const added = actions.addToCombat(e.build(), { rollInitiative: true });

@@ -38,7 +38,7 @@ const STAGE_COLOR: Partial<Record<Threat["stage"], string>> = {
 export function RegionMap({ town: t, renown }: { town: Town; renown: number }) {
   useGame((s) => s.library.factions);
   const me = useActiveProfile((s) => s.id);
-  const profiles = useGame((s) => s.players.profiles);
+  const profiles = usePlayers((s) => s.profiles);
   const docs = usePlayers((s) => s.docs);
   const factions = allFactions();
   const others = profiles.filter((p) => p.id !== me && docs[p.id]?.town && !docs[p.id]?.residence);
