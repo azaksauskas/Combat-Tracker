@@ -10,7 +10,7 @@ import {
   updatePassword,
   updateProfile,
 } from "firebase/auth";
-import { collection, deleteDoc, doc, getDoc, getFirestore, onSnapshot, setDoc, type Unsubscribe } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, initializeFirestore, onSnapshot, setDoc, type Unsubscribe } from "firebase/firestore";
 import { DOC_KEYS, type DocKey } from "../domain/types";
 import { AuthError, MIN_PASSWORD, usernameToEmail, type Account, type SyncAdapter } from "./adapter";
 
@@ -48,7 +48,9 @@ function friendly(err: unknown): Error {
 export function createFirestoreAdapter(appId: string): SyncAdapter {
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
-  const db = getFirestore(app);
+  // Optional fields left undefined (a settler back to choosing their own job,
+  // a notice taken down…) are simply not stored, as JSON would do.
+  const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
   // Stays under the same public path as the original app.
   const base = ["artifacts", appId, "public", "data"] as const;
   const ref = (key: DocKey) => doc(db, ...base, "tracker", key);
