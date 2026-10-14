@@ -377,6 +377,22 @@ picker into a real sign-in without changing the data model.
     and the hero is dead and can't be picked.
   - Shrine (new building): treats injuries and raises the fallen, for gold,
     herbs or arcane dust and time. All costs are on the balance page.
+- **Feedback round, phase A (part 2): raids and retreats.**
+  - Raiders arrive on the hour they announced (deadlines run hourly, not
+    at dawn).
+  - If the heroes aren't there, the town's militia fights: settlers,
+    staffed watchtowers and spirit, plus a d6, against the raiders'
+    strength (higher for factions that need more renown). They drive the
+    raiders off, hold with smaller losses, or are overrun. The town panel
+    shows the odds; every number is on the balance page.
+  - A threat bar on the Adventures tab, in adventures and in battle shows
+    what's coming and when. Raid news pops up once ("📯 News of a raid"),
+    never mid-battle: a messenger toast says the report waits until the
+    fight is over. The "While you were away" report also waits.
+  - Retreat: on a hero's turn. Every enemy next to a standing hero gets a
+    parting opportunity attack, then the fight is lost. Fleeing an
+    adventure fight or a lair costs extra hours on the way back
+    (`travel.fleeHours`); fleeing a raid leaves the town to the raiders.
 
 ## Future ideas
 

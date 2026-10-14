@@ -54,6 +54,21 @@ export const TownEventSchema = z.object({
 export type TownEvent = z.infer<typeof TownEventSchema>;
 export const MAX_TOWN_LOG = 120;
 
+/** A raid the player hasn't read about yet (shown once, then cleared). */
+export const RaidNewsSchema = z.object({
+  /** Game hour. */
+  at: z.number().catch(0),
+  faction: z.string().catch(""),
+  result: z.enum(["repelled", "held", "plundered"]).catch("plundered"),
+  /** Who stood against them: the militia (heroes away) or the heroes. */
+  by: z.enum(["militia", "heroes"]).catch("militia"),
+  /** How the fight went: "4 settlers +4, luck 3 = 7 against the raiders' 11". */
+  detail: z.string().catch(""),
+  /** "12 gold, 3 food". */
+  lost: z.string().catch(""),
+});
+export type RaidNews = z.infer<typeof RaidNewsSchema>;
+
 export const TownSchema = z.object({
   name: z.string().catch("New town"),
   /** Game hours since the town was founded (fractional while the clock runs). */
@@ -84,6 +99,8 @@ export const TownSchema = z.object({
   lastTheft: z.number().catch(-1000),
   /** The region's factions and how interested each is in this town. */
   threats: lenient(ThreatSchema),
+  /** Raids to tell the player about. */
+  raidNews: lenient(RaidNewsSchema),
   /** Other players may move in. */
   open: z.boolean().catch(true),
   seed: z.number().catch(1),

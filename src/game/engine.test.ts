@@ -234,6 +234,17 @@ describe("opportunity attacks", () => {
   });
 });
 
+describe("retreat", () => {
+  it("enemies next to a conscious hero get a parting attack, then the fight is lost", () => {
+    const s = game(OPEN, [setup("brann", "fighter", { x: 0, y: 0 }), setup("gob", "goblin-warrior", { x: 1, y: 0 }), setup("far", "goblin-warrior", { x: 6, y: 5 })]);
+    const r = run(s, { type: "retreat", unitId: "brann" }, dice([5, 20]));
+    expect(ofType(r.events, "attack")).toEqual([expect.objectContaining({ attackerId: "gob", targetId: "brann", opportunity: true })]);
+    expect(r.state.outcome).toBe("defeat");
+    expect(r.state.fled).toBe(true);
+    expect(() => run(r.state, { type: "end-turn", unitId: "brann" })).toThrow(/over/);
+  });
+});
+
 // --- dying ---------------------------------------------------------------------------
 
 describe("dropping to 0 HP", () => {

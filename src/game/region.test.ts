@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Town } from "../domain/town";
-import { BUILTIN_FACTIONS, canStrike, kinship, lairResult, payTribute, raidResult, refuseTribute, regionDay, threatOf } from "./region";
+import { BUILTIN_FACTIONS, canStrike, kinship, lairResult, payTribute, raidResult, refuseTribute, militia, raidOdds, raidStrength, regionHour, threatOf } from "./region";
 import { advance, foundTown } from "./town";
 
 const goblins = BUILTIN_FACTIONS[0]!;
@@ -17,15 +17,31 @@ describe("factions and the town", () => {
     expect(["demanding", "raiding", "watching"]).toContain(threatOf(town, goblins.id).stage);
   });
 
-  it("an unpaid demand becomes a raid, and an undefended raid costs dearly", () => {
+  it("an unpaid demand becomes a raid on the hour, and the militia faces it alone", () => {
     const t = { ...big(), threats: [{ faction: goblins.id, attention: 60, stage: "demanding" as const, demand: 20, dueAt: 30 }] };
     const say: string[] = [];
-    const raiding = regionDay(t, 30, () => 0.5, [goblins], { power: 10, watch: false, renown: 1 }, (x) => say.push(x));
+    const raiding = regionHour(t, 30, () => 0.5, [goblins], { towers: 0 }, (x) => say.push(x));
     expect(threatOf(raiding, goblins.id)).toMatchObject({ stage: "raiding", dueAt: 54 });
-    const hit = regionDay(raiding, 54, () => 0.5, [goblins], { power: 10, watch: false, renown: 1 }, (x) => say.push(x));
+    expect(regionHour(raiding, 53, () => 0.5, [goblins], { towers: 0 }, () => {})).toBe(raiding);
+    // Two settlers and bad luck against strength 11: plundered.
+    const hit = regionHour(raiding, 54, () => 0, [goblins], { towers: 0 }, (x) => say.push(x));
     expect(hit.gold).toBeLessThan(raiding.gold);
     expect(hit.lastTheft).toBe(54);
     expect(say.at(-1)).toMatch(/raided the town and carried off/);
+    expect(hit.raidNews).toEqual([expect.objectContaining({ faction: goblins.id, result: "plundered", by: "militia", detail: expect.stringMatching(/luck 1 = \d+ against the raiders' 11/) })]);
+  });
+
+  it("settlers and watchtowers can drive raiders off", () => {
+    const settler = (id: string) => ({ id, name: id, trade: "guard", from: "x", arrivedAt: 0, alignment: "Neutral", mood: 60, mind: "" });
+    const strong: Town = { ...big(), settlers: ["a", "b", "c", "d", "e", "f"].map(settler), threats: [{ faction: goblins.id, attention: 70, stage: "raiding" as const, dueAt: 50 }] };
+    expect(raidStrength(goblins)).toBe(11);
+    expect(militia(strong, 1).total).toBe(11);
+    expect(raidOdds(militia(strong, 1), 11).repel).toBeCloseTo(1);
+    expect(raidOdds(militia(big(), 0), 11).plunder).toBeGreaterThan(0);
+    const after = regionHour(strong, 50, () => 0, [goblins], { towers: 1 }, () => {});
+    expect(after.gold).toBe(strong.gold);
+    expect(after.raidNews[0]).toMatchObject({ result: "repelled" });
+    expect(threatOf(after, goblins.id).stage).toBe("watching");
   });
 
   it("paying or refusing tribute", () => {

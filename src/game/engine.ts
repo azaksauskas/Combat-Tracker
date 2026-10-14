@@ -41,7 +41,12 @@ export type Command =
   | { type: "stand-up"; unitId: string }
   | { type: "end-turn"; unitId: string }
   /** A dying hero rolls their death save (the player clicks; the AI does it for monsters' allies). */
-  | { type: "death-save"; unitId: string };
+  | { type: "death-save"; unitId: string }
+  /**
+   * The party flees the battle: every enemy next to a conscious hero gets a
+   * parting opportunity attack, then the fight is lost (fled).
+   */
+  | { type: "retreat"; unitId: string };
 
 // --- Rules tables --------------------------------------------------------------
 
@@ -562,6 +567,26 @@ function moveUnit(ctx: Ctx, u: Unit, to: Cell) {
   ctx.events.push({ type: "move", unitId: u.id, path: travelled, cost: spent });
 }
 
+function retreat(ctx: Ctx, u: Unit) {
+  if (u.side !== "party") throw new GameError("Only the party can retreat");
+  ctx.events.push({ type: "feature", unitId: u.id, name: "Retreat", detail: "the party falls back, carrying the wounded" });
+  for (const h of ctx.s.units as Unit[]) {
+    if (h.side !== "party" || h.dead || h.hp <= 0) continue;
+    for (const e of ctx.s.units as Unit[]) {
+      if (e.side === h.side || !canAct(e) || !e.reaction || h.hp <= 0) continue;
+      const weapon = bestMelee(e);
+      if (!weapon || distanceFt(e.pos, h.pos) > weapon.reach) continue;
+      e.reaction = false;
+      makeAttack(ctx, e, h, weapon, { opportunity: true });
+    }
+  }
+  ctx.s.fled = true;
+  if (!ctx.s.outcome) {
+    ctx.s.outcome = "defeat";
+    ctx.events.push({ type: "outcome", outcome: "defeat" });
+  }
+}
+
 function startTurn(ctx: Ctx) {
   const s = ctx.s;
   for (let guard = 0; guard < s.units.length * 2 + 2; guard++) {
@@ -649,6 +674,7 @@ function run(ctx: Ctx, cmd: Command) {
   if (s.outcome) throw new GameError("The battle is over");
   const u = currentUnit(s as GameState) as Unit | undefined;
   if (!u || u.id !== cmd.unitId) throw new GameError("It's not that creature's turn");
+  if (cmd.type === "retreat") return retreat(ctx, u);
   if (u.turn.needsDeathSave && cmd.type !== "death-save" && cmd.type !== "end-turn") throw new GameError(`${u.name} is dying: roll the death save`);
   if (cmd.type !== "end-turn" && cmd.type !== "death-save" && !canAct(u)) throw new GameError(`${u.name} can't act`);
 

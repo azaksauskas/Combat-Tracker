@@ -1,6 +1,6 @@
 import { axesOf } from "../domain/alignment";
 import type { Faction, Threat } from "../domain/faction";
-import { MAX_TOWN_LOG, type Town, type TownEvent } from "../domain/town";
+import { MAX_TOWN_LOG, type RaidNews, type Town, type TownEvent } from "../domain/town";
 import { num } from "./tuning";
 
 /**
@@ -93,28 +93,103 @@ function setThreat(t: Town, th: Threat): Town {
 
 const logged = (t: Town, at: number, text: string, tone: TownEvent["tone"]): Town => ({ ...t, log: [...t.log, { at, text, tone }].slice(-MAX_TOWN_LOG) });
 
-/** What an undefended (or lost) raid costs. */
-function raidLosses(t: Town, f: Faction, h: number): { town: Town; text: string } {
-  const gold = Math.round(t.gold * num("region.raidGold"));
-  const food = Math.round(t.food * num("region.raidFood"));
-  const materials = Math.round(t.materials * num("region.raidMaterials"));
+/** What a raid costs: `share` of the full losses (1 when nobody stopped them). */
+function raidLosses(t: Town, f: Faction, h: number, share = 1): { town: Town; text: string; lost: string } {
+  const gold = Math.round(t.gold * num("region.raidGold") * share);
+  const food = Math.round(t.food * num("region.raidFood") * share);
+  const materials = Math.round(t.materials * num("region.raidMaterials") * share);
   const town: Town = {
     ...t,
     gold: t.gold - gold,
     food: t.food - food,
     materials: t.materials - materials,
-    spirit: clamp(t.spirit - 6, -20, 20),
+    spirit: clamp(t.spirit - Math.round(6 * share), -20, 20),
     lastTheft: h,
   };
   const lost = [gold && `${gold} gold`, food && `${food} food`, materials && `${materials} materials`].filter(Boolean).join(", ");
-  return { town, text: `${f.name} raided the town${lost ? ` and carried off ${lost}` : ""}. The settlers are shaken.` };
+  return { town, lost, text: `${f.name} raided the town${lost ? ` and carried off ${lost}` : ""}. The settlers are shaken.` };
 }
+
+// --- The militia: who defends the town while the heroes are away --------------------------
+
+/** How hard a faction's raiders hit: tougher factions turn up later. */
+export const raidStrength = (f: Faction) => Math.round(num("militia.strengthBase") + num("militia.strengthPerRenown") * Math.max(1, f.minRenown));
+
+export interface Militia {
+  total: number;
+  /** "4 settlers +4", "1 watchtower +5", "spirit +1". */
+  parts: string[];
+}
+
+/** The town's own defence: its settlers, staffed watchtowers and spirit. */
+export function militia(t: Town, towers: number): Militia {
+  const settlers = Math.round(t.settlers.length * num("militia.perSettler"));
+  const tower = Math.round(towers * num("militia.perTower"));
+  const spirit = Math.round(t.spirit / 4);
+  const parts = [`${t.settlers.length} settler${t.settlers.length === 1 ? "" : "s"} +${settlers}`];
+  if (towers) parts.push(`${towers} staffed watchtower${towers === 1 ? "" : "s"} +${tower}`);
+  if (spirit) parts.push(`spirit ${spirit > 0 ? "+" : ""}${spirit}`);
+  return { total: settlers + tower + spirit, parts };
+}
+
+export type RaidOdds = { repel: number; hold: number; plunder: number };
+
+/** Chances of each outcome of a raid the militia faces alone (defence + d6 against the raiders' strength). */
+export function raidOdds(m: Militia, strength: number): RaidOdds {
+  const odds = { repel: 0, hold: 0, plunder: 0 };
+  for (let d = 1; d <= 6; d++) odds[raidOutcome(m.total + d, strength)] += 1 / 6;
+  return odds;
+}
+
+function raidOutcome(total: number, strength: number): "repel" | "hold" | "plunder" {
+  return total >= strength ? "repel" : total >= strength * num("militia.holdShare") ? "hold" : "plunder";
+}
+
+/** Raiders arrive and the heroes aren't there: the militia fights them. */
+function militiaDefends(t: Town, f: Faction, h: number, towers: number, rng: () => number): { town: Town; text: string } {
+  const m = militia(t, towers);
+  const strength = raidStrength(f);
+  const d = 1 + Math.floor(rng() * 6);
+  const total = m.total + d;
+  const how = `${[...m.parts, `luck ${d}`].join(", ")} = ${total} against the raiders' ${strength}`;
+  const outcome = raidOutcome(total, strength);
+  if (outcome === "repel") {
+    const town = { ...t, spirit: clamp(t.spirit + 3, -20, 20) };
+    return { town: news(town, { at: h, faction: f.id, result: "repelled", by: "militia", detail: how, lost: "" }), text: `${f.name} attacked, but the militia drove them off.` };
+  }
+  const r = raidLosses(t, f, h, outcome === "hold" ? num("militia.heldLoss") : 1);
+  return {
+    town: news(r.town, { at: h, faction: f.id, result: outcome === "hold" ? "held" : "plundered", by: "militia", detail: how, lost: r.lost }),
+    text: outcome === "hold" ? `${f.name} attacked. The militia held the gate, but they got away with ${r.lost || "little"}.` : r.text,
+  };
+}
+
+const news = (t: Town, n: RaidNews): Town => ({ ...t, raidNews: [...t.raidNews, n].slice(-10) });
 
 export interface RegionInfo {
   power: number;
-  /** A staffed watchtower slows the build-up. */
-  watch: boolean;
+  /** Staffed watchtowers: they slow the build-up and stiffen the militia. */
+  towers: number;
   renown: number;
+}
+
+/** Every hour: tribute deadlines run out and raiders arrive on time. */
+export function regionHour(t: Town, h: number, rng: () => number, factions: Faction[], info: Pick<RegionInfo, "towers">, say: (text: string, tone: TownEvent["tone"]) => void): Town {
+  for (const f of factions) {
+    let th = threatOf(t, f.id);
+    if (th.dueAt === undefined || h < th.dueAt) continue;
+    if (th.stage === "demanding") {
+      const notice = num("region.raidNoticeHours");
+      th = { ...th, stage: "raiding", dueAt: h + notice, demand: undefined };
+      say(`${f.icon} The tribute was never paid. ${f.name} are coming: a raid is expected by ${clock(h + notice)}.`, "bad");
+      t = setThreat(t, th);
+    } else if (th.stage === "raiding") {
+      const r = militiaDefends(t, f, h, info.towers, rng);
+      say(`${f.icon} ${r.text}`, "bad");
+      t = setThreat(r.town, { faction: f.id, attention: 40, stage: "watching" });
+    }
+  }
+  return t;
 }
 
 /** One morning in the region, for one town. */
@@ -139,23 +214,9 @@ export function regionDay(t: Town, h: number, rng: () => number, factions: Facti
     }
     if (th.stage === "friendly") th = { faction: f.id, attention: 10, stage: "quiet" };
 
-    // Deadlines.
-    if (th.stage === "demanding" && th.dueAt !== undefined && h >= th.dueAt) {
-      const notice = num("region.raidNoticeHours");
-      th = { ...th, stage: "raiding", dueAt: h + notice, demand: undefined };
-      say(`${f.icon} The tribute was never paid. ${f.name} are coming: a raid is expected by ${clock(h + notice)}.`, "bad");
-    } else if (th.stage === "raiding" && th.dueAt !== undefined && h >= th.dueAt) {
-      const r = raidLosses(t, f, h);
-      t = r.town;
-      say(`${f.icon} ${r.text}`, "bad");
-      th = { faction: f.id, attention: 40, stage: "watching" };
-      t = setThreat(t, th);
-      continue;
-    }
-
     // Attention grows with power; an offended faction grows hungrier faster.
     const opposed = clamp(-kin, 0, 1);
-    const gain = num("region.attentionRate") * (1 + info.power / 15) * (1 + opposed) * (info.watch ? 0.7 : 1) * (0.6 + rng() * 0.8);
+    const gain = num("region.attentionRate") * (1 + info.power / 15) * (1 + opposed) * (info.towers ? 0.7 : 1) * (0.6 + rng() * 0.8);
     th = { ...th, attention: clamp(th.attention + gain, 0, 100) };
     if (th.stage === "quiet" && th.attention >= num("region.scoutsAt")) {
       th = { ...th, stage: "watching" };
@@ -205,8 +266,10 @@ export function raidResult(t: Town, f: Faction, won: boolean): Town {
       `The heroes drove ${f.name} out of the town!`,
       "good",
     );
-  const r = raidLosses(t, f, Math.floor(t.hours));
-  return logged(setThreat(r.town, { faction: f.id, attention: 40, stage: "watching" }), t.hours, `The heroes fell back. ${r.text}`, "bad");
+  const h = Math.floor(t.hours);
+  const r = raidLosses(t, f, h);
+  const town = news(r.town, { at: h, faction: f.id, result: "plundered", by: "heroes", detail: "", lost: r.lost });
+  return logged(setThreat(town, { faction: f.id, attention: 40, stage: "watching" }), t.hours, `The heroes fell back. ${r.text}`, "bad");
 }
 
 /** After the heroes struck the faction's lair. */

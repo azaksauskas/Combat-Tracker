@@ -77,6 +77,8 @@ export interface GameState {
   /** Seed for the next roll (mulberry32 state). */
   rngSeed: number;
   outcome: null | "victory" | "defeat";
+  /** The party retreated (the outcome is then "defeat"). */
+  fled?: boolean;
   nextId: number;
   /** The party's shared consumables, e.g. { "potion-healing": 2 }. */
   stash?: Record<string, number>;

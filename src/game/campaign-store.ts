@@ -145,14 +145,17 @@ export function returnFromBattle(retreat = false) {
   const adv = adventureOf(s);
   const game = usePlay.getState().game;
   if (!s || !adv || !game) return;
-  const done = retreat && !game.outcome ? { ...game, outcome: "defeat" as const } : game;
+  const fled = !!game.fled || (retreat && !game.outcome);
+  const done = fled && !game.outcome ? { ...game, outcome: "defeat" as const, fled: true } : game;
   const player = useActiveProfile.getState().id;
   const battle = usePlay.getState().scenario?.name ?? "a battle";
-  if (player) addChronicle(player, [chronicleFight(adv.title, battle, done.outcome ?? "defeat", retreat && !game.outcome, done.round)]);
+  if (player) addChronicle(player, [chronicleFight(adv.title, battle, done.outcome ?? "defeat", fled, done.round)]);
   salvageBattle(done, battle);
   if (!s.replay) recordAftermath(aftermath(done, (uid) => (uid.startsWith("hero:") ? uid.slice(5) : undefined)));
   set(finishFight(s, adv, done));
-  passTime(1);
+  // Fleeing means a long way round before the party regroups.
+  if (fled) passTime(num("travel.fleeHours"), "The party fled and regrouped");
+  else passTime(1);
   quitGame();
 }
 

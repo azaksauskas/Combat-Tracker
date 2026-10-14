@@ -16,6 +16,7 @@ import { POTIONS } from "../game/engine";
 import { distanceFt } from "../game/board";
 import { AdventureView } from "./AdventureView";
 import { AwayReportDialog, TownView } from "./TownView";
+import { RaidNewsDialog, ThreatBar } from "./RaidAlerts";
 import { finishTownBattle } from "../game/town-store";
 import { CharacterBuilder } from "../components/CharacterBuilder";
 import type { CharacterSpec } from "../domain/character";
@@ -27,6 +28,7 @@ import { createProfile, useActiveProfile, usePlayers } from "../store/players";
 import { DEFAULT_PICKS } from "../game/party-store";
 import { withProgress } from "../game/party";
 import { INJURIES } from "../game/injuries";
+import { num } from "../game/tuning";
 
 /** Solo skirmish: your four heroes against an encounter, monsters run by the computer. */
 bindSaves();
@@ -42,8 +44,18 @@ export function PlayView() {
   if (!loaded) return <p className="mt-20 animate-pulse text-center text-muted">Loading {active.name}'s game…</p>;
   return (
     <>
-      {game ? <Battle game={game} /> : campaign ? <AdventureView state={campaign} /> : <Home />}
+      {game ? (
+        <Battle game={game} />
+      ) : campaign ? (
+        <div className="mx-auto w-full max-w-6xl space-y-3">
+          <ThreatBar />
+          <AdventureView state={campaign} />
+        </div>
+      ) : (
+        <Home />
+      )}
       <AwayReportDialog />
+      <RaidNewsDialog />
     </>
   );
 }
@@ -74,7 +86,14 @@ function Home() {
           <PlayingAs />
         </span>
       </div>
-      {tab === "town" ? <TownView /> : <ScenarioPicker />}
+      {tab === "town" ? (
+        <TownView />
+      ) : (
+        <>
+          <ThreatBar onGoTown={() => setTab("town")} />
+          <ScenarioPicker />
+        </>
+      )}
     </div>
   );
 }
@@ -325,14 +344,25 @@ function Battle({ game }: { game: GameState }) {
           <h2 className="text-2xl font-bold text-accent">{scenario?.name ?? "Skirmish"}</h2>
           <p className="text-sm text-muted">
             Round <strong className="text-strong">{game.round}</strong> ·{" "}
-            {game.outcome ? (game.outcome === "victory" ? "Victory!" : "Defeat") : aiRunning ? "Monsters are acting…" : active ? `${active.name}'s turn` : ""}
+            {game.outcome ? (game.outcome === "victory" ? "Victory!" : game.fled ? "Retreat" : "Defeat") : aiRunning ? "Monsters are acting…" : active ? `${active.name}'s turn` : ""}
           </p>
         </div>
+        {playMode !== "town" && (
+          <div className="min-w-0 flex-1">
+            <ThreatBar compact />
+          </div>
+        )}
         {playMode === "campaign" || playMode === "town" ? (
           !game.outcome && (
             <button
               className="btn btn-ghost"
-              onClick={() => confirm("Retreat? It counts as losing this fight.") && (playMode === "town" ? finishTownBattle(true) : returnFromBattle(true))}
+              disabled={!active || active.side !== "party" || aiRunning}
+              title="On a hero's turn: enemies next to your heroes get a parting attack, and the fight counts as lost"
+              onClick={() =>
+                active &&
+                confirm(`Retreat? Every enemy next to a standing hero gets a parting attack, the fight counts as lost${playMode === "town" && usePlay.getState().context?.kind === "raid" ? ", and the raiders plunder the town" : ", and the way back takes time"}.`) &&
+                dispatch({ type: "retreat", unitId: active.id })
+              }
             >
               Retreat
             </button>
@@ -724,6 +754,20 @@ function CombatLog({ lines }: { lines: { id: number; text: string; tone: string 
   );
 }
 
+/** What the parting attacks did as the party fell back. */
+function fledText(game: GameState): string {
+  const playMode = usePlay.getState().mode;
+  const raid = playMode === "town" && usePlay.getState().context?.kind === "raid";
+  const down = game.units.filter((u) => u.side === "party" && u.hp <= 0).map((u) => u.name);
+  return [
+    "The party fell back, carrying the wounded.",
+    down.length ? `Down: ${down.join(", ")}.` : "",
+    raid ? "The raiders have the town to themselves." : `The way back takes ${num("travel.fleeHours")} hours.`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function Outcome({ game }: { game: GameState }) {
   const scenario = usePlay((s) => s.scenario);
   const playMode = usePlay((s) => s.mode);
@@ -734,9 +778,9 @@ function Outcome({ game }: { game: GameState }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="w-80 rounded-lg border border-line bg-surface p-6 text-center shadow-2xl">
-        <h3 className={clsx("text-3xl font-bold", won ? "text-heal" : "text-danger")}>{won ? "Victory!" : "Defeat"}</h3>
+        <h3 className={clsx("text-3xl font-bold", won ? "text-heal" : "text-danger")}>{won ? "Victory!" : game.fled ? "Retreat" : "Defeat"}</h3>
         <p className="mt-2 text-sm text-muted">
-          {won ? `Won in ${game.round} round${game.round === 1 ? "" : "s"}.` : "The party has fallen."}
+          {won ? `Won in ${game.round} round${game.round === 1 ? "" : "s"}.` : game.fled ? fledText(game) : "The party has fallen."}
           {won && (fallen || downed) ? ` ${fallen ? `${fallen} fallen` : ""}${fallen && downed ? ", " : ""}${downed ? `${downed} unconscious` : ""}.` : ""}
         </p>
         <div className="mt-4 flex flex-col gap-2">

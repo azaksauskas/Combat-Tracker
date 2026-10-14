@@ -123,6 +123,7 @@ function step() {
     const before = doc.town;
     const back = catchUp(before, now, townContext(id));
     updatePlayer(id, (d) => ({ ...d, town: back.town }));
+    if (usePlay.getState().game && back.town.raidNews.length > before.raidNews.length) toast.warning(MESSENGER);
     if (back.hours >= 1 && (back.events.length || back.town.gold !== before.gold || back.town.food !== before.food)) {
       useTownUi.setState({ report: awayReport(before, back.town, back.events, back.hours), title: "While you were away…" });
     }
@@ -133,10 +134,24 @@ function step() {
   if (Math.floor(doc.town.hours + onlineHours(doc.town, now)) > Math.floor(doc.town.hours)) commitOnline(id, doc.town, now);
 }
 
+const MESSENGER = "📯 A messenger from town: raiders struck. The full report after the battle.";
+
 function commitOnline(id: string, t: Town, now: number) {
   const { town, events } = advance(t, onlineHours(t, now), now, townContext(id));
   updatePlayer(id, (d) => ({ ...d, town }));
+  const news = town.raidNews.length > t.raidNews.length;
+  if (usePlay.getState().game) {
+    // Mid-battle: one quiet note; the full report waits until the fight is over.
+    if (news) toast.warning(MESSENGER);
+    return;
+  }
   for (const e of events) if (e.tone !== "info") toast[e.tone === "good" ? "success" : "warning"](e.text);
+}
+
+/** The player has read the raid reports. */
+export function readRaidNews() {
+  const id = me();
+  if (id && docOf(id)?.town?.raidNews.length) setTown(id, (t) => ({ ...t, raidNews: [] }));
 }
 
 let started = false;
@@ -431,7 +446,8 @@ export function finishTownBattle(retreat = false) {
   const { game, context, scenario } = usePlay.getState();
   const f = context ? factionOf(context.faction) : undefined;
   if (!id || !game || !context || !f) return quitGame();
-  const won = !retreat && game.outcome === "victory";
+  const fled = retreat || !!game.fled;
+  const won = !fled && game.outcome === "victory";
   const keys = context.heroes ?? [];
   recordAftermath(aftermath(game, (uid) => (/^p\d+$/.test(uid) ? keys[Number(uid.slice(1))] : undefined)));
   const result = context.kind === "raid" ? raidResult : lairResult;
@@ -453,7 +469,9 @@ export function finishTownBattle(retreat = false) {
             : `An attack on ${f.name}'s lair failed.`,
     },
   ]);
-  passTime(2);
+  // A lair is a march away; fleeing it takes the long way home.
+  if (fled && context.kind === "lair") passTime(2 + num("travel.fleeHours"), `Fled from ${f.name}'s lair and made it home`);
+  else passTime(2);
   quitGame();
 }
 

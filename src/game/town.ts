@@ -2,7 +2,7 @@ import { MAX_TOWN_LOG, type Building, type BuildingType, type Settler, type Town
 import { axesOf, reputationText } from "../domain/alignment";
 import { mulberry32 } from "./rng";
 import type { Faction } from "../domain/faction";
-import { regionDay } from "./region";
+import { regionDay, regionHour } from "./region";
 import { num } from "./tuning";
 
 /**
@@ -115,7 +115,7 @@ export function staffing(t: Town): Map<string, boolean> {
   }
   return out;
 }
-const working = (t: Town, type: BuildingType) => {
+export const working = (t: Town, type: BuildingType) => {
   const staff = staffing(t);
   return built(t).filter((b) => b.type === type && staff.get(b.id)).length;
 };
@@ -154,6 +154,7 @@ export function foundTown(name: string, now: number, seed: number, gold = num("t
     spirit: 0,
     lastTheft: -1000,
     threats: [],
+    raidNews: [],
     buildings: [{ id: "hall", type: "hall" }],
     settlers: [],
     log: [{ at: DAWN, text: `${name.trim() || "The town"} is founded.`, tone: "good" }],
@@ -322,6 +323,8 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
       }),
     };
   }
+  // Raiders and deadlines keep their hour.
+  if (ctx.factions?.length) t = regionHour(t, h, rng, ctx.factions, { towers: working(t, "watchtower") }, say);
   if (h % 24 !== DAWN) return t;
 
   // --- A new day: production, mouths to feed, then whatever the day brings.
@@ -390,7 +393,7 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
     say("A traveller asked for a bed, but every bed is taken. Build a house.", "info");
   }
   // The region takes notice.
-  if (ctx.factions?.length) t = regionDay(t, h, rng, ctx.factions, { power: power(t, ctx), watch: working(t, "watchtower") > 0, renown: ctx.renown }, say);
+  if (ctx.factions?.length) t = regionDay(t, h, rng, ctx.factions, { power: power(t, ctx), towers: working(t, "watchtower"), renown: ctx.renown }, say);
   // Pride in the heroes fades.
   if (t.spirit !== 0) t = { ...t, spirit: t.spirit - Math.sign(t.spirit) };
   if (rng() < num("events.caravan")) {

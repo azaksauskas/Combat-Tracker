@@ -16,6 +16,8 @@ import { availableMembers, myCharacters } from "../game/party-store";
 import { useGame } from "../store/game";
 import { num } from "../game/tuning";
 import { useActiveProfile, usePlayers } from "../store/players";
+import { militiaChances } from "./RaidAlerts";
+import { usePlay } from "../game/store";
 
 bindTown();
 
@@ -235,8 +237,9 @@ function Alarms({ town: t, hours }: { town: Town; hours: number }) {
               </strong>
               <div className="text-xs text-muted">
                 {th.dueAt !== undefined && `${durationText(Math.ceil(left))} left (${clockText(th.dueAt)}). `}
-                {th.stage === "raiding" ? "Defend the town, strike their lair first, or brace for losses." : "Pay, refuse (they'll raid), or strike their lair."}
+                {th.stage === "raiding" ? "Defend the town, strike their lair first, or leave it to the militia." : "Pay, refuse (they'll raid), or strike their lair."}
               </div>
+              {th.stage === "raiding" && <div className="text-xs text-muted">{militiaChances(t, f).line}</div>}
             </div>
             {th.stage === "demanding" && (
               <>
@@ -637,9 +640,11 @@ export function AwayReportDialog() {
   const report = useTownUi((s) => s.report);
   const title = useTownUi((s) => s.title);
   const close = () => useTownUi.setState({ report: null });
+  // Never over a battle: the news waits until the fight is over.
+  const inBattle = usePlay((s) => !!s.game);
   const change = (n: number, unit: string) => (n === 0 ? null : <li className={n > 0 ? "text-heal" : "text-danger"}>{`${n > 0 ? "+" : ""}${n} ${unit}`}</li>);
   return (
-    <Dialog open={!!report} onClose={close} title={title || "Meanwhile…"}>
+    <Dialog open={!!report && !inBattle} onClose={close} title={title || "Meanwhile…"}>
       {report && (
         <div className="space-y-3 text-sm">
           <p className="text-muted">{durationText(report.hours)} passed.</p>

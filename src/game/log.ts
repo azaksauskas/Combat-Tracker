@@ -72,7 +72,7 @@ export function describeEvents(events: GameEvent[], s: GameState, startId: numbe
         add(`${name(e.unitId)}: ${e.name} (${e.detail})`, "info");
         break;
       case "outcome":
-        add(e.outcome === "victory" ? "Victory!" : "Defeat…", e.outcome === "victory" ? "win" : "lose");
+        add(e.outcome === "victory" ? "Victory!" : s.fled ? "The party retreats." : "Defeat…", e.outcome === "victory" ? "win" : "lose");
         break;
     }
   }

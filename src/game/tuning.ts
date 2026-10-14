@@ -56,6 +56,7 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Time", "time.helpsPerBed", "\"Help out\" uses per bed per real day", 1, undefined, { step: 0.5 }),
   f("Time", "time.sleepFrom", "Sleep allowed from (hour)", 20, "Until dawn (06:00).", { max: 23 }),
   f("Time", "time.choiceHours", "Game hours per adventure choice", 1),
+  f("Time", "travel.fleeHours", "Game hours lost when the party flees a battle", 4, "The way back after a retreat (a raid in town costs nothing extra)."),
 
   // Starting a town
   f("Founding", "town.startGold", "Starting gold", 30),
@@ -117,6 +118,12 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Factions", "region.raidGold", "Raid takes this share of gold", 0.35, undefined, { step: 0.05, max: 1 }),
   f("Factions", "region.raidFood", "…of food", 0.3, undefined, { step: 0.05, max: 1 }),
   f("Factions", "region.raidMaterials", "…of materials", 0.25, undefined, { step: 0.05, max: 1 }),
+  f("Factions", "militia.perSettler", "Militia: defence per settler", 1, "With the heroes away, the town defends itself: defence + d6 against the raiders' strength.", { step: 0.5 }),
+  f("Factions", "militia.perTower", "Militia: defence per staffed watchtower", 5),
+  f("Factions", "militia.strengthBase", "Raiders' strength: base", 6),
+  f("Factions", "militia.strengthPerRenown", "Raiders' strength: per renown the faction needs", 5),
+  f("Factions", "militia.holdShare", "Militia holds (smaller losses) from this share of the raiders' strength", 0.6, undefined, { step: 0.05, max: 1 }),
+  f("Factions", "militia.heldLoss", "Losses when the militia holds (share of a full raid)", 0.4, undefined, { step: 0.05, max: 1 }),
 
   // Crafting
   f("Crafting", "price.iron", "Market price: iron", 6),
