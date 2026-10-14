@@ -21,6 +21,7 @@ import { useGame } from "../store/game";
 import { num } from "../game/tuning";
 import { useActiveProfile, usePlayers } from "../store/players";
 import { militiaChances } from "./RaidAlerts";
+import { RegionMap } from "./RegionMap";
 import { usePlay } from "../game/store";
 
 bindTown();
@@ -278,6 +279,8 @@ function Region({ town: t, renown }: { town: Town; renown: number }) {
   return (
     <section className="space-y-2 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Region">
       <h3 className="text-xs font-bold tracking-wider text-faint uppercase">🗺 The region</h3>
+      <RegionMap town={t} renown={renown} />
+      <p className="text-[11px] text-faint">Dotted lines: scouts watching. Red arrows: a raid on its way. Green: friends. Click a lair you know to strike it.</p>
       <ul className="space-y-2">
         {factions.map((f) => {
           const th = threatOf(t, f.id);

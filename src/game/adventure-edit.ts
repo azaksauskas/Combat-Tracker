@@ -72,13 +72,17 @@ export function renameScene(adv: Adventure, from: string, to: string): Adventure
       choices: scene.choices.map((c) => ({ ...c, success: mapOutcome(c.success, f), ...(c.failure ? { failure: mapOutcome(c.failure, f) } : {}) })),
     };
   }
-  return { ...adv, start: f(adv.start), scenes };
+  const layout = adv.layout ? Object.fromEntries(Object.entries(adv.layout).map(([k, v]) => [f(k), v])) : undefined;
+  return { ...adv, start: f(adv.start), scenes, ...(layout ? { layout } : {}) };
 }
 
 export function deleteScene(adv: Adventure, id: string): Adventure {
   const scenes = { ...adv.scenes };
   delete scenes[id];
-  return { ...adv, scenes };
+  if (!adv.layout) return { ...adv, scenes };
+  const layout = { ...adv.layout };
+  delete layout[id];
+  return { ...adv, scenes, layout };
 }
 
 /** Scene ids a scene leads to, in order, without repeats. */

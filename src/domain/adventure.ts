@@ -100,5 +100,7 @@ export const AdventureSchema = z.object({
   start: z.string().catch(""),
   startingGold: z.number().catch(0),
   scenes: z.record(z.string(), SceneSchema).catch({}),
+  /** Where each scene sits in the editor's graph view (scene id → position). */
+  layout: z.record(z.string(), z.object({ x: z.number(), y: z.number() })).optional().catch(undefined),
 });
 export type Adventure = z.infer<typeof AdventureSchema>;

@@ -1,6 +1,8 @@
 import clsx from "clsx";
 import { produce, type Draft } from "immer";
 import { useMemo, useRef, useState, type ReactNode } from "react";
+import { AdventureGraph } from "./AdventureGraph";
+import { connectScenes, moveNode } from "../game/adventure-graph";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { ADVENTURES } from "../content/adventures";
@@ -124,6 +126,21 @@ function Editor({ saved, onDeleted }: { saved: Adventure; onDeleted: () => void 
   const maps = useGame((s) => s.library.maps);
   const navigate = useNavigate();
   const [sceneId, setSceneId] = useState(draft.start in draft.scenes ? draft.start : (Object.keys(draft.scenes)[0] ?? null));
+  const [view, setViewState] = useState<"graph" | "list">(() => {
+    try {
+      return localStorage.getItem("adventure-editor-view") === "list" ? "list" : "graph";
+    } catch {
+      return "graph";
+    }
+  });
+  const setView = (v: "graph" | "list") => {
+    setViewState(v);
+    try {
+      localStorage.setItem("adventure-editor-view", v);
+    } catch {
+      /* private mode: just don't remember */
+    }
+  };
   const fights = useMemo(
     () => [
       ...SCENARIOS.map((s) => ({ id: s.id, name: s.name })),
@@ -200,8 +217,43 @@ function Editor({ saved, onDeleted }: { saved: Adventure; onDeleted: () => void 
         <Clues adventure={draft} />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[14rem_1fr]">
-        <div className="space-y-1" aria-label="Scenes">
+      <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Scene view">
+        {(
+          [
+            ["graph", "🕸 Graph"],
+            ["list", "☰ List"],
+          ] as const
+        ).map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={view === k} className={clsx("btn text-sm", view === k && "border-accent text-accent")} onClick={() => setView(k)}>
+            {label}
+          </button>
+        ))}
+        {view === "graph" && (
+          <>
+            <button className="btn text-sm" onClick={() => newScene()}>
+              + Add scene
+            </button>
+            <span className="text-xs text-faint">Drag scenes to arrange them. Drag from a scene's right dot to another scene (or an end) to add a choice. Click a scene to edit it below.</span>
+          </>
+        )}
+      </div>
+
+      {view === "graph" && (
+        <AdventureGraph
+          adventure={draft}
+          issues={issues}
+          selected={sceneId}
+          onSelect={setSceneId}
+          onMove={(id, p) => setDraft(moveNode(draft, id, p))}
+          onConnect={(from, to) => {
+            setDraft(connectScenes(draft, from, to));
+            setSceneId(from);
+          }}
+        />
+      )}
+
+      <div className={clsx("grid gap-4", view === "list" && "xl:grid-cols-[14rem_1fr]")}>
+        <div className={clsx("space-y-1", view === "graph" && "hidden")} aria-label="Scenes">
           <h3 className="text-xs font-bold tracking-wider text-faint uppercase">Scenes</h3>
           <ul className="space-y-1">
             {sceneIds.map((id) => {

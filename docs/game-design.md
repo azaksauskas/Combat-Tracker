@@ -417,6 +417,22 @@ picker into a real sign-in without changing the data model.
     fight for gold and goods (food, materials, herbs, dust), 8 hours.
   - Every number is on the balance page (Settlers, Patrols & contracts,
     Crafting).
+- **Feedback round, phase C: visual tools.**
+  - Adventure editor graph view (🕸 Graph, the default; ☰ List is the old
+    view), built with React Flow. Scenes are cards, choices are arrows:
+    grey to a scene, amber dashed for a failed check, green for a fight
+    won, red dashed for a fight lost; end markers for victory and defeat.
+    Choices that stay in the same scene show as "↺ n stay here" on the
+    card. Arrow labels show around the selected scene only.
+  - Drag scenes to arrange them (saved as `layout` in the adventure).
+    Drag from a scene's right dot onto another scene or an end to add a
+    choice ("Go to …", "Head home"). Click a scene to edit it below.
+    Scenes without a saved place are laid out by distance from the start.
+  - Region mini-map on the town page: the town in the middle, other
+    heroes' towns nearby, factions' lairs further out (further for
+    factions that need more renown; unknown ones are "?"). Dotted lines
+    are scouts, red animated arrows are raids on their way, green lines
+    are friends, a crossed lair is broken. Click a known lair to strike.
 
 ## Future ideas
 
