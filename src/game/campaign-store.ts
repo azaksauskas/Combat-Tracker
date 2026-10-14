@@ -10,7 +10,7 @@ import { mapScenario } from "./maps";
 import { quitGame, startBattle, usePlay } from "./store";
 import { chosenParty, partyXp, recordProgress } from "./party-store";
 import { chronicleFight, chronicleStep } from "./chronicle";
-import { addChronicle, useActiveProfile } from "../store/players";
+import { activeDoc, addChronicle, updatePlayer, useActiveProfile } from "../store/players";
 import { homecoming, noteLevel, packForAdventure, passTime, salvageBattle } from "./town-store";
 import { useGame } from "../store/game";
 
@@ -35,8 +35,14 @@ function set(state: CampaignState | null) {
   const ending = (state?.ended && !before?.ended) || (before && !before.ended && !state);
   if (ending) {
     const last = state ?? before!;
-    recordProgress(last.party.heroes, last.party.xp);
     const potions = Object.fromEntries(Object.entries(last.party.items).filter(([k, n]) => k.startsWith("potion") && n > 0));
+    if (last.replay) {
+      // A replay: only the potions they didn't drink come back.
+      homecoming(title, 0, potions, [], 0, { outcome: "abandoned", deaths: 0 });
+      return;
+    }
+    if (state?.ended === "victory") markCompleted(last.adventureId);
+    recordProgress(last.party.heroes, last.party.xp);
     // The adventure's starting purse stays behind; what they earned comes home.
     const earned = Math.max(0, last.party.gold - (adventureOf(last)?.startingGold ?? 0));
     const deaths = last.party.heroes.filter((h) => h.dead).length;
@@ -49,9 +55,16 @@ function set(state: CampaignState | null) {
 }
 const current = () => useCampaign.getState().state;
 
+function markCompleted(adventureId: string) {
+  const id = useActiveProfile.getState().id;
+  if (id) updatePlayer(id, (d) => (d.completed.includes(adventureId) ? d : { ...d, completed: [...d.completed, adventureId] }));
+}
+
+/** Starts an adventure; one already completed is a replay, for fun only. */
 export function beginAdventure(adv: Adventure) {
   quitGame();
-  const started = startAdventure(adv, undefined, chosenParty());
+  const replay = (activeDoc()?.completed ?? []).includes(adv.id);
+  const started = { ...startAdventure(adv, undefined, chosenParty()), ...(replay ? { replay: true } : {}) };
   // Heroes bring the XP they've earned so far.
   const s = { ...started, party: { ...started.party, xp: partyXp() } };
   // Potions brewed in town go along.

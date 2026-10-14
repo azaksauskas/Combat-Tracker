@@ -31,7 +31,10 @@ export function AdventureView({ state }: { state: CampaignState }) {
     <div className="flex w-full flex-col gap-3 lg:h-[calc(100dvh-6rem)]">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-2xl font-bold text-accent">{adv.title}</h2>
+          <h2 className="text-2xl font-bold text-accent">
+            {adv.title}
+            {state.replay && <span className="ml-2 align-middle text-xs font-normal text-faint">replay · no rewards</span>}
+          </h2>
           <p className="text-sm text-muted">Level {state.party.heroes[0]?.level ?? 1} party · {state.party.gold} gp</p>
         </div>
         <button className="btn btn-ghost" onClick={() => confirm("Abandon this adventure? Progress will be lost.") && abandonAdventure()}>

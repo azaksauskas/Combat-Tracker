@@ -85,6 +85,10 @@ function ScenarioPicker() {
   const roster = useGame((s) => s.library.roster);
   const myMaps = maps.map((m) => ({ map: m, sc: mapScenario(m, roster) })).filter((x) => x.sc.custom.length > 0 && x.sc.starts!.length > 0);
   const adventures = [...ADVENTURES, ...custom];
+  const activeId = useActiveProfile((s) => s.id);
+  const completed = usePlayers((s) => (activeId ? s.docs[activeId]?.completed : undefined)) ?? [];
+  const open = adventures.filter((a) => !completed.includes(a.id));
+  const done = adventures.filter((a) => completed.includes(a.id));
   const playable = encounters
     .map((e) => encounterScenario(e.name, e.combatants))
     .filter((sc) => sc.custom.length > 0);
@@ -112,7 +116,7 @@ function ScenarioPicker() {
       <section>
         <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">Adventures</h3>
         <ul className="grid gap-3 md:grid-cols-2">
-          {adventures.map((a) => (
+          {open.map((a) => (
             <li key={a.id} className="flex flex-col rounded-lg border-2 border-accent/60 bg-surface p-4 shadow">
               <h3 className="text-xl font-bold text-accent">{a.title}</h3>
               <p className="mt-1 flex-1 text-sm text-muted">{a.blurb}</p>
@@ -123,6 +127,24 @@ function ScenarioPicker() {
             </li>
           ))}
         </ul>
+        {open.length === 0 && <p className="text-sm text-muted italic">You've completed every adventure there is. The DM can write new ones (📖 Adventures).</p>}
+        {done.length > 0 && (
+          <details className="mt-3">
+            <summary className="cursor-pointer text-sm text-muted">✓ Completed ({done.length})</summary>
+            <ul className="mt-2 grid gap-2 md:grid-cols-2">
+              {done.map((a) => (
+                <li key={a.id} className="flex items-center justify-between gap-2 rounded-md border border-line bg-surface-2 px-3 py-2 text-sm">
+                  <span>
+                    <strong className="text-strong">{a.title}</strong> <span className="text-xs text-heal">completed</span>
+                  </span>
+                  <button className="btn px-2 py-0.5 text-xs" onClick={() => beginAdventure(a)} title="Play it again for fun: no XP, gold or settlers">
+                    Play again (no rewards)
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </section>
       <section>
         <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">Quick skirmish</h3>

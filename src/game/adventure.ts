@@ -40,6 +40,8 @@ export interface CampaignState {
   ended: null | "victory" | "defeat";
   /** People who will move to the player's town when the adventure ends. */
   recruits?: { name: string; trade?: string }[];
+  /** A replay of a completed adventure: no XP, gold, settlers or deeds carry home. */
+  replay?: boolean;
   /** Deeds done on this adventure (summed), for the town's reputation. */
   deeds?: { law: number; good: number };
   rngSeed: number;
