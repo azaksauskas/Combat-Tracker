@@ -100,6 +100,7 @@ export function nextAiCommand(s: GameState): Command {
   const u = currentUnit(s);
   if (!u) throw new Error("No creature to act");
   const end: Command = { type: "end-turn", unitId: u.id };
+  if (u.turn.needsDeathSave) return { type: "death-save", unitId: u.id };
   if (!canAct(u) || foesOf(s, u).length === 0) return end;
 
   if (u.turn.action) {

@@ -8,7 +8,8 @@ import { SCENARIOS, encounterScenario, setupFor, type Scenario } from "./scenari
 import type { UnitSetup } from "./engine";
 import { mapScenario } from "./maps";
 import { quitGame, startBattle, usePlay } from "./store";
-import { chosenParty, partyXp, recordProgress } from "./party-store";
+import { chosenParty, partyXp, recordAftermath, recordProgress } from "./party-store";
+import { aftermath } from "./injuries";
 import { chronicleFight, chronicleStep } from "./chronicle";
 import { activeDoc, addChronicle, updatePlayer, useActiveProfile } from "../store/players";
 import { homecoming, noteLevel, packForAdventure, passTime, salvageBattle } from "./town-store";
@@ -149,6 +150,7 @@ export function returnFromBattle(retreat = false) {
   const battle = usePlay.getState().scenario?.name ?? "a battle";
   if (player) addChronicle(player, [chronicleFight(adv.title, battle, done.outcome ?? "defeat", retreat && !game.outcome, done.round)]);
   salvageBattle(done, battle);
+  if (!s.replay) recordAftermath(aftermath(done, (uid) => (uid.startsWith("hero:") ? uid.slice(5) : undefined)));
   set(finishFight(s, adv, done));
   passTime(1);
   quitGame();

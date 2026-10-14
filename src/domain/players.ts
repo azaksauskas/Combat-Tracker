@@ -76,6 +76,10 @@ export const PlayerDocSchema = z.object({
   gear: z.record(z.string(), z.array(z.string())).catch({}),
   /** Each hero's level and XP (content key → progress): heroes keep growing between adventures. */
   progress: z.record(z.string(), z.object({ level: z.number().catch(1), xp: z.number().catch(0) })).catch({}),
+  /** Lasting injuries per hero (content key → injury ids, see game/injuries.ts). */
+  injuries: z.record(z.string(), z.array(z.string())).catch({}),
+  /** Heroes who died and haven't been raised (content keys). */
+  fallen: z.array(z.string()).catch([]),
   /** Adventures this player has completed (ids): they move to "Completed" and replay without rewards. */
   completed: z.array(z.string()).catch([]),
   /** Renown = the highest level any of the player's heroes has reached. */

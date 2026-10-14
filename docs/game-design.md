@@ -364,6 +364,20 @@ picker into a real sign-in without changing the data model.
   live for every player; the rules read them through `num()` in
   `src/game/tuning.ts`, where new tunables are added.
 
+- **Feedback round, phase A (part 1):**
+  - Finished adventures move under "✓ Completed"; playing one again gives
+    no gold, XP or items (potions used come back).
+  - Story flags are now "clues": the editor shows where each clue is
+    learned and which choices need it, and warns when a needed clue is
+    never learned. Choices have a clear "✎ Edit" button; built-in
+    adventures have "✎ Edit a copy".
+  - Death saves are rolled by the player (🎲 on the dying hero's turn).
+    Reaching two failures in a battle leaves a lasting injury (broken hand,
+    twisted knee, cracked ribs, concussion or deep wound); three failures
+    and the hero is dead and can't be picked.
+  - Shrine (new building): treats injuries and raises the fallen, for gold,
+    herbs or arcane dust and time. All costs are on the balance page.
+
 ## Future ideas
 
 - **A kids' version for playing with a child**, along the lines of

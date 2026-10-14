@@ -6,7 +6,7 @@ import { ThreatSchema } from "./faction";
  * owner's player document; the rules that run it are in src/game/town.ts.
  */
 
-export const BUILDING_TYPES = ["hall", "house", "farm", "lumber", "market", "tavern", "apothecary", "watchtower", "smithy"] as const;
+export const BUILDING_TYPES = ["hall", "house", "farm", "lumber", "market", "tavern", "apothecary", "watchtower", "smithy", "shrine"] as const;
 export type BuildingType = (typeof BUILDING_TYPES)[number];
 
 const id = z.union([z.string(), z.number()]).transform(String);

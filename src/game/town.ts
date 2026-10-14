@@ -70,6 +70,7 @@ const STATIC_BUILDINGS: Record<BuildingType, BuildingDef> = {
   apothecary: { name: "Apothecary", icon: "⚗", description: "Gathers a herb a day and brews a Potion of Healing every 3 days; brews more to order. Your next adventure takes the potions along.", cost: { gold: 40, materials: 10 }, hours: 20, staffed: true, max: 1 },
   watchtower: { name: "Watchtower", icon: "🗼", description: "Halves the chance of thieves.", cost: { gold: 20, materials: 20 }, hours: 16, staffed: true, max: 2 },
   smithy: { name: "Smithy", icon: "⚒", description: "Fits mods to your heroes' weapons, armour and spell foci.", cost: { gold: 50, materials: 25 }, hours: 24, staffed: true, max: 1 },
+  shrine: { name: "Shrine", icon: "🕯", description: "Treats lasting injuries and, for a great price, raises the fallen. A place to pray lifts spirits.", cost: { gold: 40, materials: 20 }, hours: 16, staffed: true, max: 1 },
 };
 
 /** Descriptions that quote tunable numbers. */
@@ -229,6 +230,7 @@ export function opinion(t: Town, alignment: string, ctx: SimContext, hour = t.ho
   if (working(t, "watchtower")) add(6, "The watch keeps us safe");
   if (working(t, "tavern")) add(5, "A good tavern");
   if (working(t, "market")) add(4, "A busy market");
+  if (working(t, "shrine")) add(4, "A shrine to pray at");
   if (t.spirit >= 5) add(Math.round(t.spirit / 2), "Proud of our heroes");
   else if (t.spirit <= -5) add(Math.round(t.spirit / 2), "Our heroes keep failing");
   if (ctx.ownerAway) add(-6, "The hall stands empty");

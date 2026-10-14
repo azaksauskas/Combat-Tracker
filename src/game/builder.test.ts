@@ -71,6 +71,6 @@ describe("character builder", () => {
   it("resolves the picked party", () => {
     const spec = suggestedSpec("Rogue", "r", "Rin");
     expect(resolveParty(["custom-r", "cleric", "gone"], [spec]).map((e) => e.label)).toEqual(["Rin", "Sister Maren"]);
-    expect(resolveParty([], [])).toBe(PARTY);
+    expect(resolveParty([], [])).toEqual(PARTY);
   });
 });

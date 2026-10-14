@@ -14,12 +14,16 @@ export interface TurnBudget {
   sneakAttackUsed: boolean;
   /** Attacks left in this Attack action (Extra Attack, Multiattack). */
   attacksLeft?: number;
+  /** A dying hero's turn: waiting for the player to roll the death save. */
+  needsDeathSave?: boolean;
 }
 
 export interface DeathSaves {
   successes: number;
   failures: number;
   stable: boolean;
+  /** Most failures this creature reached in the battle (2+ leaves a lasting injury). */
+  worst?: number;
 }
 
 export interface Unit {

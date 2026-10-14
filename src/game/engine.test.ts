@@ -250,16 +250,21 @@ describe("dropping to 0 HP", () => {
     expect(r.state.outcome).toBeNull();
   });
 
-  it("rolls a death save at the start of the downed character's turn, then passes the turn", () => {
+  it("a downed character's turn waits for the death save, then passes", () => {
     const s = downedEzra().state;
-    const r = run(s, { type: "end-turn", unitId: "gob" }, dice([4, 20]));
+    const waiting = run(s, { type: "end-turn", unitId: "gob" }).state;
+    expect(currentUnit(waiting)!.id).toBe("ezra");
+    expect(unitOf(waiting, "ezra").turn.needsDeathSave).toBe(true);
+    expect(() => run(waiting, { type: "dodge", unitId: "ezra" })).toThrow(/roll the death save/);
+    const r = run(waiting, { type: "death-save", unitId: "ezra" }, dice([4, 20]));
     expect(ofType(r.events, "death-save")[0]).toMatchObject({ unitId: "ezra", result: "failure", failures: 1 });
+    expect(unitOf(r.state, "ezra").death.worst).toBe(1);
     expect(currentUnit(r.state)!.id).toBe("brann");
   });
 
   it("a natural 20 death save revives with 1 HP", () => {
-    const s = downedEzra().state;
-    const r = run(s, { type: "end-turn", unitId: "gob" }, dice([20, 20]));
+    const s = run(downedEzra().state, { type: "end-turn", unitId: "gob" }).state;
+    const r = run(s, { type: "death-save", unitId: "ezra" }, dice([20, 20]));
     expect(unitOf(r.state, "ezra")).toMatchObject({ hp: 1 });
     expect(unitOf(r.state, "ezra").conditions).not.toContain("Unconscious");
     expect(currentUnit(r.state)!.id).toBe("ezra");

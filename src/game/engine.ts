@@ -39,7 +39,9 @@ export type Command =
   | { type: "dodge"; unitId: string }
   | { type: "second-wind"; unitId: string }
   | { type: "stand-up"; unitId: string }
-  | { type: "end-turn"; unitId: string };
+  | { type: "end-turn"; unitId: string }
+  /** A dying hero rolls their death save (the player clicks; the AI does it for monsters' allies). */
+  | { type: "death-save"; unitId: string };
 
 // --- Rules tables --------------------------------------------------------------
 
@@ -234,6 +236,7 @@ function takeDamage(ctx: Ctx, u: Unit, amount: number, detail: string, opts: { c
     if (rest >= u.hpMax) return kill(ctx, u);
     u.death.stable = false;
     u.death.failures += opts.crit ? 2 : 1;
+    u.death.worst = Math.max(u.death.worst ?? 0, u.death.failures);
     if (u.death.failures >= 3) kill(ctx, u);
     return;
   }
@@ -578,7 +581,11 @@ function startTurn(ctx: Ctx) {
     u.turn = { movement: Math.max(0, u.speed - slowed), action: true, bonusAction: true, disengaged: false, sneakAttackUsed: false };
 
     if (u.hp <= 0) {
-      if (u.side === "party" && !u.death.stable) deathSave(ctx, u);
+      // A dying hero's turn waits for their death save.
+      if (u.side === "party" && !u.death.stable) {
+        u.turn.needsDeathSave = true;
+        return;
+      }
       if (u.hp <= 0) {
         // Can't act at 0 HP: the turn passes.
         endOfTurn(ctx, u);
@@ -606,6 +613,7 @@ function deathSave(ctx: Ctx, u: Unit) {
     u.death.failures += 1;
     result = u.death.failures >= 3 ? "dead" : "failure";
   }
+  u.death.worst = Math.max(u.death.worst ?? 0, u.death.failures);
   ctx.events.push({ type: "death-save", unitId: u.id, roll, successes: u.death.successes, failures: u.death.failures, result });
   if (result === "revived") heal(ctx, u, 1);
   if (result === "stable") u.death.stable = true;
@@ -641,7 +649,8 @@ function run(ctx: Ctx, cmd: Command) {
   if (s.outcome) throw new GameError("The battle is over");
   const u = currentUnit(s as GameState) as Unit | undefined;
   if (!u || u.id !== cmd.unitId) throw new GameError("It's not that creature's turn");
-  if (cmd.type !== "end-turn" && !canAct(u)) throw new GameError(`${u.name} can't act`);
+  if (u.turn.needsDeathSave && cmd.type !== "death-save" && cmd.type !== "end-turn") throw new GameError(`${u.name} is dying: roll the death save`);
+  if (cmd.type !== "end-turn" && cmd.type !== "death-save" && !canAct(u)) throw new GameError(`${u.name} can't act`);
 
   switch (cmd.type) {
     case "move":
@@ -786,7 +795,24 @@ function run(ctx: Ctx, cmd: Command) {
       removeCondition(ctx, u, "Prone");
       ctx.events.push({ type: "stand", unitId: u.id });
       return;
+    case "death-save": {
+      if (!u.turn.needsDeathSave) throw new GameError(`${u.name} isn't dying`);
+      u.turn.needsDeathSave = false;
+      deathSave(ctx, u);
+      if (u.hp > 0 || ctx.s.outcome) return;
+      // Still down: the turn passes.
+      endOfTurn(ctx, u);
+      advance(ctx);
+      startTurn(ctx);
+      return;
+    }
     case "end-turn":
+      // Ending the turn doesn't skip the death save.
+      if (u.turn.needsDeathSave) {
+        u.turn.needsDeathSave = false;
+        deathSave(ctx, u);
+        if (ctx.s.outcome) return;
+      }
       endOfTurn(ctx, u);
       advance(ctx);
       startTurn(ctx);

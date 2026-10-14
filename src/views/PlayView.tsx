@@ -26,6 +26,7 @@ import { bindSaves } from "../game/save-bind";
 import { createProfile, useActiveProfile, usePlayers } from "../store/players";
 import { DEFAULT_PICKS } from "../game/party-store";
 import { withProgress } from "../game/party";
+import { INJURIES } from "../game/injuries";
 
 /** Solo skirmish: your four heroes against an encounter, monsters run by the computer. */
 bindSaves();
@@ -176,6 +177,8 @@ function PartyPicker() {
   const characters = useMemo(() => [...shared, ...(mine ?? [])], [shared, mine]);
   const [editing, setEditing] = useState<CharacterSpec | null>(null);
   const progress = usePlayers((s) => (activeId ? s.docs[activeId]?.progress : undefined));
+  const fallenKeys = usePlayers((s) => (activeId ? s.docs[activeId]?.fallen : undefined)) ?? [];
+  const injuries = usePlayers((s) => (activeId ? s.docs[activeId]?.injuries : undefined));
   const members = availableMembers(characters).map((e) => withProgress(e, progress?.[e.key]));
   const custom = new Map(characters.map((c) => [characterKey(c), c]));
   return (
@@ -191,14 +194,21 @@ function PartyPicker() {
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {members.map((p) => {
           const on = picks.includes(p.key);
+          const isFallen = fallenKeys.includes(p.key);
+          const hurt = injuries?.[p.key] ?? [];
           const spec = custom.get(p.key);
           return (
             <li key={p.key} className={clsx("flex items-start gap-2 rounded-md border p-3 text-sm", on ? "border-accent bg-accent/10" : "border-line bg-surface-2")}>
-              <label className="flex flex-1 cursor-pointer items-start gap-2">
-                <input type="checkbox" className="mt-1" checked={on} disabled={!on && picks.length >= MAX_PARTY} onChange={() => togglePick(p.key)} />
+              <label className={clsx("flex flex-1 items-start gap-2", isFallen ? "opacity-60" : "cursor-pointer")}>
+                <input type="checkbox" className="mt-1" checked={on && !isFallen} disabled={isFallen || (!on && picks.length >= MAX_PARTY)} onChange={() => togglePick(p.key)} />
                 <span>
-                  <span className="block font-bold text-strong">{p.label}</span>
+                  <span className={clsx("block font-bold text-strong", isFallen && "line-through")}>
+                    {isFallen && "✝ "}
+                    {p.label}
+                  </span>
                   <span className="block text-xs text-faint">{p.subtitle}</span>
+                  {isFallen && <span className="block text-xs text-danger">Fallen: raise them at a shrine</span>}
+                  {hurt.length > 0 && <span className="block text-xs text-warn">🩹 {hurt.map((x) => INJURIES[x]?.name).join(", ")}</span>}
                 </span>
               </label>
               {spec && (
@@ -442,7 +452,9 @@ function HeroPanel({
           AC {u.ac} · {u.hp}/{u.hpMax} HP
         </span>
       </div>
-      {u.side === "party" ? (
+      {u.side === "party" && u.turn.needsDeathSave ? (
+        <DyingPanel unit={u} busy={usePlay.getState().aiRunning || !!game.outcome} />
+      ) : u.side === "party" ? (
         <>
           <div className="flex flex-wrap gap-1">
             <Pip on={u.turn.action} label="Action" />
@@ -595,6 +607,35 @@ function PickedTargets({ game, unit: u, mode }: { game: GameState; unit: Unit; m
       >
         Cast {action.name} on {picked.length}
       </button>
+    </div>
+  );
+}
+
+/** A dying hero's turn: the player rolls the death save. */
+function DyingPanel({ unit: u, busy }: { unit: Unit; busy: boolean }) {
+  const pips = (n: number, mark: string, cls: string) =>
+    Array.from({ length: 3 }, (_, i) => (
+      <span key={i} className={clsx("inline-block w-5 text-center text-lg", i < n ? cls : "text-faint opacity-40")}>
+        {mark}
+      </span>
+    ));
+  return (
+    <div className="space-y-3 rounded-md border-2 border-danger bg-danger/10 p-3 text-center">
+      <p className="font-display text-lg font-bold text-danger">💀 {u.name} is dying</p>
+      <div className="flex justify-center gap-6 text-sm">
+        <div>
+          <div className="text-xs text-faint">Successes</div>
+          {pips(u.death.successes, "♥", "text-heal")}
+        </div>
+        <div>
+          <div className="text-xs text-faint">Failures</div>
+          {pips(u.death.failures, "✗", "text-danger")}
+        </div>
+      </div>
+      <button className="btn btn-primary w-full font-display" disabled={busy} onClick={() => dispatch({ type: "death-save", unitId: u.id })}>
+        🎲 Roll the death save
+      </button>
+      <p className="text-xs text-muted">10 or more: a success; three successes and they're stable. A 20: back on their feet. Two failures leave a lasting injury; three, and they die.</p>
     </div>
   );
 }

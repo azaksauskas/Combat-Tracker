@@ -59,7 +59,8 @@ function record(events: GameEvent[], state: GameState) {
 const aiShouldAct = (s: GameState | null) => {
   if (!s || s.outcome) return false;
   const u = currentUnit(s);
-  return !!u && (u.side === "enemy" || !canAct(u));
+  // A dying hero waits for the player to roll their death save.
+  return !!u && !(u.side === "party" && u.turn.needsDeathSave) && (u.side === "enemy" || !canAct(u));
 };
 
 const AI_STEP_MS = 550;

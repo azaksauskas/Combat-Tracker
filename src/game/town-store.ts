@@ -14,7 +14,8 @@ import { BUILTIN_FACTIONS, lairResult, payTribute, raidResult, refuseTribute } f
 import { findScenario } from "./campaign-store";
 import { setupFor } from "./scenarios";
 import { quitGame, startBattle, usePlay } from "./store";
-import { chosenParty } from "./party-store";
+import { chosenParty, recordAftermath } from "./party-store";
+import { INJURIES, aftermath } from "./injuries";
 import { MAX_LEVEL, XP_BY_CR, XP_FOR_LEVEL, levelForXp } from "./party";
 import {
   onlineMsPerHour,
@@ -431,6 +432,8 @@ export function finishTownBattle(retreat = false) {
   const f = context ? factionOf(context.faction) : undefined;
   if (!id || !game || !context || !f) return quitGame();
   const won = !retreat && game.outcome === "victory";
+  const keys = context.heroes ?? [];
+  recordAftermath(aftermath(game, (uid) => (/^p\d+$/.test(uid) ? keys[Number(uid.slice(1))] : undefined)));
   const result = context.kind === "raid" ? raidResult : lairResult;
   updatePlayer(id, (d) => (d.town ? { ...d, town: { ...result(d.town, f, won), stash: { ...(game.stash ?? d.town.stash) } } } : d));
   if (won) {
@@ -478,4 +481,32 @@ function awardXp(id: string, game: GameState, keys: string[], milestone: number 
   toast.success(`+${share} XP each${milestone ? ` · milestone: level ${milestone}` : ""}`);
   for (const u of ups) toast.success(`⭐ ${u}!`);
   if (ups.length) addChronicle(id, ups.map((text) => ({ kind: "level" as const, text: `${text}.` })));
+}
+
+// --- The shrine: injuries and the fallen ----------------------------------------------
+
+export const treatCost = (): Cost => ({ gold: num("shrine.treatGold"), herbs: num("shrine.treatHerbs") });
+export const raiseCost = (): Cost => ({ gold: num("shrine.raiseGold"), dust: num("shrine.raiseDust") });
+
+/** Heal one of a hero's lasting injuries. */
+export function treatInjury(heroKey: string, heroName: string, injury: string) {
+  const id = me();
+  if (!id) return;
+  if (!work(treatCost(), num("shrine.treatHours"), `The shrine tended ${heroName}'s ${INJURIES[injury]?.name.toLowerCase() ?? "wound"}`, (t) => t)) return;
+  updatePlayer(id, (d) => {
+    const list = [...(d.injuries[heroKey] ?? [])];
+    const i = list.indexOf(injury);
+    if (i >= 0) list.splice(i, 1);
+    return { ...d, injuries: { ...d.injuries, [heroKey]: list } };
+  });
+  addChronicle(id, [{ kind: "story", text: `${heroName}'s ${INJURIES[injury]?.name.toLowerCase() ?? "injury"} was healed at the shrine.` }]);
+}
+
+/** Bring a fallen hero back. */
+export function raiseHero(heroKey: string, heroName: string) {
+  const id = me();
+  if (!id) return;
+  if (!work(raiseCost(), num("shrine.raiseHours"), `The shrine's priests raised ${heroName} from the dead`, (t) => t)) return;
+  updatePlayer(id, (d) => ({ ...d, fallen: d.fallen.filter((k) => k !== heroKey) }));
+  addChronicle(id, [{ kind: "story", text: `${heroName} was raised from the dead at the shrine.` }]);
 }

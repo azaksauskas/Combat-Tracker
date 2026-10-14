@@ -5,6 +5,8 @@ import { BUILDING_TYPES, type Town } from "../domain/town";
 import type { Profile } from "../domain/players";
 import { BUILDINGS, hireCost, beds, built, cantBuild, clockText, durationText, helpsLeft, isBuilt, opinion, power, renownOf, sleepHours, staffing, type SimContext } from "../game/town";
 import { reputationText } from "../domain/alignment";
+import { raiseCost, raiseHero, treatCost, treatInjury } from "../game/town-store";
+import { INJURIES } from "../game/injuries";
 import { allFactions, payTributeTo, refuseTributeTo, startTownBattle } from "../game/town-store";
 import { STAGE_TEXT, canStrike, threatOf } from "../game/region";
 import { bindTown, hireWorker, brew, build, buy, craftMod, found, goHome, helpOut, joinTown, liveHours, removeMod, renameTown, setOpen, sleep, today, townContext, useTownUi } from "../game/town-store";
@@ -376,15 +378,17 @@ function Workshop({ town: t }: { town: Town }) {
   const smithy = staffedOf(t, "smithy");
   const apothecary = staffedOf(t, "apothecary");
   const market = staffedOf(t, "market");
-  if (!smithy && !apothecary && !market)
+  const shrine = staffedOf(t, "shrine");
+  if (!smithy && !apothecary && !market && !shrine)
     return (
       <section className="rounded-lg border border-dashed border-line p-3 text-sm text-muted" aria-label="Workshop">
-        <strong className="text-strong">Workshop.</strong> Build and staff a smithy to fit mods to your heroes, an apothecary to brew potions, or a market to buy iron, herbs and arcane dust. Iron and dust are also salvaged from battles won on adventures.
+        <strong className="text-strong">Workshop.</strong> Build and staff a smithy to fit mods to your heroes, an apothecary to brew potions, a market to buy iron, herbs and arcane dust, or a shrine to heal lasting injuries and raise the fallen. Iron and dust are also salvaged from battles won on adventures.
       </section>
     );
   return (
     <section className="space-y-4 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Workshop">
       {smithy && <Smithy town={t} />}
+      {shrine && <Shrine town={t} />}
       {apothecary && (
         <div>
           <h3 className="mb-1 text-xs font-bold tracking-wider text-faint uppercase">⚗ Apothecary</h3>
@@ -420,6 +424,47 @@ function Workshop({ town: t }: { town: Town }) {
         </div>
       )}
     </section>
+  );
+}
+
+/** Heal lasting injuries; raise the fallen. */
+function Shrine({ town: t }: { town: Town }) {
+  const id = useActiveProfile((s) => s.id)!;
+  const injuries = usePlayers((s) => s.docs[id]?.injuries) ?? {};
+  const fallen = usePlayers((s) => s.docs[id]?.fallen) ?? [];
+  const names = new Map(availableMembers(myCharacters()).map((e) => [e.key, e.label]));
+  const hurt = Object.entries(injuries).filter(([, list]) => list.length);
+  const treat = treatCost();
+  const raise = raiseCost();
+  return (
+    <div>
+      <h3 className="mb-1 text-xs font-bold tracking-wider text-faint uppercase">🕯 Shrine</h3>
+      {hurt.length === 0 && fallen.length === 0 && <p className="text-sm text-muted italic">Nobody needs the priests today.</p>}
+      <ul className="space-y-1 text-sm">
+        {fallen.map((key) => (
+          <li key={key} className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              ✝ <strong className="text-strong">{names.get(key) ?? key}</strong> <span className="text-danger">has fallen</span>
+            </span>
+            <button className="btn px-2 py-0.5 text-xs" disabled={!!cantAfford(t, raise)} title={cantAfford(t, raise) ?? ""} onClick={() => raiseHero(key, names.get(key) ?? key)}>
+              Raise from the dead ({costText(raise)} · {num("shrine.raiseHours")} h)
+            </button>
+          </li>
+        ))}
+        {hurt.flatMap(([key, list]) =>
+          list.map((inj, i) => (
+            <li key={`${key}-${inj}-${i}`} className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                <strong className="text-strong">{names.get(key) ?? key}</strong>: {INJURIES[inj]?.name} <span className="text-xs text-muted">({INJURIES[inj]?.effect})</span>
+              </span>
+              <button className="btn px-2 py-0.5 text-xs" disabled={!!cantAfford(t, treat)} title={cantAfford(t, treat) ?? ""} onClick={() => treatInjury(key, names.get(key) ?? key, inj)}>
+                Treat ({costText(treat)} · {num("shrine.treatHours")} h)
+              </button>
+            </li>
+          )),
+        )}
+      </ul>
+    </div>
   );
 }
 

@@ -29,6 +29,7 @@ const BUILDING_DEFAULTS: [string, string, number, number, number][] = [
   ["apothecary", "Apothecary", 40, 10, 20],
   ["watchtower", "Watchtower", 20, 20, 16],
   ["smithy", "Smithy", 50, 25, 24],
+  ["shrine", "Shrine", 40, 20, 16],
 ];
 
 const MOD_DEFAULTS: [string, string, number, number, number, number, number][] = [
@@ -136,6 +137,12 @@ export const TUNING_FIELDS: TuningField[] = [
   ]),
 
   // Heroes
+  f("Heroes", "shrine.treatGold", "Shrine: treat an injury, gold", 15),
+  f("Heroes", "shrine.treatHerbs", "Shrine: treat an injury, herbs", 2),
+  f("Heroes", "shrine.treatHours", "Shrine: treat an injury, hours", 8),
+  f("Heroes", "shrine.raiseGold", "Shrine: raise the fallen, gold", 100),
+  f("Heroes", "shrine.raiseDust", "Shrine: raise the fallen, arcane dust", 5),
+  f("Heroes", "shrine.raiseHours", "Shrine: raise the fallen, hours", 24),
   f("Heroes", "xp.battleMultiplier", "XP from town battles (multiplier)", 1, undefined, { step: 0.25 }),
   f("Heroes", "xp.adventureMultiplier", "XP from adventure battles (multiplier)", 1, undefined, { step: 0.25 }),
 ];
