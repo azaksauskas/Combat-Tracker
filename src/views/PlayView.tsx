@@ -5,7 +5,7 @@ import { actionDamage, describeAction, formatMod, type StatAction } from "../dom
 import { averageDamage, hitChance } from "../game/ai";
 import { canAct, checkTarget, currentUnit } from "../game/engine";
 import { GameBoard, type BoardMode } from "../game/GameBoard";
-import { SCENARIOS, encounterScenario, type Scenario } from "../game/scenarios";
+import { SCENARIOS, encounterScenario, objectiveText, type Scenario } from "../game/scenarios";
 import { mapScenario } from "../game/maps";
 import type { GameState, Unit } from "../game/state";
 import { dispatch, quitGame, startGame, usePlay } from "../game/store";
@@ -313,6 +313,11 @@ function Battle({ game }: { game: GameState }) {
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-2xl font-bold text-accent">{scenario?.name ?? "Skirmish"}</h2>
+          {game.objective && !game.outcome && (
+            <p className="text-sm font-semibold text-heal" aria-label="Objective">
+              🎯 {objectiveText(game.objective, game.round)}
+            </p>
+          )}
           <p className="text-sm text-muted">
             Round <strong className="text-strong">{game.round}</strong> ·{" "}
             {game.outcome ? (game.outcome === "victory" ? "Victory!" : game.fled ? "Retreat" : "Defeat") : aiRunning ? "Monsters are acting…" : active ? `${active.name}'s turn` : ""}
@@ -358,6 +363,11 @@ function Battle({ game }: { game: GameState }) {
             onMove={(to) => active && dispatch({ type: "move", unitId: active.id, to })}
             onTarget={(targetId) => {
               if (!active || mode.kind !== "target") return;
+              const special = mode.actionId;
+              if (special === "@help") return void dispatch({ type: "help", unitId: active.id, targetId });
+              if (special === "@shove") return void dispatch({ type: "shove", unitId: active.id, targetId });
+              if (special === "@shove-prone") return void dispatch({ type: "shove", unitId: active.id, targetId, prone: true });
+              if (special === "@grapple") return void dispatch({ type: "grapple", unitId: active.id, targetId });
               const action = active.stats.actions.find((a) => a.id === mode.actionId);
               const many = action?.kind === "buff" ? action.targets : action?.kind === "heal" ? (action.targets ?? 1) : 1;
               if (action && many > 1) {
@@ -490,7 +500,8 @@ function HeroPanel({
             })}
           </div>
 
-          {mode.kind === "target" && <TargetPreview game={game} attacker={u} actionId={mode.actionId} target={target} />}
+          {mode.kind === "target" && mode.actionId.startsWith("@") && <SpecialPreview unit={u} actionId={mode.actionId} />}
+          {mode.kind === "target" && !mode.actionId.startsWith("@") && <TargetPreview game={game} attacker={u} actionId={mode.actionId} target={target} />}
           {mode.kind === "target" && <PickedTargets game={game} unit={u} mode={mode} />}
 
           <div className="grid grid-cols-3 gap-1">
@@ -503,6 +514,23 @@ function HeroPanel({
             <button className="btn px-1 text-xs" disabled={!heroTurn || !u.turn.action} onClick={() => send({ type: "dodge", unitId: u.id })} title="Attacks against you have Disadvantage">
               Dodge
             </button>
+            <button className={clsx("btn px-1 text-xs", mode.kind === "target" && mode.actionId === "@help" && "border-accent text-accent")} disabled={!heroTurn || !u.turn.action} onClick={() => setMode({ kind: "target", actionId: "@help" })} title="Pick an enemy within 5 ft: the next ally to attack it has Advantage">
+              🤝 Help
+            </button>
+            <button className="btn px-1 text-xs" disabled={!heroTurn || !u.turn.action} onClick={() => send({ type: "hide", unitId: u.id })} title="Needs three-quarters cover from every foe that can see you. Stealth vs 15: your next attack has Advantage, theirs against you Disadvantage">
+              🫥 Hide
+            </button>
+            <button className={clsx("btn px-1 text-xs", mode.kind === "target" && mode.actionId.startsWith("@shove") && "border-accent text-accent")} disabled={!heroTurn || (!u.turn.action && !u.turn.attacksLeft)} onClick={() => setMode({ kind: "target", actionId: mode.kind === "target" && mode.actionId === "@shove" ? "@shove-prone" : "@shove" })} title="One of your attacks: push an enemy 5 ft (click again: knock it Prone)">
+              ✋ {mode.kind === "target" && mode.actionId === "@shove-prone" ? "Trip" : "Shove"}
+            </button>
+            <button className={clsx("btn px-1 text-xs", mode.kind === "target" && mode.actionId === "@grapple" && "border-accent text-accent")} disabled={!heroTurn || (!u.turn.action && !u.turn.attacksLeft)} onClick={() => setMode({ kind: "target", actionId: "@grapple" })} title="One of your attacks: hold an enemy in place (speed 0)">
+              🤼 Grapple
+            </button>
+            {u.conditions.includes("Grappled") && (
+              <button className="btn col-span-2 px-1 text-xs" disabled={!heroTurn || !u.turn.action} onClick={() => send({ type: "escape", unitId: u.id })} title="Athletics or Acrobatics against the holder's DC">
+                Break free
+              </button>
+            )}
             {secondWind !== null && (
               <button
                 className="btn col-span-2 px-1 text-xs"
@@ -533,8 +561,11 @@ function HeroPanel({
                 <button className="btn col-span-3 px-1 text-xs sm:col-span-1" disabled={!heroTurn || !u.turn.bonusAction} onClick={() => send({ type: "dash", unitId: u.id, bonus: true })} title="Cunning Action: Dash as a bonus action">
                   Bonus Dash
                 </button>
-                <button className="btn col-span-3 px-1 text-xs sm:col-span-2" disabled={!heroTurn || !u.turn.bonusAction} onClick={() => send({ type: "disengage", unitId: u.id, bonus: true })} title="Cunning Action: Disengage as a bonus action">
+                <button className="btn col-span-3 px-1 text-xs sm:col-span-1" disabled={!heroTurn || !u.turn.bonusAction} onClick={() => send({ type: "disengage", unitId: u.id, bonus: true })} title="Cunning Action: Disengage as a bonus action">
                   Bonus Disengage
+                </button>
+                <button className="btn col-span-3 px-1 text-xs sm:col-span-1" disabled={!heroTurn || !u.turn.bonusAction} onClick={() => send({ type: "hide", unitId: u.id, bonus: true })} title="Cunning Action: Hide as a bonus action">
+                  Bonus Hide
                 </button>
               </>
             )}
@@ -642,6 +673,18 @@ function DyingPanel({ unit: u, busy }: { unit: Unit; busy: boolean }) {
   );
 }
 
+/** What Help, Shove and Grapple do, while picking their target. */
+function SpecialPreview({ unit: u, actionId }: { unit: Unit; actionId: string }) {
+  const dc = 8 + Math.floor((u.stats.abilities.str - 10) / 2) + u.stats.proficiency;
+  const text: Record<string, string> = {
+    "@help": "Pick an enemy within 5 ft. The next ally who attacks it has Advantage.",
+    "@shove": `Pick an enemy within 5 ft. Strength or Dexterity save, DC ${dc}: on a failure it's pushed 5 ft away. Click Shove again to trip it instead.`,
+    "@shove-prone": `Pick an enemy within 5 ft. Strength or Dexterity save, DC ${dc}: on a failure it falls Prone (melee attacks against it have Advantage).`,
+    "@grapple": `Pick an enemy within 5 ft. Strength or Dexterity save, DC ${dc}: on a failure its speed drops to 0 until it breaks free or you move away.`,
+  };
+  return <p className="rounded-md border border-line bg-surface-2/60 p-2 text-xs text-muted">{text[actionId]}</p>;
+}
+
 function TargetPreview({ game, attacker, actionId, target }: { game: GameState; attacker: Unit; actionId: string; target: Unit | undefined }) {
   const action = attacker.stats.actions.find((a) => a.id === actionId);
   if (!action) return null;
@@ -653,7 +696,7 @@ function TargetPreview({ game, attacker, actionId, target }: { game: GameState; 
   let effect: string;
   switch (action.kind) {
     case "attack":
-      odds = `${Math.round(hitChance(action.toHit, target.ac, check.advantage) * 100)}% to hit (${formatMod(action.toHit)} vs AC ${target.ac})`;
+      odds = `${Math.round(hitChance(action.toHit, target.ac + check.cover, check.advantage) * 100)}% to hit (${formatMod(action.toHit)} vs AC ${target.ac + check.cover})`;
       effect = `≈ ${averageDamage(action.damage).toFixed(1)} damage on a hit`;
       break;
     case "save":

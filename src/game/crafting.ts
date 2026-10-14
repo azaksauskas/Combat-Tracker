@@ -151,7 +151,8 @@ export function withMods(e: ContentEntry, mods: string[] | undefined): ContentEn
 /** What can be salvaged from a won battle: iron from armed foes, dust from the undead. */
 export function salvage(game: GameState): Partial<Record<Component, number>> {
   if (game.outcome !== "victory") return {};
-  const fallen = game.units.filter((u) => u.side === "enemy" && u.dead);
+  // Foes who ran off took their gear with them.
+  const fallen = game.units.filter((u) => u.side === "enemy" && u.dead && !u.fled);
   const undead = fallen.filter((u) => u.stats.creatureType === "undead").length;
   const armed = fallen.filter((u) => u.stats.creatureType !== "beast" && u.stats.actions.some((a) => a.kind === "attack" && /sword|scimitar|axe|mace|bow|sickle|spear|dagger/i.test(a.name))).length;
   return { iron: Math.ceil(armed / 2), dust: undead };

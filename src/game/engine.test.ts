@@ -2,7 +2,7 @@ import { produce } from "immer";
 import { describe, expect, it } from "vitest";
 import { PARTY, SRD_MONSTERS } from "../content/srd";
 import type { Rng } from "../domain/dice";
-import { findPath, lineOfSight, reachableCells, type Cell } from "./board";
+import { coverBetween, findPath, lineOfSight, reachableCells, type Cell } from "./board";
 import { apply, boardFromAscii, checkTarget, createGame, currentUnit, reachable, type Command, type UnitSetup } from "./engine";
 import { GameError, type GameEvent, type GameState } from "./state";
 
@@ -202,6 +202,100 @@ describe("attacks", () => {
     const r = run(s, { type: "action", unitId: "brann", actionId: actionId(s, "brann", "Greatsword"), targetId: "zom" }, dice([15, 20], [6, 6], [6, 6], [20, 20]));
     expect(ofType(r.events, "fortitude")[0]).toMatchObject({ dc: 20, success: true });
     expect(unitOf(r.state, "zom")).toMatchObject({ hp: 1, dead: false });
+  });
+});
+
+// --- cover ------------------------------------------------------------------------
+
+describe("cover", () => {
+  it("walls give half or three-quarters cover; total only without a line of sight", () => {
+    const b = boardFromAscii(["........", "...#....", "........", "........"]);
+    expect(coverBetween(b, { x: 1, y: 1 }, { x: 5, y: 1 })).toBe("total"); // a pillar right in the way hides it
+    expect(coverBetween(b, { x: 2, y: 3 }, { x: 4, y: 1 })).toBe(2); // past the pillar's corner
+    expect(coverBetween(b, { x: 1, y: 0 }, { x: 6, y: 1 })).toBe(0);
+    const tall = boardFromAscii(["..#...", "..#...", "..#...", "..#..."]);
+    expect(coverBetween(tall, { x: 0, y: 1 }, { x: 4, y: 1 })).toBe("total");
+    // A creature in the way gives half cover.
+    const open = boardFromAscii(["......", "......", "......"]);
+    expect(coverBetween(open, { x: 0, y: 1 }, { x: 4, y: 1 }, [{ x: 2, y: 1 }])).toBe(2);
+  });
+
+  it("cover raises the AC an attack needs to beat and shows in the odds", () => {
+    const rows = ["........", "...#....", "........", "........"];
+    const s = game(rows, [setup("brann", "fighter", { x: 2, y: 3 }), setup("gob", "goblin-warrior", { x: 4, y: 1 })]);
+    const jav = actionId(s, "brann", "Javelin");
+    const check = checkTarget(s, "brann", jav, "gob");
+    expect(check.cover).toBeGreaterThan(0);
+    expect(check.reasons.join(" ")).toMatch(/cover/);
+  });
+});
+
+// --- help, hide, shove, grapple ------------------------------------------------------
+
+describe("more actions", () => {
+  it("Help gives the next ally's attack Advantage", () => {
+    let s = game(OPEN, [setup("pip", "rogue", { x: 0, y: 0 }), setup("gob", "goblin-warrior", { x: 1, y: 0 }), setup("brann", "fighter", { x: 2, y: 0 })]);
+    s = run(s, { type: "help", unitId: "pip", targetId: "gob" }).state;
+    expect(checkTarget(s, "brann", actionId(s, "brann", "Greatsword"), "gob").reasons.join()).toMatch(/pip helps/);
+    expect(() => run(game(OPEN, [setup("pip", "rogue", { x: 0, y: 0 }), setup("gob", "goblin-warrior", { x: 4, y: 0 })]), { type: "help", unitId: "pip", targetId: "gob" })).toThrow(/5 ft/);
+  });
+
+  it("Hide needs heavy cover from everyone who could see you", () => {
+    const seen = game(OPEN, [setup("pip", "rogue", { x: 0, y: 0 }), setup("gob", "goblin-warrior", { x: 4, y: 0 })]);
+    const r = run(seen, { type: "hide", unitId: "pip" });
+    expect(ofType(r.events, "feature")[0]!.detail).toMatch(/can see them/);
+    const walled = game(["...#....", "...#....", "...#...."], [setup("pip", "rogue", { x: 0, y: 1 }), setup("gob", "goblin-warrior", { x: 6, y: 1 })]);
+    const hid = run(walled, { type: "hide", unitId: "pip" }, dice([15, 20]));
+    expect(unitOf(hid.state, "pip").conditions).toContain("Hidden");
+  });
+
+  it("Shove pushes or knocks Prone on a failed save; Grapple holds until they escape", () => {
+    const s = game(OPEN, [setup("brann", "fighter", { x: 1, y: 1 }), setup("gob", "goblin-warrior", { x: 2, y: 1 })]);
+    const pushed = run(s, { type: "shove", unitId: "brann", targetId: "gob" }, dice([1, 20]));
+    expect(unitOf(pushed.state, "gob").pos).toEqual({ x: 3, y: 1 });
+    const prone = run(s, { type: "shove", unitId: "brann", targetId: "gob", prone: true }, dice([1, 20]));
+    expect(unitOf(prone.state, "gob").conditions).toContain("Prone");
+    const held = run(s, { type: "grapple", unitId: "brann", targetId: "gob" }, dice([1, 20])).state;
+    expect(unitOf(held, "gob").conditions).toContain("Grappled");
+    const goblinTurn = produce(held, (d) => {
+      d.turnIndex = 1;
+      d.units[1]!.turn = { movement: 30, action: true, bonusAction: true, disengaged: false, sneakAttackUsed: false };
+    });
+    expect(() => run(goblinTurn, { type: "move", unitId: "gob", to: { x: 5, y: 1 } })).toThrow(/can't move/);
+    const free = run(goblinTurn, { type: "escape", unitId: "gob" }, dice([20, 20]));
+    expect(unitOf(free.state, "gob").conditions).not.toContain("Grappled");
+  });
+});
+
+// --- objectives and morale -----------------------------------------------------------
+
+describe("objectives and morale", () => {
+  it("surviving enough rounds wins", () => {
+    const { state } = createGame(boardFromAscii(OPEN), [setup("brann", "fighter", { x: 0, y: 0 }), setup("gob", "goblin-warrior", { x: 7, y: 5 })], 1, { objective: { kind: "survive", rounds: 1 } });
+    let s = state;
+    for (let i = 0; i < 4 && !s.outcome; i++) s = run(s, { type: "end-turn", unitId: currentUnit(s)!.id }).state;
+    expect(s.outcome).toBe("victory");
+  });
+
+  it("standing on the exit squares wins", () => {
+    const s = game(OPEN, [setup("brann", "fighter", { x: 5, y: 0 }), setup("gob", "goblin-warrior", { x: 0, y: 5 })]);
+    const withExit = { ...s, objective: { kind: "escape" as const, cells: [{ x: 7, y: 0 }] } };
+    expect(run(withExit, { type: "move", unitId: "brann", to: { x: 7, y: 0 } }).state.outcome).toBe("victory");
+  });
+
+  it("a badly hurt monster whose side is half down may break and run off the field", () => {
+    const s0 = game(OPEN, [setup("gob", "goblin-warrior", { x: 0, y: 2 }), setup("gob2", "goblin-warrior", { x: 6, y: 5 }), setup("brann", "fighter", { x: 4, y: 2 })], ["brann", "gob", "gob2"]);
+    const s1 = produce(s0, (d) => {
+      d.units.find((u) => u.id === "gob2")!.dead = true;
+      d.units.find((u) => u.id === "gob2")!.hp = 0;
+      d.units.find((u) => u.id === "gob")!.hp = 2;
+    });
+    const r = run(s1, { type: "end-turn", unitId: "brann" }, dice([1, 20]));
+    expect(unitOf(r.state, "gob").conditions).toContain("Fleeing");
+    // On the edge already: it runs.
+    const gone = run(r.state, { type: "flee", unitId: "gob" });
+    expect(unitOf(gone.state, "gob")).toMatchObject({ fled: true, dead: true });
+    expect(gone.state.outcome).toBe("victory");
   });
 });
 

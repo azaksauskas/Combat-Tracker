@@ -1,8 +1,8 @@
 import type { Advantage } from "../domain/attack";
 import { parseDice } from "../domain/dice";
 import { actionDamage, type DamagePart, type StatAction } from "../domain/statblock";
-import { distanceFt, fromKey, key, lineOfSight, type Cell } from "./board";
-import { apply, canAct, checkTarget, currentUnit, reachable, type Command } from "./engine";
+import { coverBetween, distanceFt, fromKey, key, lineOfSight, type Cell } from "./board";
+import { apply, canAct, checkTarget, currentUnit, onEdge, reachable, type Command } from "./engine";
 import { GameError, type GameState, type Unit } from "./state";
 
 /**
@@ -40,7 +40,7 @@ function expected(s: GameState, u: Unit, action: StatAction, target: Unit): numb
   const check = checkTarget(s, u.id, action.id, target.id);
   if (!check.ok) return -1;
   const dmg = averageDamage(actionDamage(action));
-  const value = action.kind === "attack" ? dmg * hitChance(action.toHit, target.ac, check.advantage) : action.kind === "missile" ? dmg : dmg * 0.6;
+  const value = action.kind === "attack" ? dmg * hitChance(action.toHit, target.ac + check.cover, check.advantage) : action.kind === "missile" ? dmg : dmg * 0.6;
   // Prefer finishing off a wounded foe.
   return value + (dmg >= target.hp ? 3 : 0);
 }
@@ -75,9 +75,17 @@ const foeAdjacent = (s: GameState, u: Unit, at: Cell) => foesOf(s, u).some((f) =
 /** Picks the best cell to move to, or null if staying put is as good. */
 function bestDestination(s: GameState, u: Unit): Cell | null {
   const ranged = prefersRanged(u);
+  const others = s.units.filter((x) => x.id !== u.id && !x.dead).map((x) => x.pos);
+  // Shooters like to shoot from behind something.
+  const shelter = (c: Cell) =>
+    foesOf(s, u).reduce((n, f) => {
+      const cv = coverBetween(s.board, f.pos, c, others);
+      return n + (cv === "total" ? 0 : cv * 12);
+    }, 0);
   const score = (c: Cell, cost: number) => {
     let v = canStrikeFrom(s, u, c, ranged) ? 1000 : canStrikeFrom(s, u, c, !ranged) ? 500 : 0;
     if (ranged && foeAdjacent(s, u, c)) v -= 400;
+    if (ranged && v >= 1000) v += shelter(c);
     v -= nearestFoeDistance(s, u, c) * (ranged ? 0 : 1);
     return v - cost / 100;
   };
@@ -102,6 +110,28 @@ export function nextAiCommand(s: GameState): Command {
   const end: Command = { type: "end-turn", unitId: u.id };
   if (u.turn.needsDeathSave) return { type: "death-save", unitId: u.id };
   if (!canAct(u) || foesOf(s, u).length === 0) return end;
+
+  // Routed: run for the nearest edge of the field and leave it.
+  if (u.conditions.includes("Fleeing")) {
+    if (onEdge(s, u.pos)) return { type: "flee", unitId: u.id };
+    if (foeAdjacent(s, u, u.pos) && u.turn.bonusAction && !u.turn.disengaged && u.stats.features.includes("nimble-escape")) return { type: "disengage", unitId: u.id, bonus: true };
+    if (u.turn.action && u.turn.movement === u.speed) return { type: "dash", unitId: u.id };
+    if (u.turn.movement > 0) {
+      const edgeDist = (c: Cell) => Math.min(c.x, c.y, s.board.width - 1 - c.x, s.board.height - 1 - c.y);
+      let best: Cell | null = null;
+      let bestScore = edgeDist(u.pos) * 100 - nearestFoeDistance(s, u, u.pos);
+      for (const [k] of reachable(s, u.id)) {
+        const c = fromKey(k);
+        const v = edgeDist(c) * 100 - nearestFoeDistance(s, u, c);
+        if (v < bestScore) {
+          bestScore = v;
+          best = c;
+        }
+      }
+      if (best) return { type: "move", unitId: u.id, to: best };
+    }
+    return end;
+  }
 
   if (u.turn.action) {
     // Cornered archer with Nimble Escape: slip away first.

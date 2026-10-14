@@ -137,3 +137,49 @@ export function lineOfSight(board: Board, a: Cell, b: Cell): boolean {
   };
   return clear(0.01) || clear(-0.01);
 }
+
+/** Cover a target has against an attacker: none, half (+2 AC), three-quarters (+5 AC) or total. */
+export type Cover = 0 | 2 | 5 | "total";
+
+/**
+ * The grid rule for cover, kept friendly: from the corner of the attacker's
+ * square that sees best, trace a line to each corner of the target's square.
+ * Lines blocked by walls: 1–2 half cover, 3–4 three-quarters; total cover only
+ * when there's no line of sight at all. A creature in the way (on the line
+ * between the squares' centres) gives half cover.
+ */
+export function coverBetween(board: Board, a: Cell, t: Cell, creatures: Cell[] = []): Cover {
+  if (sameCell(a, t)) return 0;
+  const idx = makeBoardIndex(board);
+  const inset = 0.06;
+  const corners = (c: Cell) => [
+    { x: c.x + inset, y: c.y + inset },
+    { x: c.x + 1 - inset, y: c.y + inset },
+    { x: c.x + inset, y: c.y + 1 - inset },
+    { x: c.x + 1 - inset, y: c.y + 1 - inset },
+  ];
+  const blocked = (p: { x: number; y: number }, q: { x: number; y: number }, isBlocker: (c: Cell) => boolean) => {
+    const steps = Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) * 12);
+    for (let i = 1; i < steps; i++) {
+      const f = i / steps;
+      const c = { x: Math.floor(p.x + (q.x - p.x) * f), y: Math.floor(p.y + (q.y - p.y) * f) };
+      if (sameCell(c, a) || sameCell(c, t)) continue;
+      if (isBlocker(c)) return true;
+    }
+    return false;
+  };
+  const wall = (c: Cell) => idx.isWall(c);
+  let best = 4;
+  for (const from of corners(a)) {
+    const n = corners(t).filter((to) => blocked(from, to, wall)).length;
+    best = Math.min(best, n);
+    if (best === 0) break;
+  }
+  if (!lineOfSight(board, a, t)) return "total";
+  let cover: Cover = best === 0 ? 0 : best <= 2 ? 2 : 5;
+  if (cover === 0 && creatures.length) {
+    const centre = (c: Cell) => ({ x: c.x + 0.5, y: c.y + 0.5 });
+    if (blocked(centre(a), centre(t), (c) => creatures.some((x) => sameCell(x, c)))) cover = 2;
+  }
+  return cover;
+}

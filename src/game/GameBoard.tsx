@@ -4,7 +4,7 @@ import { Circle, Group, Layer, Line, Rect, Stage, Text } from "react-konva";
 import { initials } from "../domain/combat";
 import { useThemeColors } from "../store/ui";
 import { GRID_ALPHA, withAlpha, type ThemeColors } from "../theme/themes";
-import { findPath, fromKey, key, type Cell } from "./board";
+import { distanceFt, findPath, fromKey, key, type Cell } from "./board";
 import { areaCells, checkArea, checkTarget, currentUnit, reachable } from "./engine";
 import type { GameState, Unit } from "./state";
 import type { Fx, ShotTone } from "./store";
@@ -72,7 +72,8 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
     const result = new Map<string, boolean>();
     for (const u of game.units) {
       if (u.dead) continue;
-      const ok = checkTarget(game, active.id, mode.actionId, u.id).ok;
+      // Help, Shove and Grapple: an enemy within 5 ft.
+      const ok = mode.actionId.startsWith("@") ? u.side !== active.side && u.hp > 0 && distanceFt(u.pos, active.pos) <= 5 : checkTarget(game, active.id, mode.actionId, u.id).ok;
       // Only ring yourself when the spell can be cast on you.
       if (u.id !== active.id || ok) result.set(u.id, ok);
     }
@@ -142,6 +143,13 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
 
           {/* Movement range and path preview */}
           <Layer listening={false}>
+            {game.objective?.kind === "escape" &&
+              game.objective.cells.map((c) => (
+                <Group key={`x${c.x},${c.y}`}>
+                  <Rect x={c.x * cell + 1} y={c.y * cell + 1} width={cell - 2} height={cell - 2} fill={withAlpha(colors.heal, 0.25)} stroke={colors.heal} strokeWidth={2} dash={[5, 3]} cornerRadius={3} />
+                  <Text x={c.x * cell} y={c.y * cell} width={cell} height={cell} text="⇥" align="center" verticalAlign="middle" fontSize={cell * 0.5} fill={colors.heal} />
+                </Group>
+              ))}
             {[...reach.keys()].map((k) => {
               const c = fromKey(k);
               return <Rect key={k} x={c.x * cell + 1} y={c.y * cell + 1} width={cell - 2} height={cell - 2} fill={withAlpha(colors.accent, 0.13)} cornerRadius={3} />;
@@ -315,7 +323,7 @@ function UnitToken({
       }}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
-      opacity={u.dead ? 0.35 : 1}
+      opacity={u.dead ? 0.35 : u.conditions.includes("Hidden") ? 0.55 : 1}
     >
       {targetable !== undefined && (
         <Circle radius={r + 6} stroke={targetable ? colors.highlight : colors.faint} strokeWidth={targetable ? 3 : 1} dash={targetable ? undefined : [4, 4]} />
@@ -330,6 +338,8 @@ function UnitToken({
       </Group>
       {down && <Text text={u.dead ? "✝" : "💤"} x={r * 0.3} y={-r * 1.2} fontSize={r * 0.8} listening={false} />}
       {u.conditions.includes("Prone") && !down && <Text text="⤓" x={-r * 1.25} y={-r * 1.2} fontSize={r * 0.8} fill={colors.warn} listening={false} />}
+      {u.conditions.includes("Grappled") && <Text text="⛓" x={r * 0.45} y={r * 0.2} fontSize={r * 0.7} listening={false} />}
+      {u.conditions.includes("Hidden") && <Text text="🫥" x={r * 0.4} y={-r * 1.25} fontSize={r * 0.75} listening={false} />}
       {/* HP bar */}
       <Rect x={-r} y={r + 3} width={r * 2} height={4} fill={colors["surface-3"]} cornerRadius={2} listening={false} />
       <Rect x={-r} y={r + 3} width={r * 2 * hpPct} height={4} fill={hpPct > 0.5 ? colors.heal : hpPct > 0.25 ? colors.warn : colors.danger} cornerRadius={2} listening={false} />

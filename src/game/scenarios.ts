@@ -2,6 +2,7 @@ import { PARTY, SRD_MONSTERS, type ContentEntry } from "../content/srd";
 import type { Combatant } from "../domain/types";
 import type { Cell } from "./board";
 import { boardFromAscii, type UnitSetup } from "./engine";
+import type { Objective } from "./state";
 
 /**
  * Hand-made skirmishes. Maps are ASCII: "#" wall, "~" difficult terrain,
@@ -19,7 +20,19 @@ export interface Scenario {
   difficulty?: "Low" | "Moderate" | "High";
   /** Hero start squares in order; otherwise the "P" squares of the map. */
   starts?: Cell[];
+  /** Besides beating every foe: hold out some rounds, or reach the "X" squares of the map. */
+  goal?: { kind: "survive"; rounds: number } | { kind: "escape" };
 }
+
+/** The battle's objective, from the scenario's goal and map. */
+export function objectiveOf(sc: Scenario): Objective | undefined {
+  if (!sc.goal) return undefined;
+  if (sc.goal.kind === "survive") return { kind: "survive", rounds: sc.goal.rounds };
+  return { kind: "escape", cells: starts(sc.map, (c) => c === "X") };
+}
+
+export const objectiveText = (o: Objective, round: number) =>
+  o.kind === "survive" ? `Hold out for ${o.rounds} rounds (round ${Math.min(round, o.rounds)} of ${o.rounds}), or beat them all` : "Get every hero still standing onto the marked squares, or beat them all";
 
 export const SCENARIOS: Scenario[] = [
   {
@@ -152,6 +165,42 @@ export const SCENARIOS: Scenario[] = [
     monsters: ["gnoll-warrior", "gnoll-warrior", "gnoll-warrior", "gnoll-warrior", "bugbear-warrior", "bugbear-warrior"],
     difficulty: "Moderate",
   },
+  {
+    id: "hold-the-ford",
+    name: "Hold the Ford",
+    blurb: "Goblins pour across the river to raid the farms. Hold the ford until the militia arrives: four rounds.",
+    map: [
+      "~~~~...~~~~...~~~~",
+      "1~~~...~~~~...~~~4",
+      "~~~~...~~~~...~~~~",
+      "2.......PP.......5",
+      "........PP........",
+      "3~~~...~~~~...~~~6",
+      "~~~~...~~~~...~~~~",
+      "~~~~...~~~~...~~~7",
+    ],
+    // 7 × CR 1/4 = 350 XP: more than a Moderate fight, but they only need to last four rounds.
+    monsters: ["goblin-warrior", "wolf", "goblin-warrior", "goblin-warrior", "wolf", "goblin-warrior", "goblin-warrior"],
+    difficulty: "High",
+    goal: { kind: "survive", rounds: 4 },
+  },
+  {
+    id: "run-for-the-gate",
+    name: "Run for the Gate",
+    blurb: "Caught outside the walls at dusk with bandits between you and the gate. You don't have to win: just get inside.",
+    map: [
+      "################X",
+      "P.....#.....1...X",
+      "P...........#...X",
+      "P....##..2......X",
+      "P.......#....3..X",
+      "......4....#....X",
+      "################X",
+    ],
+    monsters: ["bandit", "bandit", "bandit", "bandit"],
+    difficulty: "Moderate",
+    goal: { kind: "escape" },
+  },
 ];
 
 function starts(map: string[], ch: (c: string) => boolean): Cell[] {
@@ -178,7 +227,7 @@ function uniqueNames(units: UnitSetup[]) {
 }
 
 export function scenarioSetup(sc: Scenario, members: ContentEntry[] = PARTY) {
-  const board = boardFromAscii(sc.map.map((r) => r.replace(/[P1-9]/g, ".")));
+  const board = boardFromAscii(sc.map.map((r) => r.replace(/[P1-9X]/g, ".")));
   const partyCells = sc.starts ?? starts(sc.map, (c) => c === "P");
   const monsterCells = starts(sc.map, (c) => /[1-9]/.test(c));
   const party = members.map((p, i) => unitFrom(`p${i}`, p, "party", partyCells[i] ?? { x: 0, y: i }));

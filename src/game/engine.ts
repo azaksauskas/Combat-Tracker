@@ -12,9 +12,9 @@ import {
   type SaveAction,
   type StatAction,
 } from "../domain/statblock";
-import { FEET_PER_CELL, distanceFt, findPath, lineOfSight, makeBoardIndex, reachableCells, sameCell, type Board, type Cell } from "./board";
+import { FEET_PER_CELL, coverBetween, distanceFt, findPath, lineOfSight, makeBoardIndex, reachableCells, sameCell, type Board, type Cell, type Cover } from "./board";
 import { mulberry32 } from "./rng";
-import { GameError, type Effect, type GameEvent, type GameState, type Side, type Unit } from "./state";
+import { GameError, type Effect, type GameEvent, type GameState, type Objective, type Side, type Unit } from "./state";
 
 /**
  * The rules engine: `apply(state, command)` validates a command for the
@@ -40,6 +40,18 @@ export type Command =
   | { type: "second-wind"; unitId: string }
   | { type: "stand-up"; unitId: string }
   | { type: "end-turn"; unitId: string }
+  /** Help: the next attack an ally makes against this enemy (within 5 ft of you) has Advantage. */
+  | { type: "help"; unitId: string; targetId: string }
+  /** Hide: needs heavy cover from every foe that can see you; Dexterity (Stealth) against DC 15. */
+  | { type: "hide"; unitId: string; bonus?: boolean }
+  /** Shove (one of your attacks): push 5 ft away or knock Prone, unless they save. */
+  | { type: "shove"; unitId: string; targetId: string; prone?: boolean }
+  /** Grapple (one of your attacks): their speed drops to 0 while you hold them. */
+  | { type: "grapple"; unitId: string; targetId: string }
+  /** Break free of a grapple (action). */
+  | { type: "escape"; unitId: string }
+  /** A routed creature on the edge of the board runs off. */
+  | { type: "flee"; unitId: string }
   /** A dying hero rolls their death save (the player clicks; the AI does it for monsters' allies). */
   | { type: "death-save"; unitId: string }
   /**
@@ -97,14 +109,23 @@ export interface TargetCheck {
   reason?: string;
   advantage: Advantage;
   reasons: string[];
+  /** AC (or Dex save) bonus the target gets from cover. */
+  cover: 0 | 2 | 5;
 }
+
+/** Cover between two creatures on the board (other living creatures can be in the way). */
+export function coverOf(s: GameState, a: Unit, t: Unit): Cover {
+  const others = s.units.filter((u) => u.id !== a.id && u.id !== t.id && !u.dead).map((u) => u.pos);
+  return coverBetween(s.board, a.pos, t.pos, others);
+}
+const COVER_NAME = { 2: "half cover", 5: "three-quarters cover" } as const;
 
 /** Can `attacker` use `action` on `target` right now, and with what advantage? */
 export function checkTarget(s: GameState, attackerId: string, actionId: string, targetId: string): TargetCheck {
   const a = s.units.find((u) => u.id === attackerId);
   const t = s.units.find((u) => u.id === targetId);
   const action = a?.stats.actions.find((x) => x.id === actionId);
-  const no = (reason: string): TargetCheck => ({ ok: false, reason, advantage: "normal", reasons: [] });
+  const no = (reason: string): TargetCheck => ({ ok: false, reason, advantage: "normal", reasons: [], cover: 0 });
   if (!a || !t || !action) return no("Unknown creature or action");
   if (t.dead) return no(`${t.name} is dead`);
   if (action.slot && (a.resources[`slot${action.slot}`] ?? 0) <= 0) return no(`No level ${action.slot} spell slots left`);
@@ -124,7 +145,12 @@ export function checkTarget(s: GameState, attackerId: string, actionId: string, 
   if (dist > max) return no(`${t.name} is out of range (${dist} ft, max ${max} ft)`);
   if (a.id !== t.id && !lineOfSight(s.board, a.pos, t.pos)) return no(`No line of sight to ${t.name}`);
   const { advantage, reasons } = action.kind === "attack" ? attackAdvantage(s, a, t, action) : { advantage: "normal" as Advantage, reasons: [] };
-  return { ok: true, advantage, reasons };
+  // Cover protects against attacks and Dexterity saves, not against help from friends.
+  const raw = friendly || a.id === t.id ? 0 : coverOf(s, a, t);
+  if (raw === "total") return no(`${t.name} has total cover`);
+  const cover = action.kind === "attack" || (action.kind === "save" && action.save === "dex") ? raw : 0;
+  if (cover) reasons.push(`− ${COVER_NAME[cover]} (+${cover} ${action.kind === "attack" ? "AC" : "to the save"})`);
+  return { ok: true, advantage, reasons, cover };
 }
 
 // --- Advantage ----------------------------------------------------------------------
@@ -134,8 +160,12 @@ function attackAdvantage(s: GameState, a: Unit, t: Unit, action: AttackAction): 
   const dis: string[] = [];
   const dist = distanceFt(a.pos, t.pos);
 
-  for (const c of ["Blinded", "Poisoned", "Prone", "Restrained", "Frightened"]) if (has(a, c)) dis.push(`you are ${c}`);
+  for (const c of ["Blinded", "Poisoned", "Prone", "Restrained", "Frightened", "Fleeing"]) if (has(a, c)) dis.push(`you are ${c}`);
   if (has(a, "Invisible")) adv.push("you are Invisible");
+  if (has(a, "Hidden")) adv.push("you are hidden");
+  if (has(t, "Hidden")) dis.push("target is hidden");
+  const helper = s.effects.find((e) => e.kind === "help" && e.target === t.id && e.source !== a.id && s.units.find((u) => u.id === e.source)?.side === a.side);
+  if (helper) adv.push(`${s.units.find((u) => u.id === helper.source)?.name.split(" ")[0] ?? "an ally"} helps`);
   for (const c of GRANTS_ADVANTAGE_AGAINST) if (has(t, c)) adv.push(`target is ${c}`);
   if (t.hp <= 0 && !t.dead && !has(t, "Unconscious")) adv.push("target is down");
   if (has(t, "Prone")) (dist <= 5 ? adv : dis).push(dist <= 5 ? "target is Prone" : "Prone target at range");
@@ -190,7 +220,15 @@ function d20(ctx: Ctx, bonus: number, advantage: Advantage = "normal", bless = f
 function checkOutcome(ctx: Ctx) {
   if (ctx.s.outcome) return;
   const alive = (side: Side) => ctx.s.units.some((u) => u.side === side && !u.dead && u.hp > 0);
-  const outcome = !alive("enemy") ? "victory" : !alive("party") ? "defeat" : null;
+  const goal = ctx.s.objective;
+  const standing = ctx.s.units.filter((u) => u.side === "party" && !u.dead && u.hp > 0);
+  const met =
+    goal?.kind === "survive"
+      ? ctx.s.round > goal.rounds
+      : goal?.kind === "escape"
+        ? standing.length > 0 && standing.every((u) => goal.cells.some((c) => sameCell(c, u.pos)))
+        : false;
+  const outcome = !alive("party") ? "defeat" : !alive("enemy") || met ? "victory" : null;
   if (outcome) {
     ctx.s.outcome = outcome;
     ctx.events.push({ type: "outcome", outcome });
@@ -224,6 +262,8 @@ function takeDamage(ctx: Ctx, u: Unit, amount: number, detail: string, opts: { c
   if (amount <= 0 || u.dead) return;
   // Turned undead snap out of it when they take damage.
   if (has(u, "Turned")) removeCondition(ctx, u, "Turned");
+  // Getting hurt gives a hidden creature away.
+  if (has(u, "Hidden")) removeCondition(ctx, u, "Hidden");
   // Concentration: Con save DC 10 or half the damage, whichever is higher.
   if (u.concentration && u.hp > amount) {
     const dc = Math.max(10, Math.floor(amount / 2));
@@ -319,7 +359,10 @@ function makeAttack(ctx: Ctx, a: Unit, t: Unit, action: AttackAction, opts: { op
   const dist = distanceFt(a.pos, t.pos);
   const autoCrit = dist <= 5 && AUTO_CRIT_WITHIN_5.some((c) => has(t, c));
   const natural = roll.natural;
-  let ac = t.ac + (ctx.s.effects.some((e) => e.kind === "shield" && e.target === t.id) ? 5 : 0);
+  const cover = coverOf(ctx.s as GameState, a, t);
+  const coverBonus = cover === "total" ? 5 : cover;
+  if (coverBonus) reasons.push(`− ${COVER_NAME[coverBonus]} (+${coverBonus} AC)`);
+  let ac = t.ac + coverBonus + (ctx.s.effects.some((e) => e.kind === "shield" && e.target === t.id) ? 5 : 0);
   let hit = natural === 20 || (natural !== 1 && roll.total >= ac);
   // Shield (reaction): +5 AC until the caster's next turn, if that turns the hit into a miss.
   if (hit && natural !== 20 && roll.total < ac + 5 && castShield(ctx, t)) {
@@ -333,9 +376,12 @@ function makeAttack(ctx: Ctx, a: Unit, t: Unit, action: AttackAction, opts: { op
   ctx.events.push({ type: "attack", attackerId: a.id, targetId: t.id, action: action.name, roll, advantage, reasons, hit, crit, opportunity: opts.opportunity });
 
   // Advantage/disadvantage effects are used up by the attack.
+  const usedHelp = ctx.s.effects.find((e) => e.kind === "help" && e.target === t.id && e.source !== a.id && ctx.s.units.find((u) => u.id === e.source)?.side === a.side);
   ctx.s.effects = ctx.s.effects.filter(
-    (e) => !(e.kind === "vex" && e.source === a.id && e.target === t.id) && !(e.kind === "sap" && e.target === a.id) && !(e.kind === "guided" && e.target === t.id),
+    (e) => !(e.kind === "vex" && e.source === a.id && e.target === t.id) && !(e.kind === "sap" && e.target === a.id) && !(e.kind === "guided" && e.target === t.id) && e !== usedHelp,
   );
+  // Attacking gives a hidden creature away.
+  if (has(a, "Hidden")) removeCondition(ctx, a, "Hidden");
 
   if (!hit) {
     // Evoker's Potent Cantrip: a missed cantrip still deals half damage.
@@ -401,10 +447,10 @@ function makeAttack(ctx: Ctx, a: Unit, t: Unit, action: AttackAction, opts: { op
   checkOutcome(ctx);
 }
 
-function forceSave(ctx: Ctx, t: Unit, action: SaveAction, rolled?: ReturnType<typeof rollDamage>) {
+function forceSave(ctx: Ctx, t: Unit, action: SaveAction, rolled?: ReturnType<typeof rollDamage>, coverBonus = 0) {
   const autoFail = (action.save === "str" || action.save === "dex") && AUTO_FAIL_STR_DEX.some((c) => has(t, c));
   const disadvantage: Advantage = action.save === "dex" && has(t, "Restrained") ? "dis" : t.dodging && action.save === "dex" && canAct(t) ? "adv" : "normal";
-  const roll = d20(ctx, saveBonus(t.stats, action.save), disadvantage, blessed(ctx, t));
+  const roll = d20(ctx, saveBonus(t.stats, action.save) + (action.save === "dex" ? coverBonus : 0), disadvantage, blessed(ctx, t));
   const success = !autoFail && roll.total >= action.dc;
   ctx.events.push({ type: "save", targetId: t.id, action: action.name, ability: ABILITY_NAMES[action.save], dc: action.dc, roll, success, autoFail });
   // Area spells roll their damage once for everyone caught in them.
@@ -527,6 +573,75 @@ function bestMelee(u: Unit): AttackAction | undefined {
     .sort((x, y) => avg(y) - avg(x))[0];
 }
 
+/** Creatures that never break: the undead and the mindless. */
+const FEARLESS = ["undead", "construct", "ooze", "plant"];
+
+/**
+ * Monsters lose heart: once half their side is down, a badly hurt one (or
+ * any, if their strongest has fallen) must pass a DC 10 Wisdom save or flee.
+ */
+function moraleCheck(ctx: Ctx, u: Unit) {
+  if (u.side !== "enemy" || u.hp <= 0 || has(u, "Fleeing") || FEARLESS.includes(u.stats.creatureType ?? "")) return;
+  const side = ctx.s.units.filter((x) => x.side === "enemy");
+  const lost = side.filter((x) => x.dead || x.hp <= 0).length;
+  if (lost * 2 < side.length) return;
+  const crOf = (x: Unit) => (x.stats.cr ? Number(eval_cr(x.stats.cr)) : 0);
+  const strongest = [...side].sort((a, b) => crOf(b) - crOf(a))[0];
+  const leaderDown = strongest && strongest.id !== u.id && (strongest.dead || strongest.hp <= 0);
+  if (u.hp * 2 > u.hpMax && !leaderDown) return;
+  const roll = d20(ctx, saveBonus(u.stats, "wis"));
+  if (roll.total >= 10) {
+    ctx.events.push({ type: "feature", unitId: u.id, name: "Morale", detail: `Wisdom ${roll.total} vs 10: holds its ground` });
+    return;
+  }
+  addCondition(ctx, u, "Fleeing");
+  ctx.events.push({ type: "feature", unitId: u.id, name: "Morale breaks", detail: `Wisdom ${roll.total} vs 10: it runs for it` });
+}
+const eval_cr = (cr: string) => (cr.includes("/") ? Number(cr.split("/")[0]) / Number(cr.split("/")[1]) : Number(cr));
+
+export const onEdge = (s: GameState, c: Cell) => c.x === 0 || c.y === 0 || c.x === s.board.width - 1 || c.y === s.board.height - 1;
+
+/** A skill check bonus: the stat block's skill if listed, else the ability modifier. */
+function skillBonus(u: Unit, skill: string, ability: (typeof ABILITY_KEYS)[number]): number {
+  return u.stats.skills[skill] ?? abilityMod(u.stats.abilities[ability]);
+}
+const ABILITY_KEYS = ["str", "dex", "con", "int", "wis", "cha"] as const;
+
+/** Shove and Grapple replace one attack of the Attack action. */
+function useOneAttack(u: Unit) {
+  const per = Math.max(1, u.stats.attacksPerAction ?? 1);
+  if (u.turn.attacksLeft && u.turn.attacksLeft > 0 && u.turn.attacksLeft < per) {
+    u.turn.attacksLeft -= 1;
+    if (u.turn.attacksLeft <= 0) u.turn.action = false;
+    return;
+  }
+  if (!u.turn.action) throw new GameError(`${u.name} has already used their action`);
+  if (per > 1) u.turn.attacksLeft = per - 1;
+  else u.turn.action = false;
+}
+
+/** Five feet straight away from the shover, if the square is free; else they're knocked Prone. */
+function pushAway(ctx: Ctx, from: Unit, t: Unit) {
+  const dest = { x: t.pos.x + Math.sign(t.pos.x - from.pos.x), y: t.pos.y + Math.sign(t.pos.y - from.pos.y) };
+  const idx = makeBoardIndex(ctx.s.board);
+  const inside = dest.x >= 0 && dest.y >= 0 && dest.x < ctx.s.board.width && dest.y < ctx.s.board.height;
+  const taken = ctx.s.units.some((x) => !x.dead && sameCell(x.pos, dest));
+  if (!inside || idx.isWall(dest) || taken) {
+    addCondition(ctx, t, "Prone");
+    return;
+  }
+  ctx.events.push({ type: "move", unitId: t.id, path: [dest], cost: 0 });
+  t.pos = dest;
+  releaseGrapple(ctx, t.id);
+}
+
+/** Lets go of a creature (it broke free, was shoved off, or its holder let go). */
+function releaseGrapple(ctx: Ctx, targetId: string) {
+  ctx.s.effects = ctx.s.effects.filter((e) => !(e.kind === "grapple" && e.target === targetId));
+  const t = ctx.s.units.find((x) => x.id === targetId) as Unit | undefined;
+  if (t && has(t, "Grappled")) removeCondition(ctx, t, "Grappled");
+}
+
 function moveUnit(ctx: Ctx, u: Unit, to: Cell) {
   if (SPEED_ZERO.some((c) => has(u, c))) throw new GameError(`${u.name} can't move`);
   // Standing up from Prone costs half your speed.
@@ -565,6 +680,8 @@ function moveUnit(ctx: Ctx, u: Unit, to: Cell) {
   }
   u.turn.movement = Math.max(0, u.turn.movement - spent);
   ctx.events.push({ type: "move", unitId: u.id, path: travelled, cost: spent });
+  // Walking off lets go of whoever you were holding.
+  for (const e of [...ctx.s.effects]) if (e.kind === "grapple" && e.source === u.id && distanceFt(u.pos, unit(ctx, e.target).pos) > 5) releaseGrapple(ctx, e.target);
 }
 
 function retreat(ctx: Ctx, u: Unit) {
@@ -600,8 +717,13 @@ function startTurn(ctx: Ctx) {
       continue;
     }
     ctx.events.push({ type: "turn", unitId: u.id });
+    // A holder who went down or wandered off has let go.
+    const hold = s.effects.find((e) => e.kind === "grapple" && e.target === u.id);
+    const holder = hold ? (s.units.find((x) => x.id === hold.source) as Unit | undefined) : undefined;
+    if (hold && (!holder || !canAct(holder) || distanceFt(holder.pos, u.pos) > 5)) releaseGrapple(ctx, u.id);
     u.reaction = true;
     u.dodging = false;
+    moraleCheck(ctx, u);
     const slowed = s.effects.some((e) => e.kind === "slow" && e.target === u.id) ? 10 : 0;
     u.turn = { movement: Math.max(0, u.speed - slowed), action: true, bonusAction: true, disengaged: false, sneakAttackUsed: false };
 
@@ -656,6 +778,8 @@ function advance(ctx: Ctx) {
   if (s.turnIndex === 0) {
     s.round += 1;
     ctx.events.push({ type: "round", round: s.round });
+    // Holding out long enough wins the day.
+    checkOutcome(ctx);
   }
 }
 
@@ -685,6 +809,8 @@ function run(ctx: Ctx, cmd: Command) {
     case "action": {
       const action: StatAction | undefined = u.stats.actions.find((a) => a.id === cmd.actionId);
       if (!action) throw new GameError("Unknown action");
+      // Casting or striking gives a hidden creature away (attacks do it after the roll).
+      if (action.kind !== "attack" && has(u, "Hidden")) removeCondition(ctx, u, "Hidden");
       const cost = action.bonusAction ? "bonusAction" : "action";
       if (!u.turn[cost]) throw new GameError(`${u.name} has already used their ${action.bonusAction ? "bonus action" : "action"}`);
       if (action.slot && (u.resources[`slot${action.slot}`] ?? 0) <= 0) throw new GameError(`No level ${action.slot} spell slots left`);
@@ -742,7 +868,10 @@ function run(ctx: Ctx, cmd: Command) {
       } else spendSpell(u, action, cost);
       const t = unit(ctx, cmd.targetId);
       if (action.kind === "attack") makeAttack(ctx, u, t, action);
-      else if (action.kind === "save") forceSave(ctx, t, action);
+      else if (action.kind === "save") {
+        const c = coverOf(ctx.s as GameState, u, t);
+        forceSave(ctx, t, action, undefined, c === "total" ? 5 : c);
+      }
       else if (action.kind === "heal") castHeal(ctx, u, t, action);
       else if (action.kind === "missile") castMissile(ctx, u, t, action);
       return;
@@ -798,6 +927,79 @@ function run(ctx: Ctx, cmd: Command) {
       const roll = rollTerms(parseDice(potion.dice), ctx.rng);
       ctx.events.push({ type: "feature", unitId: u.id, name: potion.name, detail: `${t.id === u.id ? "drinks" : `gives it to ${t.name}`}: ${roll.expression} = ${roll.total}` });
       heal(ctx, t, roll.total);
+      return;
+    }
+    case "help": {
+      const t = unit(ctx, cmd.targetId);
+      if (t.side === u.side || t.dead || t.hp <= 0) throw new GameError("Help against an enemy that's still fighting");
+      if (distanceFt(u.pos, t.pos) > 5) throw new GameError(`${t.name} is more than 5 ft away`);
+      spend(u, "action");
+      addEffect(ctx, { kind: "help", source: u.id, target: t.id, expires: { unit: u.id, at: "start", turns: 1 } });
+      ctx.events.push({ type: "feature", unitId: u.id, name: "Help", detail: `the next ally to attack ${t.name} has Advantage` });
+      return;
+    }
+    case "hide": {
+      if (cmd.bonus) {
+        if (!u.stats.features.includes("cunning-action")) throw new GameError(`${u.name} can't Hide as a bonus action`);
+        spend(u, "bonusAction");
+      } else spend(u, "action");
+      const seenBy = ctx.s.units.filter((e) => e.side !== u.side && !e.dead && canAct(e as Unit)).find((e) => {
+        const c = coverOf(ctx.s as GameState, e as Unit, u);
+        return c !== "total" && c < 5;
+      });
+      if (seenBy) {
+        ctx.events.push({ type: "feature", unitId: u.id, name: "Hide", detail: `can't: ${seenBy.name} can see them (needs three-quarters cover or more)` });
+        return;
+      }
+      const roll = d20(ctx, skillBonus(u, "Stealth", "dex"));
+      const ok = roll.total >= 15;
+      ctx.events.push({ type: "feature", unitId: u.id, name: "Hide", detail: `Stealth ${roll.total} vs 15: ${ok ? "hidden" : "spotted"}` });
+      if (ok) addCondition(ctx, u, "Hidden");
+      return;
+    }
+    case "shove":
+    case "grapple": {
+      const t = unit(ctx, cmd.targetId);
+      if (t.side === u.side || t.dead) throw new GameError("Pick an enemy");
+      if (distanceFt(u.pos, t.pos) > 5) throw new GameError(`${t.name} is more than 5 ft away`);
+      useOneAttack(u);
+      const dc = 8 + abilityMod(u.stats.abilities.str) + u.stats.proficiency;
+      const ability = saveBonus(t.stats, "dex") > saveBonus(t.stats, "str") ? "dex" : "str";
+      const autoFail = AUTO_FAIL_STR_DEX.some((c) => has(t, c)) || t.hp <= 0;
+      const roll = d20(ctx, saveBonus(t.stats, ability));
+      const success = !autoFail && roll.total >= dc;
+      const what = cmd.type === "grapple" ? "Grapple" : cmd.prone ? "Shove (Prone)" : "Shove (push)";
+      ctx.events.push({ type: "save", targetId: t.id, action: what, ability: ABILITY_NAMES[ability], dc, roll, success, autoFail });
+      if (success) return;
+      if (cmd.type === "grapple") {
+        addCondition(ctx, t, "Grappled");
+        addEffect(ctx, { kind: "grapple", source: u.id, target: t.id, expires: { unit: u.id, at: "end", turns: 1000 } });
+      } else if (cmd.prone) addCondition(ctx, t, "Prone");
+      else pushAway(ctx, u, t);
+      return;
+    }
+    case "flee": {
+      if (!onEdge(ctx.s as GameState, u.pos)) throw new GameError(`${u.name} isn't at the edge of the field`);
+      u.fled = true;
+      u.dead = true;
+      releaseGrapple(ctx, u.id);
+      ctx.events.push({ type: "feature", unitId: u.id, name: "Flees", detail: "runs off the field" });
+      endOfTurn(ctx, u);
+      advance(ctx);
+      startTurn(ctx);
+      return;
+    }
+    case "escape": {
+      if (!has(u, "Grappled")) throw new GameError(`${u.name} isn't grappled`);
+      spend(u, "action");
+      const holder = ctx.s.effects.find((e) => e.kind === "grapple" && e.target === u.id);
+      const g = holder ? (ctx.s.units.find((x) => x.id === holder.source) as Unit | undefined) : undefined;
+      const dc = g ? 8 + abilityMod(g.stats.abilities.str) + g.stats.proficiency : 10;
+      const best = Math.max(skillBonus(u, "Athletics", "str"), skillBonus(u, "Acrobatics", "dex"));
+      const roll = d20(ctx, best);
+      const ok = roll.total >= dc;
+      ctx.events.push({ type: "feature", unitId: u.id, name: "Escape", detail: `${roll.total} vs DC ${dc}: ${ok ? "breaks free" : "still held"}` });
+      if (ok) releaseGrapple(ctx, u.id);
       return;
     }
     case "dodge":
@@ -902,6 +1104,8 @@ export function defaultResources(stats: Unit["stats"]): Record<string, number> {
 }
 
 export interface GameOptions {
+  /** What winning means here, besides beating every foe. */
+  objective?: Objective;
   /** This side was caught off guard: Disadvantage on initiative (2024). */
   surprised?: Side;
   /** Party consumables available in the fight. */
@@ -941,7 +1145,7 @@ export function createGame(board: Board, setups: UnitSetup[], seed: number, opts
     };
   });
   units.sort((a, b) => b.initiative - a.initiative || b.stats.abilities.dex - a.stats.abilities.dex);
-  const initial: GameState = { board, units, turnIndex: 0, round: 1, effects: [], rngSeed: seeded.seed(), outcome: null, nextId: 1, stash: { ...opts.stash } };
+  const initial: GameState = { board, units, turnIndex: 0, round: 1, effects: [], rngSeed: seeded.seed(), outcome: null, nextId: 1, stash: { ...opts.stash }, ...(opts.objective ? { objective: opts.objective } : {}) };
   const state = produce(initial, (draft) => {
     events.push({ type: "round", round: 1 });
     const ctx: Ctx = { s: draft, rng: mulberry32(draft.rngSeed).rng, events };

@@ -490,6 +490,30 @@ picker into a real sign-in without changing the data model.
     the guild while it's weak (members are sent home), or, once the town
     is lost, fight to take it back (removes 60% of the guild's influence).
   - All numbers under "Spies & guilds" on the balance page.
+- **Phase F: battles worth watching and worth thinking about.**
+  - Feel: creatures walk their path square by square; melee attackers
+    lunge, arrows and spells fly (coloured by damage type), struck
+    creatures flash and shake, crits pop, the fallen topple and the slain
+    fade. Monsters act at a pace you can follow. The end card shows each
+    hero's damage dealt and taken, healing and foes dropped, the battle's
+    hero (⭐), and the XP the foes were worth.
+  - Cover: from the attacker's best corner to the target's four corners;
+    1–2 lines blocked by walls give half cover (+2 AC and Dex saves), 3–4
+    three-quarters (+5); no line of sight is total cover. A creature in
+    the way gives half cover. Shown in the odds; the AI counts it, and
+    shooters look for spots with cover.
+  - New actions: 🤝 Help (next ally's attack on that enemy has Advantage),
+    🫥 Hide (needs three-quarters cover from every foe that can see you;
+    Stealth vs 15; Rogues can Hide as a bonus action; attacking or being
+    hurt gives you away), ✋ Shove / Trip and 🤼 Grapple (each replaces one
+    attack; Str or Dex save vs 8 + Str + proficiency), Break free.
+  - Morale: once half their side is down, a badly hurt monster (or any,
+    if their strongest has fallen) makes a DC 10 Wisdom save or flees for
+    the nearest edge and leaves the field (no salvage from it). Undead,
+    constructs, oozes and plants never break.
+  - Objectives: "Hold the Ford" (survive 4 rounds) and "Run for the Gate"
+    (get every standing hero onto the exit squares). Scenarios take a
+    `goal`, and maps mark exits with X.
 
 ## Future ideas
 

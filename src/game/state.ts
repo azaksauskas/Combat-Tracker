@@ -52,12 +52,21 @@ export interface Unit {
   resources: Record<string, number>;
   /** Name of the spell this creature is concentrating on. */
   concentration?: string | null;
+  /** Ran off the board (also marked dead: it's out of the fight). */
+  fled?: boolean;
 }
+
+/** What winning means, besides beating every foe. */
+export type Objective =
+  /** Hold out this many rounds. */
+  | { kind: "survive"; rounds: number }
+  /** Get every hero still on their feet onto these squares. */
+  | { kind: "escape"; cells: { x: number; y: number }[] };
 
 /** Temporary effects from weapon masteries etc. */
 export interface Effect {
   id: string;
-  kind: "vex" | "sap" | "slow" | "guided" | "bless" | "shield";
+  kind: "vex" | "sap" | "slow" | "guided" | "bless" | "shield" | "help" | "grapple";
   source: string;
   target: string;
   /**
@@ -79,6 +88,7 @@ export interface GameState {
   outcome: null | "victory" | "defeat";
   /** The party retreated (the outcome is then "defeat"). */
   fled?: boolean;
+  objective?: Objective;
   nextId: number;
   /** The party's shared consumables, e.g. { "potion-healing": 2 }. */
   stash?: Record<string, number>;

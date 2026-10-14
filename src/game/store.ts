@@ -6,7 +6,7 @@ import type { Board, Cell } from "./board";
 import { apply, canAct, createGame, currentUnit, type Command, type GameOptions } from "./engine";
 import { describeEvents, type LogLine } from "./log";
 import { randomSeed } from "./rng";
-import { setupFor, type Scenario } from "./scenarios";
+import { objectiveOf, setupFor, type Scenario } from "./scenarios";
 import { GameError, type GameEvent, type GameState } from "./state";
 import type { UnitSetup } from "./engine";
 
@@ -192,7 +192,7 @@ export function startBattle(
   mode: PlayState["mode"],
   context: PlayState["context"] = null,
 ) {
-  const { state, events } = createGame(board, units, randomSeed(), opts);
+  const { state, events } = createGame(board, units, randomSeed(), { objective: objectiveOf(scenario), ...opts });
   usePlay.setState({ scenario, mode, context, log: [], fx: [], paths: {}, tally: {}, aiRunning: false });
   record(events, state);
   runAi();
