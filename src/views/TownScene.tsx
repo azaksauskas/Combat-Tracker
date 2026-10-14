@@ -1,7 +1,7 @@
 import clsx from "clsx";
-import type { Building, Town } from "../domain/town";
-import { BUILDINGS, TRADE_FOR, assignments, durationText, isBuilt, output, pace, renownOf } from "../game/town";
-import { assignSettler } from "../game/town-store";
+import { levelOf, type Building, type Town } from "../domain/town";
+import { BUILDINGS, TRADE_FOR, assignments, cantUpgrade, durationText, isBuilt, isNew, maxLevel, pace, plots, progressOf, upgradeCost, yields } from "../game/town";
+import { assignSettler, upgradeBuilding } from "../game/town-store";
 import { num } from "../game/tuning";
 
 /**
@@ -25,37 +25,38 @@ export const TRADE_ICON: Record<string, string> = {
 };
 export const tradeIcon = (trade: string) => TRADE_ICON[trade] ?? "🧑";
 
+const STORE_ICON = { food: "🍞", materials: "🪵", gold: "🪙", herbs: "🌿" } as const;
+const fmt = (n: number) => (Math.round(n * 10) / 10).toString();
+
 /** What one building gives, in a few words. */
 export function buildingYield(t: Town, b: Building): string {
   const p = pace(t, b.id);
-  const per = (n: number) => Math.round(n * p);
+  const y = yields(t, b);
+  const made = (Object.keys(STORE_ICON) as (keyof typeof STORE_ICON)[]).filter((k) => y[k] > 0).map((k) => `+${fmt(y[k])} ${STORE_ICON[k]}`);
+  const level = levelOf(b);
   switch (b.type) {
     case "hall":
-      return `+${num("prod.hallFood")} food, +${num("prod.hallMaterials")} materials a day · ${num("town.hallBeds")} beds`;
+      return `${made.join(" ")} a day · ${num("town.hallBeds")} beds`;
     case "house":
-      return `${num("town.houseBeds")} beds`;
-    case "farm":
-      return p ? `+${per(num("prod.farmFood"))} food a day` : "Nothing without a worker";
-    case "lumber":
-      return p ? `+${per(num("prod.lumberMaterials"))} materials a day` : "Nothing without a worker";
-    case "market":
-      return p ? `+${per(num("prod.marketGold") + Math.floor(t.settlers.length / Math.max(1, num("prod.marketSettlersPerGold"))))} gold a day · trading` : "Closed without a worker";
-    case "tavern":
-      return p ? `+${per(num("prod.tavernGold"))} gold a day · draws travellers · hiring` : "Closed without a worker";
-    case "apothecary":
-      return p ? `+${Math.max(1, per(num("prod.apothecaryHerbs")))} herbs a day · potions` : "Closed without a worker";
+      return `${num("town.houseBeds") + num("upgrade.bedsPerHouseLevel") * (level - 1)} beds`;
     case "watchtower":
-      return p ? `Militia +${per(num("militia.perTower"))} · fewer thieves` : "Unmanned";
+      return p ? `Militia +${Math.round(num("militia.perTower") * p * (1 + num("upgrade.outputPerLevel") * (level - 1)))} · fewer thieves` : "Unmanned";
     case "smithy":
-      return p ? `Fits mods${p < 1 ? ` (${Math.round(100 / p)}% of the time)` : ""}` : "Cold forge: needs a worker";
+      return p ? `Fits mods${p < 1 ? " (slowly)" : ""}` : "Cold forge: needs a worker";
     case "shrine":
       return p ? "Heals injuries, raises the fallen" : "Empty: needs a worker";
+    default:
+      if (!made.length) return BUILDINGS[b.type].staffed ? "Nothing without a worker" : "";
+      return `${made.join(" ")} a day${b.type === "tavern" ? " · draws travellers · hiring" : b.type === "market" ? " · trading" : b.type === "apothecary" ? " · potions" : ""}`;
   }
 }
 
+const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+const roman = (n: number) => ROMAN[n] ?? String(n);
+
 export function TownScene({ town: t, hours, renown, selected, onSelect, onBuild }: { town: Town; hours: number; renown: number; selected: string | null; onSelect: (id: string | null) => void; onBuild: () => void }) {
   const who = assignments(t);
-  const max = renownOf(renown).maxBuildings;
+  const max = plots(t, renown);
   const free = Math.max(0, max - t.buildings.length);
   return (
     <div
@@ -68,7 +69,9 @@ export function TownScene({ town: t, hours, renown, selected, onSelect, onBuild 
           const def = BUILDINGS[b.type];
           const worker = t.settlers.find((s) => s.id === who.get(b.id));
           const p = pace(t, b.id);
-          const building = !isBuilt(b);
+          const building = isNew(b);
+          const upgrading = b.upTo !== undefined;
+          const prog = !building ? progressOf(t, b, Math.max(0, hours - t.simulated)) : null;
           const left = b.readyAt !== undefined ? Math.max(0, b.readyAt - hours) : 0;
           const ring = building ? "border-line" : !def.staffed ? "border-line" : !worker ? "border-danger" : p < 1 ? "border-warn" : "border-heal";
           return (
@@ -85,7 +88,25 @@ export function TownScene({ town: t, hours, renown, selected, onSelect, onBuild 
               >
                 <span className={clsx("text-4xl leading-none sm:text-5xl", building && "opacity-40 grayscale")}>{def.icon}</span>
                 {building && <span className="absolute top-1 right-1 text-lg" aria-hidden>🏗</span>}
+                {!building && (
+                  <span className="absolute top-1 left-1 rounded bg-surface-3 px-1 font-display text-[10px] font-bold text-strong" title={`Level ${levelOf(b)}`}>
+                    {roman(levelOf(b))}
+                  </span>
+                )}
+                {upgrading && (
+                  <span className="absolute top-1 right-1 rounded bg-accent px-1 text-[10px] font-bold text-accent-fg" title={`Upgrading to level ${b.upTo}: ${durationText(Math.ceil(left))} left`}>
+                    ⬆ {roman(b.upTo!)}
+                  </span>
+                )}
                 <span className="mt-1 truncate text-center text-xs font-semibold text-strong">{def.name}</span>
+                {prog && (
+                  <span className="mb-0.5 flex w-4/5 items-center gap-1" title={`Next ${STORE_ICON[prog.store]}: ${Math.round(prog.fraction * 100)}% · ${fmt(prog.perDay)} a day`}>
+                    <span className="text-[10px]">{STORE_ICON[prog.store]}</span>
+                    <span className="block h-1 flex-1 rounded bg-surface-3">
+                      <span className="block h-1 rounded bg-heal transition-[width] duration-1000" style={{ width: `${prog.fraction * 100}%` }} />
+                    </span>
+                  </span>
+                )}
                 {building ? (
                   <span className="mt-1 w-4/5">
                     <span className="block h-1.5 rounded bg-surface-3">
@@ -131,7 +152,7 @@ export function TownScene({ town: t, hours, renown, selected, onSelect, onBuild 
 }
 
 /** One building up close: what it does, and who works it. */
-export function BuildingPanel({ town: t, buildingId, onClose }: { town: Town; buildingId: string; onClose: () => void }) {
+export function BuildingPanel({ town: t, buildingId, renown, onClose }: { town: Town; buildingId: string; renown: number; onClose: () => void }) {
   const b = t.buildings.find((x) => x.id === buildingId);
   if (!b) return null;
   const def = BUILDINGS[b.type];
@@ -144,7 +165,9 @@ export function BuildingPanel({ town: t, buildingId, onClose }: { town: Town; bu
       <span className="text-5xl leading-none">{def.icon}</span>
       <div className="min-w-0 flex-1 space-y-1 text-sm">
         <div className="flex items-baseline justify-between gap-2">
-          <strong className="font-display text-lg text-accent">{def.name}</strong>
+          <strong className="font-display text-lg text-accent">
+            {def.name} <span className="text-sm text-muted">· level {levelOf(b)}</span>
+          </strong>
           <button className="btn btn-ghost px-2 py-0 text-xs" onClick={onClose} aria-label="Close">
             ✕
           </button>
@@ -180,8 +203,34 @@ export function BuildingPanel({ town: t, buildingId, onClose }: { town: Town; bu
             </select>
           </label>
         )}
-        {b.type === "farm" && isBuilt(b) && <p className="text-xs text-faint">All farms together: +{Math.round(num("prod.farmFood") * output(t, "farm"))} food a day.</p>}
+        {isBuilt(b) && <Upgrade town={t} building={b} renown={renown} />}
       </div>
     </section>
+  );
+}
+
+/** The next level: what it costs and what it brings. */
+function Upgrade({ town: t, building: b, renown }: { town: Town; building: Building; renown: number }) {
+  if (b.upTo !== undefined) return <p className="text-xs text-accent">⬆ Being upgraded to level {b.upTo}.</p>;
+  const c = upgradeCost(b);
+  const why = cantUpgrade(t, b, renown);
+  const next = { ...b, level: levelOf(b) + 1 };
+  const nextText = buildingYield({ ...t, buildings: t.buildings.map((x) => (x.id === b.id ? next : x)) }, next);
+  const top = levelOf(b) >= maxLevel(renown);
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface-2/60 p-2">
+      <button className="btn btn-primary text-sm" disabled={!!why} onClick={() => upgradeBuilding(b.id)} title={why ?? `Level ${levelOf(b) + 1}`}>
+        ⬆ Upgrade to {roman(levelOf(b) + 1)}
+      </button>
+      {!top && (
+        <span className="flex flex-wrap gap-1 text-[11px]">
+          <span className={clsx("rounded-full px-1.5", t.gold < c.gold ? "bg-danger/15 text-danger" : "bg-surface-3 text-muted")}>🪙 {c.gold}</span>
+          <span className={clsx("rounded-full px-1.5", t.materials < c.materials ? "bg-danger/15 text-danger" : "bg-surface-3 text-muted")}>🪵 {c.materials}</span>
+          <span className="rounded-full bg-surface-3 px-1.5 text-muted">⏱ {c.hours} h</span>
+        </span>
+      )}
+      <span className="text-xs text-muted">{top ? why : b.type === "hall" ? `→ +${num("upgrade.plotsPerHallLevel")} plots` : nextText ? `→ ${nextText}` : ""}</span>
+      {why && !top && <span className="w-full text-[11px] text-warn">{why}</span>}
+    </div>
   );
 }

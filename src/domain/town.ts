@@ -23,10 +23,15 @@ const lenient = <T extends z.ZodType>(item: T) =>
 export const BuildingSchema = z.object({
   id,
   type: z.enum(BUILDING_TYPES),
-  /** Game hour when construction finishes; absent once built. */
+  /** Game hour when construction (or an upgrade) finishes; absent otherwise. */
   readyAt: z.number().optional(),
+  /** Absent or 1 for a new building; upgrades raise it (see levelOf). */
+  level: z.number().optional().catch(undefined),
+  /** The level an upgrade in progress leads to (the building keeps working meanwhile). */
+  upTo: z.number().optional().catch(undefined),
 });
 export type Building = z.infer<typeof BuildingSchema>;
+export const levelOf = (b: Pick<Building, "level">) => b.level ?? 1;
 
 export const SettlerSchema = z.object({
   id,
@@ -124,6 +129,14 @@ export const TownSchema = z.object({
   patrols: z.object({ day: z.number().catch(0), count: z.number().catch(0) }).catch({ day: 0, count: 0 }),
   /** Work posted on the town's board: fights for pay. */
   contracts: lenient(ContractSchema),
+  /** Production in progress, per building and store ("farm1:food" → 0.75 of a unit), and meals ("eat"). */
+  acc: z.record(z.string(), z.number()).catch({}),
+  /** Meals missed since dawn (no food left). */
+  missed: z.number().catch(0),
+  /** Lifetime counts, for goals. */
+  stats: z.record(z.string(), z.number()).catch({}),
+  /** Goals already rewarded (see game/goals.ts). */
+  goals: z.array(z.string()).catch([]),
   /** Raids to tell the player about. */
   raidNews: lenient(RaidNewsSchema),
   /** Other players may move in. */

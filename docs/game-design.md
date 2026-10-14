@@ -445,6 +445,23 @@ picker into a real sign-in without changing the data model.
   - `firestore.rules`: everything needs an account; only DMs write the
     shared documents and the roles; each player writes only their own
     document (DMs any); everyone signed in reads all players' documents.
+- **Town as an idle game (before phase E).**
+  - Hourly production: every building adds a 24th of its day's output to
+    its work in progress each game hour and hands over whole units; the
+    tiles show a bar filling towards the next unit. Settlers eat hourly
+    too; meals missed for lack of food make them hungry at dawn.
+  - Building levels: each level adds 60% of the base output (houses +2
+    beds). An upgrade costs the build cost × 1.7 per level, takes the
+    builders (one project at a time), and the building keeps working
+    meanwhile. The highest level is 1 + renown.
+  - Plots: renown gives the base; every town hall level adds 2 more.
+  - No storage limits.
+  - Goals: three at a time, in order from the first farm to a level-5
+    building, each with a reward to claim (🎁). Lifetime counts (patrols,
+    contracts, raids driven off, potions brewed) feed them.
+  - The return after time away is a chest: what the town gathered, then
+    what happened. Stores show "+3" / "−17" rising when they change.
+  - All numbers under "Upgrades" on the balance page.
 
 ## Future ideas
 

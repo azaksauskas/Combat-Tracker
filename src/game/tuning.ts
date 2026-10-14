@@ -77,6 +77,18 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Buildings", "renown.buildings4", "Most buildings at renown 4", 15),
   f("Buildings", "renown.buildings5", "Most buildings at renown 5", 20),
 
+  // Upgrades
+  f("Upgrades", "upgrade.outputPerLevel", "Each level adds this share of the base output", 0.6, "0.6: level 2 makes 160%, level 3 220%…", { step: 0.05 }),
+  f("Upgrades", "upgrade.costGrowth", "Upgrade cost: × the build cost, growing by this per level", 1.7, "Level 1→2 costs 1.7 × the build cost, 2→3 costs 2.9 ×…", { step: 0.05, min: 1 }),
+  f("Upgrades", "upgrade.hoursGrowth", "Upgrade time: × the build time × the current level", 1, undefined, { step: 0.1, min: 0.1 }),
+  f("Upgrades", "upgrade.maxLevelBase", "Highest level: base", 1, "Highest level = base + this × renown (renown 1 → level 2).", { min: 1 }),
+  f("Upgrades", "upgrade.levelsPerRenown", "Highest level: per renown", 1, undefined, { step: 0.5 }),
+  f("Upgrades", "upgrade.plotsPerHallLevel", "Plots added per town hall level", 2),
+  f("Upgrades", "upgrade.bedsPerHouseLevel", "Beds added per house level", 2),
+  f("Upgrades", "upgrade.hallGold", "Town hall upgrade: base gold", 30),
+  f("Upgrades", "upgrade.hallMaterials", "Town hall upgrade: base materials", 20),
+  f("Upgrades", "upgrade.hallHours", "Town hall upgrade: base hours", 12),
+
   // Daily production
   f("Production (per day)", "prod.hallFood", "Food gathered by the hall", 1),
   f("Production (per day)", "prod.hallMaterials", "Materials gathered by the hall", 1),

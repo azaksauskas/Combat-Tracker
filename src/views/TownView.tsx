@@ -1,11 +1,13 @@
 import clsx from "clsx";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Dialog } from "../components/Dialog";
 import { BUILDING_TYPES, type Town } from "../domain/town";
 import type { Profile } from "../domain/players";
-import { TRADES, TRADE_FOR, assignments, callCost, dailyChange, needs } from "../game/town";
+import { TRADES, TRADE_FOR, assignments, buildersBusy, callCost, dailyChange, needs, plots } from "../game/town";
+import { currentGoals, rewardText as goalReward } from "../game/goals";
+import { claimTownGoal } from "../game/town-store";
 import { BuildingPanel, TownScene, face, tradeIcon } from "./TownScene";
-import { BUILDINGS, hireCost, beds, built, cantBuild, clockText, durationText, helpsLeft, isBuilt, opinion, power, renownOf, sleepHours, staffing, type SimContext } from "../game/town";
+import { BUILDINGS, hireCost, beds, built, cantBuild, clockText, durationText, helpsLeft, opinion, power, renownOf, sleepHours, staffing, type SimContext } from "../game/town";
 import { reputationText } from "../domain/alignment";
 import { raiseCost, raiseHero, treatCost, treatInjury } from "../game/town-store";
 import { INJURIES } from "../game/injuries";
@@ -144,10 +146,11 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
         <div className="grid gap-4 lg:grid-cols-[1fr_19rem]">
           <div className="space-y-3">
             <TownScene town={t} hours={hours} renown={renown} selected={selected} onSelect={setSelected} onBuild={() => setTab("build")} />
-            {selected && <BuildingPanel town={t} buildingId={selected} onClose={() => setSelected(null)} />}
+            {selected && <BuildingPanel town={t} buildingId={selected} renown={renown} onClose={() => setSelected(null)} />}
             <NeedsChips town={t} onOpen={() => setTab("people")} />
           </div>
           <aside className="space-y-3">
+            <Goals town={t} renown={renown} />
             <TimeCard town={t} hours={hours} />
             <QuickJobs town={t} onOpen={() => setTab("jobs")} />
             <RecentEvents town={t} onOpen={() => setTab("log")} />
@@ -219,16 +222,77 @@ function TownHeader({ town: t, hours, renown, ctx }: { town: Town; hours: number
   );
 }
 
+/** The next goals, with progress and a reward to claim. */
+function Goals({ town: t, renown }: { town: Town; renown: number }) {
+  const list = currentGoals(t, renown);
+  if (!list.length) return null;
+  return (
+    <section className="space-y-2 rounded-lg border border-accent/50 bg-surface p-3 shadow" aria-label="Goals">
+      <h3 className="text-xs font-bold tracking-wider text-faint uppercase">🎯 Goals</h3>
+      <ul className="space-y-2">
+        {list.map(({ goal: g, now, done }) => (
+          <li key={g.id} className={clsx("rounded-md border p-2 text-sm", done ? "border-heal bg-heal/10" : "border-line bg-surface-2/60")}>
+            <div className="flex items-center gap-2">
+              <span className="text-xl">{g.icon}</span>
+              <span className="min-w-0 flex-1 leading-tight">
+                <span className="block text-strong">{g.text}</span>
+                <span className="text-[11px] text-muted">Reward: {goalReward(g.reward)}</span>
+              </span>
+              {done && (
+                <button className="btn btn-primary animate-pulse px-2 py-0.5 text-xs" onClick={() => claimTownGoal(g.id)}>
+                  🎁 Claim
+                </button>
+              )}
+            </div>
+            {!done && g.target > 1 && (
+              <div className="mt-1 flex items-center gap-2">
+                <span className="block h-1.5 flex-1 rounded bg-surface-3">
+                  <span className="block h-1.5 rounded bg-accent" style={{ width: `${(now / g.target) * 100}%` }} />
+                </span>
+                <span className="text-[10px] text-faint tabular-nums">
+                  {now}/{g.target}
+                </span>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** "+3" floating up from a store when it grows. */
+function useGains(value: number | string) {
+  const prev = useRef(value);
+  const [gains, setGains] = useState<{ id: number; n: number }[]>([]);
+  useEffect(() => {
+    const before = prev.current;
+    prev.current = value;
+    if (typeof value !== "number" || typeof before !== "number" || value === before) return;
+    const id = Date.now() + Math.random();
+    setGains((g) => [...g, { id, n: value - before }]);
+    const timer = setTimeout(() => setGains((g) => g.filter((x) => x.id !== id)), 1400);
+    return () => clearTimeout(timer);
+  }, [value]);
+  return gains;
+}
+
 /** One store: icon, amount, and the day's change. */
 function Res({ icon, label, value, delta, warn, note }: { icon: string; label: string; value: number | string; delta?: number; warn?: boolean; note?: string }) {
+  const gains = useGains(value);
   return (
-    <div className={clsx("rounded-lg border px-2 py-1 text-center", warn ? "border-danger bg-danger/10" : "border-line bg-surface-2")} title={`${label}${delta ? `: ${delta > 0 ? "+" : ""}${delta} a day` : ""}${note ? `. ${note}` : ""}`}>
+    <div className={clsx("relative rounded-lg border px-2 py-1 text-center", warn ? "border-danger bg-danger/10" : "border-line bg-surface-2")} title={`${label}${delta ? `: ${delta > 0 ? "+" : ""}${delta} a day` : ""}${note ? `. ${note}` : ""}`}>
       <dt className="sr-only">{label}</dt>
       <dd className="flex items-baseline gap-1">
         <span className="text-base">{icon}</span>
         <span className={clsx("font-bold tabular-nums", warn ? "text-danger" : "text-strong")}>{value}</span>
         {!!delta && <span className={clsx("text-[10px] font-semibold tabular-nums", delta > 0 ? "text-heal" : "text-danger")}>{delta > 0 ? `+${delta}` : delta}/d</span>}
       </dd>
+      {gains.map((g) => (
+        <span key={g.id} className={clsx("pointer-events-none absolute -top-2 right-1 text-xs font-bold [animation:float-up_1.4s_ease-out_forwards]", g.n > 0 ? "text-heal" : "text-danger")}>
+          {g.n > 0 ? `+${g.n}` : g.n}
+        </span>
+      ))}
     </div>
   );
 }
@@ -323,16 +387,16 @@ function TownLog({ town: t }: { town: Town }) {
 
 /** What can be built: icon, cost and time at a glance; the description on hover. */
 function BuildList({ town: t, renown, onBuilt }: { town: Town; renown: number; onBuilt: () => void }) {
-  const r = renownOf(renown);
-  const full = t.buildings.length >= r.maxBuildings;
-  const busy = t.buildings.some((b) => !isBuilt(b));
+  const room = plots(t, renown);
+  const full = t.buildings.length >= room;
+  const busy = buildersBusy(t);
   return (
     <div className="space-y-3" aria-label="Buildings">
       {(full || busy) && (
         <p className={clsx("rounded-md border px-3 py-2 text-sm", full ? "border-warn/60 bg-warn/10 text-warn" : "border-line bg-surface-2 text-muted")}>
           {full
-            ? `🔒 All ${r.maxBuildings} plots are used. Heroes ${r.title.toLowerCase()} get no more room: more renown (levels) brings more plots.`
-            : "🏗 The builders are busy: one project at a time."}
+            ? `🔒 All ${room} plots are used. Upgrade the town hall (Village → click the hall) for more, or gain renown.`
+            : "🏗 The builders are busy: one project (building or upgrade) at a time."}
         </p>
       )}
       <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -955,33 +1019,48 @@ export function AwayReportDialog() {
   const close = () => useTownUi.setState({ report: null });
   // Never over a battle: the news waits until the fight is over.
   const inBattle = usePlay((s) => !!s.game);
-  const change = (n: number, unit: string) => (n === 0 ? null : <li className={n > 0 ? "text-heal" : "text-danger"}>{`${n > 0 ? "+" : ""}${n} ${unit}`}</li>);
+  const tile = (n: number, icon: string, unit: string) =>
+    n === 0 ? null : (
+      <li className={clsx("flex flex-col items-center rounded-lg border px-3 py-2", n > 0 ? "border-heal/50 bg-heal/10" : "border-danger/50 bg-danger/10")}>
+        <span className="text-2xl">{icon}</span>
+        <span className={clsx("font-display text-lg font-bold tabular-nums", n > 0 ? "text-heal" : "text-danger")}>{n > 0 ? `+${n}` : n}</span>
+        <span className="text-[10px] text-muted">{unit}</span>
+      </li>
+    );
   return (
     <Dialog open={!!report && !inBattle} onClose={close} title={title || "Meanwhile…"}>
       {report && (
         <div className="space-y-3 text-sm">
-          <p className="text-muted">{durationText(report.hours)} passed.</p>
-          <ul className="flex flex-wrap gap-x-4 font-semibold">
-            {change(report.gold, "gold")}
-            {change(report.food, "food")}
-            {change(report.materials, "materials")}
-            {change(report.settlers, report.settlers === 1 || report.settlers === -1 ? "settler" : "settlers")}
+          <div className="text-center">
+            <div className="text-5xl" aria-hidden>
+              🎁
+            </div>
+            <p className="text-muted">{durationText(report.hours)} passed. Here's what the town gathered:</p>
+          </div>
+          <ul className="flex flex-wrap justify-center gap-2">
+            {tile(report.gold, "🪙", "gold")}
+            {tile(report.food, "🍞", "food")}
+            {tile(report.materials, "🪵", "materials")}
+            {tile(report.settlers, "🧑‍🌾", report.settlers === 1 || report.settlers === -1 ? "settler" : "settlers")}
           </ul>
           {report.events.length > 0 ? (
-            <ol className="max-h-72 space-y-1 overflow-y-auto">
-              {report.events.map((e, i) => (
-                <li key={i} className={e.tone === "good" ? "text-heal" : e.tone === "bad" ? "text-danger" : "text-text"}>
-                  <span className="text-xs text-faint">{clockText(e.at)} · </span>
-                  {e.text}
-                </li>
-              ))}
-            </ol>
+            <details open={report.events.some((e) => e.tone === "bad")} className="rounded-md border border-line bg-surface-2/60 p-2">
+              <summary className="cursor-pointer text-xs font-semibold text-strong">What happened ({report.events.length})</summary>
+              <ol className="mt-1 max-h-60 space-y-1 overflow-y-auto">
+                {report.events.map((e, i) => (
+                  <li key={i} className={e.tone === "good" ? "text-heal" : e.tone === "bad" ? "text-danger" : "text-text"}>
+                    <span className="text-xs text-faint">{clockText(e.at)} · </span>
+                    {e.text}
+                  </li>
+                ))}
+              </ol>
+            </details>
           ) : (
-            <p className="italic">A quiet time. Nothing much happened.</p>
+            <p className="text-center italic">A quiet time. Nothing much happened.</p>
           )}
-          <div className="text-right">
-            <button className="btn btn-primary font-display" onClick={close}>
-              Back to town
+          <div className="text-center">
+            <button className="btn btn-primary px-6 font-display" onClick={close}>
+              🎁 Collect
             </button>
           </div>
         </div>

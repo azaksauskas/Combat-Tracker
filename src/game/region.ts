@@ -154,7 +154,7 @@ function militiaDefends(t: Town, f: Faction, h: number, towers: number, rng: () 
   const how = `${[...m.parts, `luck ${d}`].join(", ")} = ${total} against the raiders' ${strength}`;
   const outcome = raidOutcome(total, strength);
   if (outcome === "repel") {
-    const town = { ...t, spirit: clamp(t.spirit + 3, -20, 20) };
+    const town = { ...t, spirit: clamp(t.spirit + 3, -20, 20), stats: { ...t.stats, raidsRepelled: (t.stats.raidsRepelled ?? 0) + 1 } };
     return { town: news(town, { at: h, faction: f.id, result: "repelled", by: "militia", detail: how, lost: "" }), text: `${f.name} attacked, but the militia drove them off.` };
   }
   const r = raidLosses(t, f, h, outcome === "hold" ? num("militia.heldLoss") : 1);
@@ -261,7 +261,7 @@ export const canStrike = (th: Threat, f: Faction, renown: number) => renown >= f
 export function raidResult(t: Town, f: Faction, won: boolean): Town {
   if (won)
     return logged(
-      setThreat({ ...t, spirit: clamp(t.spirit + 6, -20, 20) }, { faction: f.id, attention: 15, stage: "watching" }),
+      setThreat({ ...t, spirit: clamp(t.spirit + 6, -20, 20), stats: { ...t.stats, raidsRepelled: (t.stats.raidsRepelled ?? 0) + 1 } }, { faction: f.id, attention: 15, stage: "watching" }),
       t.hours,
       `The heroes drove ${f.name} out of the town!`,
       "good",

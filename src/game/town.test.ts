@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { setTuning } from "./tuning";
-import { TownSchema, type Town } from "../domain/town";
-import { hireCost, appeal, applyDeeds, hire, lift, opinion, startingReputation, BUILDINGS, DAWN, maxCatchUpHours, offlineMsPerHour, advance, awayReport, beds, bringHome, cantBuild, catchUp, clockText, durationText, foundTown, power, staffing, startBuilding, assign, assignments, craftHours, needs, output, postCall, dailyChange, takeStash, welcome } from "./town";
+import { TownSchema, levelOf, type Town } from "../domain/town";
+import { hireCost, appeal, applyDeeds, hire, lift, opinion, startingReputation, BUILDINGS, DAWN, maxCatchUpHours, offlineMsPerHour, advance, awayReport, beds, bringHome, cantBuild, catchUp, clockText, durationText, foundTown, power, staffing, startBuilding, assign, assignments, craftHours, needs, output, postCall, dailyChange, produceHour, progressOf, upgradeCost, startUpgrade, cantUpgrade, isBuilt, yields, plots, takeStash, welcome } from "./town";
 
 const ctx = { renown: 1, residents: [] };
 const T0 = 1_000_000;
@@ -29,7 +29,7 @@ describe("towns", () => {
     expect(events.map((e) => e.text)).toContain("Farm finished.");
     // Renown 1 allows 4 buildings.
     let full = { ...town, buildings: [...town.buildings, { id: "x", type: "house" as const }, { id: "y", type: "house" as const }] };
-    expect(cantBuild(full, "lumber", 1)).toMatch(/4 buildings/);
+    expect(cantBuild(full, "lumber", 1)).toMatch(/All 4 plots/);
     expect(cantBuild(full, "lumber", 2)).toBeNull();
     full = { ...full, gold: 0 };
     expect(cantBuild(full, "lumber", 2)).toMatch(/gold/);
@@ -93,6 +93,53 @@ describe("towns", () => {
     t = welcome(welcome(t, { name: "A", trade: "farmer", from: "x" }, "1"), { name: "B", trade: "", from: "x" }, "2");
     // Hall +1, farm +4, two mouths −2.
     expect(dailyChange(t)).toEqual({ gold: 0, food: 3, materials: 1, herbs: 0 });
+  });
+
+  it("produces every hour: a day of hours makes a day's worth, and the work in progress shows", () => {
+    let t = foundTown("A", T0, 1);
+    t = { ...t, buildings: [...t.buildings, { id: "f", type: "farm" }], settlers: [] };
+    t = welcome(t, { name: "A", trade: "farmer", from: "x" }, "1");
+    const before = t.food;
+    let x = t;
+    for (let i = 0; i < 24; i++) x = produceHour(x);
+    // Hall 1 + farm 4 − 1 eaten.
+    expect(x.food - before).toBe(4);
+    const six = [0, 1, 2, 3, 4, 5].reduce((acc) => produceHour(acc), t);
+    expect(progressOf(six, t.buildings.find((b) => b.id === "f")!)).toMatchObject({ store: "food", fraction: 0 });
+    expect(six.food - before).toBe(1 + 0 - 0); // farm: 1 unit after 6 h; hall 0.25; eaten 0.25
+  });
+
+  it("missed meals at dawn mean hungry settlers", () => {
+    let t = { ...foundTown("A", T0, 3), food: 0 };
+    t = welcome(welcome(t, { name: "A", trade: "", from: "x", mood: 60 }, "1"), { name: "B", trade: "", from: "x", mood: 60 }, "2");
+    const { events, town } = advance(t, 24, T0, ctx);
+    expect(events.some((e) => /missed \d+ meals? and went hungry/.test(e.text))).toBe(true);
+    expect(town.missed).toBeLessThan(2);
+  });
+
+  it("upgrades: cost more each level, take the builders, then make more", () => {
+    let t = { ...foundTown("A", T0, 1), gold: 500, materials: 500 };
+    t = { ...t, buildings: [...t.buildings, { id: "f", type: "farm" }] };
+    t = welcome(t, { name: "A", trade: "farmer", from: "x" }, "1");
+    const farm = () => t.buildings.find((b) => b.id === "f")!;
+    expect(upgradeCost(farm())).toEqual({ gold: 17, materials: 10, hours: 10 });
+    t = startUpgrade(t, "f", 1);
+    expect(cantBuild(t, "house", 1)).toMatch(/busy/);
+    expect(isBuilt(farm())).toBe(true); // keeps working meanwhile
+    t = advance(t, 10, T0, ctx).town;
+    expect(levelOf(farm())).toBe(2);
+    expect(yields(t, farm()).food).toBeCloseTo(6.4);
+    // Renown 1 stops at level 2.
+    expect(cantUpgrade(t, farm(), 1)).toMatch(/more renown/);
+    expect(cantUpgrade(t, farm(), 2)).toBeNull();
+  });
+
+  it("a bigger town hall gives more plots; bigger houses more beds", () => {
+    const t = foundTown("A", T0, 1);
+    expect(plots(t, 1)).toBe(4);
+    const big = { ...t, buildings: [{ id: "hall", type: "hall" as const, level: 3 }, { id: "h", type: "house" as const, level: 2 }] };
+    expect(plots(big, 1)).toBe(8);
+    expect(beds(big)).toBe(2 + 3 + 2);
   });
 
   it("hunger drives settlers away over a few days, and they say why", () => {

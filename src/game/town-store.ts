@@ -18,12 +18,15 @@ import { chosenParty, recordAftermath } from "./party-store";
 import { INJURIES, aftermath } from "./injuries";
 import { completeContract, notePatrol, patrolBounty, rewardText, tradeAtMarket, type Good } from "./economy";
 import { PATROL_FOES, foeBattle } from "./patrol";
+import { claimGoal } from "./goals";
 import { MAX_LEVEL, XP_BY_CR, XP_FOR_LEVEL, levelForXp } from "./party";
 import {
   onlineMsPerHour,
   advance,
   awayReport,
   craftHours,
+  bump,
+  startUpgrade,
   assign,
   postCall,
   applyDeeds,
@@ -369,7 +372,7 @@ export function removeMod(heroKey: string, modId: string) {
 export function brew(itemId: string, name: string) {
   const b = BREWS[itemId];
   if (!b) return;
-  work("apothecary", b.cost, b.hours, `The apothecary brewed a ${name}`, (t) => ({ ...t, stash: { ...t.stash, [itemId]: (t.stash[itemId] ?? 0) + 1 } }));
+  work("apothecary", b.cost, b.hours, `The apothecary brewed a ${name}`, (t) => bump({ ...t, stash: { ...t.stash, [itemId]: (t.stash[itemId] ?? 0) + 1 } }, "brews"));
 }
 
 /** Iron and dust from a won battle go to the town's stores. */
@@ -387,6 +390,18 @@ export function salvageBattle(game: GameState, battle: string) {
 /** Hire a worker at the tavern (gold, a free bed); naming a trade costs more. */
 export function hireWorker(trade?: string) {
   townAction((t) => hire(t, trade));
+}
+
+/** Start upgrading a building to its next level. */
+export function upgradeBuilding(buildingId: string) {
+  const id = me();
+  townAction((t) => startUpgrade(t, buildingId, docOf(id)?.renown ?? 1));
+}
+
+/** Take the reward of a finished goal. */
+export function claimTownGoal(goalId: string) {
+  const id = me();
+  townAction((t) => claimGoal(t, goalId, docOf(id)?.renown ?? 1));
 }
 
 /** Put up a notice at the hall asking for someone of a trade. */
@@ -520,8 +535,9 @@ export function finishTownBattle(retreat = false) {
       let t = keepStash(d.town);
       if (patrol) {
         t = notePatrol(t);
+        if (won) t = bump(t, "patrols");
         if (won) t = { ...t, gold: t.gold + bounty, log: [...t.log, { at: t.hours, text: `The heroes' patrol cleared ${battle.replace(/^Patrol: /, "")}: ${bounty} gold bounty.`, tone: "good" as const }].slice(-MAX_TOWN_LOG) };
-      } else if (won && contract) t = completeContract(t, contract.id);
+      } else if (won && contract) t = bump(completeContract(t, contract.id), "contracts");
       return { ...d, town: t };
     });
     if (won) {

@@ -140,3 +140,18 @@
 .roll-link {
   @apply cursor-pointer rounded px-0.5 font-semibold text-accent underline decoration-dotted underline-offset-2 hover:bg-surface-3;
 }
+
+/* "+3" rising from a store in the town header when it grows. */
+@keyframes float-up {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-18px);
+  }
+}

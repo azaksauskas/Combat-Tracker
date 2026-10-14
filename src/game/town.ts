@@ -1,4 +1,4 @@
-import { MAX_TOWN_LOG, type Building, type BuildingType, type Settler, type Town, type TownEvent } from "../domain/town";
+import { MAX_TOWN_LOG, levelOf, type Building, type BuildingType, type Settler, type Town, type TownEvent } from "../domain/town";
 import { axesOf, reputationText } from "../domain/alignment";
 import { mulberry32 } from "./rng";
 import type { Faction } from "../domain/faction";
@@ -101,9 +101,62 @@ export const BUILDINGS = Object.fromEntries(
   ]),
 ) as Record<BuildingType, BuildingDef>;
 
-export const isBuilt = (b: Building) => b.readyAt === undefined;
+/** Standing and working (an upgrade in progress doesn't stop it). */
+export const isBuilt = (b: Building) => b.readyAt === undefined || b.upTo !== undefined;
+/** Still being put up for the first time. */
+export const isNew = (b: Building) => b.readyAt !== undefined && b.upTo === undefined;
 export const built = (t: Town) => t.buildings.filter(isBuilt);
-export const beds = (t: Town) => built(t).reduce((n, b) => n + (BUILDINGS[b.type].beds ?? 0), 0);
+/** The builders do one project at a time: a new building or an upgrade. */
+export const buildersBusy = (t: Town) => t.buildings.some((b) => b.readyAt !== undefined);
+export const beds = (t: Town) =>
+  built(t).reduce((n, b) => n + (BUILDINGS[b.type].beds ?? 0) + (b.type === "house" ? num("upgrade.bedsPerHouseLevel") * (levelOf(b) - 1) : 0), 0);
+
+// --- Levels and plots -----------------------------------------------------------------
+
+/** Each level above 1 adds this share of the base output. */
+export const levelBoost = (b: Building) => 1 + num("upgrade.outputPerLevel") * (levelOf(b) - 1);
+/** The highest level the heroes' fame allows. */
+export const maxLevel = (renown: number) => Math.max(1, Math.round(num("upgrade.maxLevelBase") + num("upgrade.levelsPerRenown") * renown));
+const hallOf = (t: Town) => t.buildings.find((b) => b.type === "hall");
+/** Room for buildings: the heroes' fame, plus more with every level of the town hall. */
+export const plots = (t: Town, renown: number) => renownOf(renown).maxBuildings + num("upgrade.plotsPerHallLevel") * (levelOf(hallOf(t) ?? {}) - 1);
+
+/** What it takes to bring a building to the next level. */
+export function upgradeCost(b: Building): { gold: number; materials: number; hours: number } {
+  const def = BUILDINGS[b.type];
+  const base = b.type === "hall" ? { gold: num("upgrade.hallGold"), materials: num("upgrade.hallMaterials"), hours: num("upgrade.hallHours") } : { ...def.cost, hours: def.hours };
+  const grow = num("upgrade.costGrowth") ** levelOf(b);
+  return { gold: Math.round(base.gold * grow), materials: Math.round(base.materials * grow), hours: Math.round(base.hours * levelOf(b) * num("upgrade.hoursGrowth")) };
+}
+
+export function cantUpgrade(t: Town, b: Building, renown: number): string | null {
+  if (!isBuilt(b) || b.upTo !== undefined) return "Already being worked on";
+  if (levelOf(b) >= maxLevel(renown)) return `Level ${levelOf(b)} is the most heroes ${renownOf(renown).title.toLowerCase()} can manage; more renown, higher levels`;
+  if (buildersBusy(t)) return "Builders are busy: one project at a time";
+  const c = upgradeCost(b);
+  if (t.gold < c.gold) return `Needs ${c.gold} gold`;
+  if (t.materials < c.materials) return `Needs ${c.materials} materials`;
+  return null;
+}
+
+export function startUpgrade(t: Town, buildingId: string, renown: number): Town {
+  const b = t.buildings.find((x) => x.id === buildingId);
+  if (!b) throw new Error("No such building");
+  const why = cantUpgrade(t, b, renown);
+  if (why) throw new Error(why);
+  const c = upgradeCost(b);
+  const def = BUILDINGS[b.type];
+  return {
+    ...t,
+    gold: t.gold - c.gold,
+    materials: t.materials - c.materials,
+    buildings: t.buildings.map((x) => (x.id === b.id ? { ...x, upTo: levelOf(b) + 1, readyAt: Math.floor(t.hours) + c.hours } : x)),
+    log: [...t.log, { at: t.hours, text: `Work began on the ${def.name.toLowerCase()}: level ${levelOf(b) + 1} in ${c.hours} hours.`, tone: "info" as const }].slice(-MAX_TOWN_LOG),
+  };
+}
+
+/** Adds to one of the town's lifetime counts (for goals). */
+export const bump = (t: Town, key: string, n = 1): Town => ({ ...t, stats: { ...t.stats, [key]: (t.stats[key] ?? 0) + n } });
 
 // --- Trades and jobs ------------------------------------------------------------------
 
@@ -175,7 +228,7 @@ export function output(t: Town, type: BuildingType): number {
   const who = assignments(t);
   return built(t)
     .filter((b) => b.type === type)
-    .reduce((n, b) => n + pace(t, b.id, who), 0);
+    .reduce((n, b) => n + pace(t, b.id, who) * levelBoost(b), 0);
 }
 
 /** The best pace among buildings of a type: crafting there takes hours ÷ this. */
@@ -260,9 +313,9 @@ export function cantBuild(t: Town, type: BuildingType, renown: number): string |
   if (type === "hall") return "Every town has one hall";
   const count = t.buildings.filter((b) => b.type === type).length;
   if (def.max !== undefined && count >= def.max) return `At most ${def.max}`;
-  const r = renownOf(renown);
-  if (t.buildings.length >= r.maxBuildings) return `A hero ${r.title.toLowerCase()} can have ${r.maxBuildings} buildings; more renown, more room`;
-  if (t.buildings.some((b) => !isBuilt(b))) return "Builders are busy: one project at a time";
+  const room = plots(t, renown);
+  if (t.buildings.length >= room) return `All ${room} plots are used: upgrade the town hall or gain renown for more`;
+  if (buildersBusy(t)) return "Builders are busy: one project at a time";
   if (t.gold < def.cost.gold) return `Needs ${def.cost.gold} gold`;
   if (t.materials < def.cost.materials) return `Needs ${def.cost.materials} materials`;
   return null;
@@ -288,6 +341,10 @@ export function foundTown(name: string, now: number, seed: number, gold = num("t
     lastTheft: -1000,
     threats: [],
     raidNews: [],
+    acc: {},
+    missed: 0,
+    stats: {},
+    goals: [],
     patrols: { day: 0, count: 0 },
     contracts: [],
     buildings: [{ id: "hall", type: "hall" }],
@@ -458,38 +515,31 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
       ...t,
       buildings: t.buildings.map((b) => {
         if (b.readyAt === undefined || b.readyAt > h) return b;
+        if (b.upTo !== undefined) {
+          say(`${BUILDINGS[b.type].name} reached level ${b.upTo}.`, "good");
+          return { id: b.id, type: b.type, level: b.upTo };
+        }
         say(`${BUILDINGS[b.type].name} finished.`, "good");
-        return { id: b.id, type: b.type };
+        return { id: b.id, type: b.type, ...(b.level ? { level: b.level } : {}) };
       }),
     };
   }
+  // Every hour, each workplace makes a little and everyone eats a little.
+  t = produceHour(t);
   // Raiders and deadlines keep their hour.
   if (ctx.factions?.length) t = regionHour(t, h, rng, ctx.factions, { towers: output(t, "watchtower") }, say);
   if (h % 24 !== DAWN) return t;
 
-  // --- A new day: production, mouths to feed, then whatever the day brings.
-  const made = production(t);
-  let food = t.food + made.food;
-  const materials = t.materials + made.materials;
-  const gold = t.gold + made.gold;
+  // --- A new day: the apothecary's potion, who went hungry, then whatever the day brings.
   const stash = { ...t.stash };
   const markets = working(t, "market");
-  let components = t.components;
-  if (made.herbs) components = { ...components, herbs: components.herbs + made.herbs };
   if (working(t, "apothecary") && day(h) % Math.max(1, Math.round(num("prod.potionEveryDays"))) === 0) {
     stash["potion-healing"] = (stash["potion-healing"] ?? 0) + 1;
     say("The apothecary brewed a Potion of Healing.", "good");
   }
-  // Everyone eats; whoever goes without is miserable.
-  const settlers: Settler[] = t.settlers;
-  let hungry = 0;
-  food -= made.eaten;
-  if (food < 0) {
-    hungry = -food;
-    food = 0;
-    say(`Food ran out: ${hungry} settler${hungry === 1 ? "" : "s"} went hungry.`, "bad");
-  }
-  t = { ...t, gold, food, materials, stash, settlers, components };
+  const hungry = Math.ceil(t.missed / Math.max(1, num("prod.foodPerSettler")));
+  if (hungry > 0) say(`Food ran out: settlers missed ${t.missed} meal${t.missed === 1 ? "" : "s"} and went hungry.`, "bad");
+  t = { ...t, stash, missed: 0 };
 
   // Events.
   const p = power(t, ctx);
@@ -565,21 +615,98 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
   return t;
 }
 
-/** What the town makes each morning (before random events), and what its people eat. */
-export function production(t: Town) {
-  return {
-    food: num("prod.hallFood") + Math.round(num("prod.farmFood") * output(t, "farm")),
-    materials: num("prod.hallMaterials") + Math.round(num("prod.lumberMaterials") * output(t, "lumber")),
-    gold: Math.round(output(t, "market") * (num("prod.marketGold") + Math.floor(t.settlers.length / Math.max(1, num("prod.marketSettlersPerGold")))) + num("prod.tavernGold") * output(t, "tavern")),
-    herbs: working(t, "apothecary") ? Math.max(1, Math.round(num("prod.apothecaryHerbs") * output(t, "apothecary"))) : 0,
-    eaten: t.settlers.length * num("prod.foodPerSettler"),
-  };
+export type Yield = { food: number; materials: number; gold: number; herbs: number };
+const STORES = ["food", "materials", "gold", "herbs"] as const;
+
+/** What one building makes in a day, with its level and its worker's pace. */
+export function yields(t: Town, b: Building, who = assignments(t)): Yield {
+  const out: Yield = { food: 0, materials: 0, gold: 0, herbs: 0 };
+  if (!isBuilt(b)) return out;
+  const k = levelBoost(b) * (BUILDINGS[b.type].staffed ? pace(t, b.id, who) : 1);
+  switch (b.type) {
+    case "hall":
+      out.food = num("prod.hallFood") * k;
+      out.materials = num("prod.hallMaterials") * k;
+      break;
+    case "farm":
+      out.food = num("prod.farmFood") * k;
+      break;
+    case "lumber":
+      out.materials = num("prod.lumberMaterials") * k;
+      break;
+    case "market":
+      out.gold = (num("prod.marketGold") + Math.floor(t.settlers.length / Math.max(1, num("prod.marketSettlersPerGold")))) * k;
+      break;
+    case "tavern":
+      out.gold = num("prod.tavernGold") * k;
+      break;
+    case "apothecary":
+      out.herbs = num("prod.apothecaryHerbs") * k;
+      break;
+  }
+  return out;
+}
+
+/** What the town makes in a day (before random events), and what its people eat. */
+export function production(t: Town): Yield & { eaten: number } {
+  const who = assignments(t);
+  const total: Yield & { eaten: number } = { food: 0, materials: 0, gold: 0, herbs: 0, eaten: t.settlers.length * num("prod.foodPerSettler") };
+  for (const b of built(t)) {
+    const y = yields(t, b, who);
+    for (const k of STORES) total[k] += y[k];
+  }
+  return total;
 }
 
 /** The day's change in each store, for the town's header (random events aside). */
 export function dailyChange(t: Town) {
   const p = production(t);
-  return { gold: p.gold, food: p.food - p.eaten, materials: p.materials, herbs: p.herbs };
+  const r = (n: number) => Math.round(n * 10) / 10;
+  return { gold: r(p.gold), food: r(p.food - p.eaten), materials: r(p.materials), herbs: r(p.herbs) };
+}
+
+/**
+ * One hour of work: every building adds a 24th of its day to what it has in
+ * progress, and hands over whole units; the settlers eat the same way.
+ */
+export function produceHour(t: Town): Town {
+  const who = assignments(t);
+  const acc = { ...t.acc };
+  let { food, materials, gold } = t;
+  let herbs = t.components.herbs;
+  for (const b of built(t)) {
+    const y = yields(t, b, who);
+    for (const k of STORES) {
+      if (!y[k]) continue;
+      const key = `${b.id}:${k}`;
+      let v = (acc[key] ?? 0) + y[k] / 24;
+      const whole = Math.floor(v + 1e-9);
+      v -= whole;
+      acc[key] = v < 1e-9 ? 0 : v;
+      if (k === "food") food += whole;
+      else if (k === "materials") materials += whole;
+      else if (k === "gold") gold += whole;
+      else herbs += whole;
+    }
+  }
+  let eat = (acc.eat ?? 0) + (t.settlers.length * num("prod.foodPerSettler")) / 24;
+  const meals = Math.floor(eat + 1e-9);
+  eat -= meals;
+  acc.eat = eat < 1e-9 ? 0 : eat;
+  const served = Math.min(food, meals);
+  food -= served;
+  // Forget work in progress at buildings that are gone.
+  for (const key of Object.keys(acc)) if (key !== "eat" && !t.buildings.some((b) => key.startsWith(`${b.id}:`))) delete acc[key];
+  return { ...t, food, materials, gold, components: { ...t.components, herbs }, acc, missed: t.missed + (meals - served) };
+}
+
+/** How far along the next unit is at a building (0–1), for its progress bar. */
+export function progressOf(t: Town, b: Building, extraHours = 0): { store: keyof Yield; fraction: number; perDay: number } | null {
+  const y = yields(t, b);
+  const store = STORES.find((k) => y[k] > 0);
+  if (!store) return null;
+  const v = (t.acc[`${b.id}:${store}`] ?? 0) + (y[store] / 24) * extraHours;
+  return { store, fraction: v - Math.floor(v), perDay: y[store] };
 }
 
 // --- Skipping time ---------------------------------------------------------------------
