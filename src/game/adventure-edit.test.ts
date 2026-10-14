@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GOBLIN_TRAIL } from "../content/adventures";
 import { choose, startAdventure } from "./adventure";
-import { addScene, blankAdventure, deleteScene, duplicateAdventure, lintAdventure, parseAdventureJson, renameScene, sceneLinks, ImportError } from "./adventure-edit";
+import { addScene, blankAdventure, clueIndex, deleteScene, duplicateAdventure, lintAdventure, parseAdventureJson, renameScene, sceneLinks, ImportError } from "./adventure-edit";
 import { SCENARIOS } from "./scenarios";
 
 const ids = SCENARIOS.map((s) => s.id);
@@ -57,5 +57,16 @@ describe("adventure editing", () => {
     expect(back.scenes).toEqual(GOBLIN_TRAIL.scenes);
     expect(() => parseAdventureJson("{nope")).toThrow(ImportError);
     expect(() => parseAdventureJson(JSON.stringify({ id: "x", scenes: {} }))).toThrow(/no scenes/);
+  });
+});
+
+describe("clues", () => {
+  it("indexes where clues are learned and needed, and warns when one is never learned", () => {
+    const idx = clueIndex(GOBLIN_TRAIL);
+    expect(idx.get("trap-disarmed")).toMatchObject({ learned: ["The Crypt on the Hill › Check the entrance for traps"] });
+    expect(idx.get("trap-disarmed")!.needed).toHaveLength(2);
+    let adv = blankAdventure("a");
+    adv = { ...adv, scenes: { start: { ...adv.scenes.start!, choices: [...adv.scenes.start!.choices, { id: "c2", label: "Ask about the amulet", requiresFlag: "amulet", success: { next: { end: "victory" } } }] } } };
+    expect(lintAdventure(adv, ids).map((i) => i.text)).toContain(`The clue "amulet" is needed but never learned, so those choices never appear`);
   });
 });

@@ -7,7 +7,7 @@ import { ADVENTURES } from "../content/adventures";
 import type { Adventure, Choice, Effect, Next, Outcome, Scene } from "../domain/adventure";
 import { newId } from "../domain/combat";
 import { ABILITIES, ABILITY_NAMES, DAMAGE_TYPES } from "../domain/statblock";
-import { addScene, blankAdventure, deleteScene, duplicateAdventure, lintAdventure, parseAdventureJson, renameScene, sceneLinks, type Issue } from "../game/adventure-edit";
+import { addScene, clueIndex, blankAdventure, deleteScene, duplicateAdventure, lintAdventure, parseAdventureJson, renameScene, sceneLinks, type Issue } from "../game/adventure-edit";
 import { beginAdventure } from "../game/campaign-store";
 import { ITEMS, MAX_LEVEL } from "../game/party";
 import { SCENARIOS } from "../game/scenarios";
@@ -97,8 +97,8 @@ export function AdventureEditorView() {
               {ADVENTURES.map((a) => (
                 <li key={a.id} className="flex items-center justify-between gap-2 rounded-md border border-line bg-surface px-2 py-1.5 text-sm">
                   <span className="truncate font-semibold">{a.title}</span>
-                  <button className="btn px-2 py-0.5 text-xs" onClick={() => create(duplicateAdventure(a, newId()))} title="Make an editable copy">
-                    Copy
+                  <button className="btn px-2 py-0.5 text-xs" onClick={() => create(duplicateAdventure(a, newId()))} title="Make your own copy and edit it">
+                    ✎ Edit a copy
                   </button>
                 </li>
               ))}
@@ -197,6 +197,7 @@ function Editor({ saved, onDeleted }: { saved: Adventure; onDeleted: () => void 
           <span className="ml-auto text-xs text-faint">Changes save automatically.</span>
         </div>
         <Issues issues={issues} onPick={(id) => id && id in draft.scenes && setSceneId(id)} />
+        <Clues adventure={draft} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[14rem_1fr]">
@@ -255,6 +256,46 @@ function Editor({ saved, onDeleted }: { saved: Adventure; onDeleted: () => void 
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Clues are words the party learns during the adventure ("amulet": a thief
+ * told them where to find it). Later choices can appear only once a clue is
+ * known, or disappear once it is.
+ */
+function Clues({ adventure }: { adventure: Adventure }) {
+  const clues = [...clueIndex(adventure)];
+  return (
+    <>
+      <datalist id="adventure-clues">
+        {clues.map(([name]) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+      <details className="text-sm">
+        <summary className="cursor-pointer text-muted">
+          🔑 Clues ({clues.length}) — words the party learns that open up later choices
+        </summary>
+        {clues.length === 0 ? (
+          <p className="mt-1 text-xs text-faint">
+            None yet. Add a “Learn a clue” effect to an outcome (e.g. a thief tells where the amulet is: clue “amulet”), then make a later choice “Shown only if the party knows clue: amulet”.
+          </p>
+        ) : (
+          <ul className="mt-1 space-y-1">
+            {clues.map(([name, use]) => (
+              <li key={name}>
+                <strong className="text-strong">{name}</strong>
+                <span className="text-xs text-muted">
+                  {" "}
+                  · learned: {use.learned.join("; ") || <span className="text-warn">nowhere!</span>} · matters for: {use.needed.join("; ") || "nothing yet"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
+    </>
   );
 }
 
@@ -367,9 +408,9 @@ function ChoiceEditor({
   const [open, setOpen] = useState(!c.label);
   return (
     <div className="rounded-md border border-line bg-surface-2/60">
-      <div className="flex items-center gap-2 p-2">
-        <button className="btn btn-ghost px-1.5 py-0.5 text-xs" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={open ? "Collapse choice" : "Expand choice"}>
-          {open ? "▾" : "▸"}
+      <div className="flex cursor-pointer items-center gap-2 p-2" onClick={(e) => e.target === e.currentTarget && setOpen(!open)}>
+        <button className="btn px-2 py-0.5 text-xs" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={open ? "Collapse choice" : "Expand choice"}>
+          {open ? "▾ Close" : "✎ Edit"}
         </button>
         <input className="field flex-1 py-1" placeholder="What the players can choose, e.g. “Search the camp”" value={c.label} onChange={(e) => edit((d) => void (d.label = e.target.value))} aria-label="Choice label" />
         <span className="hidden text-xs text-faint sm:inline">{summary(c, ctx.adventure, ctx.fights)}</span>
@@ -386,11 +427,11 @@ function ChoiceEditor({
       {open && (
         <div className="space-y-3 border-t border-line p-3">
           <div className="grid gap-2 sm:grid-cols-4">
-            <Field label="Only if flag is set">
-              <input className="field py-1" value={c.requiresFlag ?? ""} onChange={(e) => edit((d) => void (d.requiresFlag = e.target.value || undefined))} />
+            <Field label="Shown only if the party knows clue">
+              <input className="field py-1" list="adventure-clues" placeholder="e.g. amulet" value={c.requiresFlag ?? ""} onChange={(e) => edit((d) => void (d.requiresFlag = e.target.value.trim() || undefined))} />
             </Field>
-            <Field label="Hide once flag is set">
-              <input className="field py-1" value={c.hideIfFlag ?? ""} onChange={(e) => edit((d) => void (d.hideIfFlag = e.target.value || undefined))} />
+            <Field label="Hidden once the party knows clue">
+              <input className="field py-1" list="adventure-clues" value={c.hideIfFlag ?? ""} onChange={(e) => edit((d) => void (d.hideIfFlag = e.target.value.trim() || undefined))} />
             </Field>
             <Field label="Costs gold">
               <input className="field py-1" type="number" min={0} value={c.costGold ?? 0} onChange={(e) => edit((d) => void (d.costGold = Number(e.target.value) || undefined))} />
@@ -605,7 +646,7 @@ const EFFECT_LABELS: Record<Effect["type"], string> = {
   milestone: "Level up to",
   gold: "Gold",
   item: "Item",
-  flag: "Set flag",
+  flag: "Learn a clue",
   damage: "Trap / damage",
   rest: "Rest",
   settler: "Settler for the town",
@@ -680,7 +721,7 @@ function EffectFields({ effect: e, onChange }: { effect: Effect; onChange: (e: E
         </>
       );
     case "flag":
-      return <input className="field w-40 py-0.5" placeholder="e.g. found-map" value={e.name} aria-label="Flag name" onChange={(x) => onChange({ ...e, name: x.target.value.trim() })} />;
+      return <input className="field w-40 py-0.5" list="adventure-clues" placeholder="e.g. amulet" value={e.name} aria-label="Clue" onChange={(x) => onChange({ ...e, name: x.target.value.trim() })} />;
     case "deed":
       return (
         <>

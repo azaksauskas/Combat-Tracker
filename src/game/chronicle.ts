@@ -79,7 +79,7 @@ export function chronicleStep(before: CampaignState | null, after: CampaignState
 
   // Story flags the DM may want to know about.
   const flags = after.flags.filter((f) => !before.flags.includes(f));
-  if (flags.length) out.push({ kind: "story", adventure: title, text: `Story: ${flags.join(", ")}.`, flags });
+  if (flags.length) out.push({ kind: "story", adventure: title, text: `Learned: ${flags.join(", ")}.`, flags });
 
   if (after.ended && !before.ended)
     out.push({

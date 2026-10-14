@@ -40,7 +40,7 @@ export function AdventureView({ state }: { state: CampaignState }) {
       </header>
 
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[19rem_1fr]">
-        <PartySheet party={state.party} />
+        <PartySheet party={state.party} clues={state.flags} />
 
         <section className="flex min-h-0 flex-col rounded-lg border border-line bg-surface shadow" aria-label="Story">
           <StoryFeed state={state} />
@@ -89,7 +89,7 @@ export function AdventureView({ state }: { state: CampaignState }) {
   );
 }
 
-function PartySheet({ party }: { party: Party }) {
+function PartySheet({ party, clues }: { party: Party; clues: string[] }) {
   const level = party.heroes[0]?.level ?? 1;
   const nextXp = level < MAX_LEVEL ? XP_FOR_LEVEL[level + 1]! : null;
   const equipment = Object.entries(party.items).filter(([id, n]) => n > 0 && ITEMS[id]?.kind === "equipment");
@@ -111,6 +111,12 @@ function PartySheet({ party }: { party: Party }) {
           <HeroCard key={h.key} hero={h} />
         ))}
       </ul>
+      {clues.length > 0 && (
+        <section>
+          <h4 className="text-xs font-bold tracking-wider text-faint uppercase">🔑 What you know</h4>
+          <p className="text-sm">{clues.join(", ")}</p>
+        </section>
+      )}
       <section>
         <h4 className="text-xs font-bold tracking-wider text-faint uppercase">Pack</h4>
         <p className="text-sm">💰 {party.gold} gp</p>

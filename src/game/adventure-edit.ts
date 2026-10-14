@@ -124,6 +124,8 @@ export function lintAdventure(adv: Adventure, scenarioIds: string[]): Issue[] {
     }
   }
   if (!canEnd) issues.push({ level: "warning", text: "No choice ends the adventure" });
+  for (const [clue, use] of clueIndex(adv))
+    if (use.needed.length && !use.learned.length) issues.push({ level: "warning", text: `The clue "${clue}" is needed but never learned, so those choices never appear` });
   return issues;
 }
 
@@ -141,4 +143,30 @@ export function parseAdventureJson(text: string, id?: string): Adventure {
   if (!result.success) throw new ImportError("That doesn't look like an adventure");
   if (Object.keys(result.data.scenes).length === 0) throw new ImportError("The adventure has no scenes");
   return id ? { ...result.data, id } : result.data;
+}
+
+export interface ClueUse {
+  /** Where the clue is learned (scene title › choice label). */
+  learned: string[];
+  /** Choices that need it, or hide once it's known. */
+  needed: string[];
+}
+
+/** Every clue (story flag) in the adventure: where it's learned and where it matters. */
+export function clueIndex(adv: Adventure): Map<string, ClueUse> {
+  const out = new Map<string, ClueUse>();
+  const entry = (name: string) => {
+    if (!out.has(name)) out.set(name, { learned: [], needed: [] });
+    return out.get(name)!;
+  };
+  for (const scene of Object.values(adv.scenes)) {
+    const where = (label: string) => `${scene.title || scene.id} › ${label || "(unnamed choice)"}`;
+    for (const e of scene.onEnter ?? []) if (e.type === "flag" && e.name) entry(e.name).learned.push(`${scene.title || scene.id} (on arrival)`);
+    for (const c of scene.choices) {
+      for (const o of [c.success, c.failure]) for (const e of o?.effects ?? []) if (e.type === "flag" && e.name) entry(e.name).learned.push(where(c.label));
+      if (c.requiresFlag) entry(c.requiresFlag).needed.push(where(c.label));
+      if (c.hideIfFlag) entry(c.hideIfFlag).needed.push(where(c.label));
+    }
+  }
+  return out;
 }
