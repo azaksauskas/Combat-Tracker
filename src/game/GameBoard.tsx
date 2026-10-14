@@ -7,7 +7,7 @@ import { GRID_ALPHA, withAlpha, type ThemeColors } from "../theme/themes";
 import { findPath, fromKey, key, type Cell } from "./board";
 import { areaCells, checkArea, checkTarget, currentUnit, reachable } from "./engine";
 import type { GameState, Unit } from "./state";
-import type { Fx } from "./store";
+import type { Fx, ShotTone } from "./store";
 
 export type BoardMode =
   | { kind: "move" }
@@ -22,6 +22,8 @@ interface Props {
   /** Heroes can be commanded; false while monsters act. */
   interactive: boolean;
   fx: Fx[];
+  /** The squares each creature last walked through. */
+  paths?: Record<string, Cell[]>;
   onMove: (to: Cell) => void;
   onTarget: (unitId: string) => void;
   onArea: (point: Cell) => void;
@@ -42,7 +44,7 @@ function useSize() {
 }
 
 /** Tile-based battle board for the game (fixed grid, click to move/target). */
-export function GameBoard({ game, mode, interactive, fx, onMove, onTarget, onArea, onHoverUnit }: Props) {
+export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onTarget, onArea, onHoverUnit }: Props) {
   const colors = useThemeColors();
   const [ref, size] = useSize();
   const { board } = game;
@@ -177,7 +179,8 @@ export function GameBoard({ game, mode, interactive, fx, onMove, onTarget, onAre
 
           <Layer>
             {game.units
-              .filter((u) => !(u.dead && u.side === "enemy"))
+              // The slain leave the board once they've fallen.
+              .filter((u) => !(u.dead && u.side === "enemy" && !fx.some((f) => f.kind === "fall" && f.unitId === u.id)))
               .map((u) => (
                 <UnitToken
                   key={u.id}
@@ -188,6 +191,8 @@ export function GameBoard({ game, mode, interactive, fx, onMove, onTarget, onAre
                   targetable={targets.get(u.id)}
                   picked={picked.includes(u.id)}
                   inArea={!!area?.cells.some((c) => c.x === u.pos.x && c.y === u.pos.y)}
+                  path={paths[u.id]}
+                  fx={fx.filter((f) => "unitId" in f && f.unitId === u.id)}
                   onClick={() => targets.get(u.id) && onTarget(u.id)}
                   onHover={(on) => onHoverUnit(on ? u.id : null)}
                 />
@@ -195,12 +200,19 @@ export function GameBoard({ game, mode, interactive, fx, onMove, onTarget, onAre
           </Layer>
 
           <Layer listening={false}>
+            {fx.map((f) => {
+              if (f.kind === "shot") return <Shot key={f.id} from={center(f.from)} to={center(f.to)} tone={f.tone} cell={cell} colors={colors} />;
+              if (f.kind === "burst") return <Burst key={f.id} at={center(f.at)} tone={f.tone} cell={cell} colors={colors} />;
+              return null;
+            })}
             {fx.map((f, i) => {
+              if (f.kind !== "text") return null;
               const u = game.units.find((x) => x.id === f.unitId);
               if (!u) return null;
               const p = center(u.pos);
               const fill = f.tone === "heal" ? colors.heal : f.tone === "miss" ? colors.muted : f.tone === "crit" ? colors.highlight : colors.danger;
-              return <FloatingText key={f.id} x={p.x} y={p.y - cell * 0.4 - (i % 2) * cell * 0.25} text={f.text} fill={fill} size={Math.max(14, cell * 0.38)} />;
+              const crit = f.tone === "crit";
+              return <FloatingText key={f.id} x={p.x} y={p.y - cell * (crit ? 0.9 : 0.4) - (i % 2) * cell * 0.25} text={f.text} fill={fill} size={Math.max(crit ? 20 : 14, cell * (crit ? 0.55 : 0.38))} pop={crit} />;
             })}
           </Layer>
         </Stage>
@@ -208,6 +220,9 @@ export function GameBoard({ game, mode, interactive, fx, onMove, onTarget, onAre
     </div>
   );
 }
+
+const TONE_COLOR = (c: ThemeColors, tone: ShotTone) =>
+  ({ arrow: c.text, magic: "#a78bfa", fire: "#f97316", cold: "#38bdf8", radiant: "#facc15", heal: c.heal })[tone];
 
 function UnitToken({
   unit: u,
@@ -217,6 +232,8 @@ function UnitToken({
   targetable,
   picked,
   inArea,
+  path,
+  fx,
   onClick,
   onHover,
 }: {
@@ -227,14 +244,18 @@ function UnitToken({
   targetable: boolean | undefined;
   picked: boolean;
   inArea: boolean;
+  path: Cell[] | undefined;
+  fx: Fx[];
   onClick: () => void;
   onHover: (on: boolean) => void;
 }) {
   const ref = useRef<Konva.Group>(null);
+  const body = useRef<Konva.Group>(null);
+  const flash = useRef<Konva.Circle>(null);
   const x = u.pos.x * cell + cell / 2;
   const y = u.pos.y * cell + cell / 2;
   const first = useRef(true);
-  // Slide to the new square instead of jumping.
+  // Walk square by square along the path taken; otherwise slide.
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
@@ -243,11 +264,47 @@ function UnitToken({
       first.current = false;
       return;
     }
-    node.to({ x, y, duration: 0.3 });
+    const steps = path && path.length > 1 && path.at(-1)!.x === u.pos.x && path.at(-1)!.y === u.pos.y ? path.slice(1).map((c) => ({ x: c.x * cell + cell / 2, y: c.y * cell + cell / 2 })) : [{ x, y }];
+    const per = Math.min(0.14, 0.6 / steps.length);
+    let i = 0;
+    const next = () => {
+      const s = steps[i++];
+      if (s) node.to({ ...s, duration: steps.length > 1 ? per : 0.3, onFinish: next });
+    };
+    next();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [x, y]);
 
-  const r = cell * 0.4;
+  // Lunges, hits and falls, once each.
+  const done = useRef(new Set<number>());
+  useEffect(() => {
+    const b = body.current;
+    if (!b) return;
+    for (const f of fx) {
+      if (done.current.has(f.id)) continue;
+      done.current.add(f.id);
+      if (f.kind === "lunge") {
+        const dx = (f.to.x - u.pos.x) * cell * 0.35;
+        const dy = (f.to.y - u.pos.y) * cell * 0.35;
+        b.to({ x: dx, y: dy, duration: 0.1, onFinish: () => b.to({ x: 0, y: 0, duration: 0.15 }) });
+      }
+      if (f.kind === "hit") {
+        const amp = f.crit ? 7 : 4;
+        setTimeout(() => {
+          flash.current?.to({ opacity: 0.75, duration: 0.05, onFinish: () => flash.current?.to({ opacity: 0, duration: 0.35 }) });
+          b.to({ x: amp, duration: 0.04, onFinish: () => b.to({ x: -amp, duration: 0.06, onFinish: () => b.to({ x: 0, duration: 0.05 }) }) });
+        }, 180);
+      }
+      if (f.kind === "fall") setTimeout(() => b.to({ rotation: 80, scaleX: 0.85, scaleY: 0.85, opacity: u.side === "enemy" && u.dead ? 0 : 1, duration: 0.5 }), 250);
+    }
+  }, [fx, u.pos.x, u.pos.y, u.side, u.dead, cell]);
+  // Back on their feet: stand up again.
   const down = u.hp <= 0;
+  useEffect(() => {
+    if (!down) body.current?.to({ rotation: 0, scaleX: 1, scaleY: 1, opacity: 1, duration: 0.3 });
+  }, [down]);
+
+  const r = cell * 0.4;
   const hpPct = Math.max(0, u.hp) / Math.max(1, u.hpMax);
   return (
     <Group
@@ -266,21 +323,64 @@ function UnitToken({
       {picked && <Circle radius={r + 9} stroke={colors.heal} strokeWidth={4} />}
       {inArea && <Circle radius={r + 7} stroke={colors.danger} strokeWidth={4} dash={[6, 3]} />}
       {active && <Circle radius={r + 4} stroke={colors.accent} strokeWidth={3} shadowColor={colors.accent} shadowBlur={12} />}
-      <Circle radius={r} fill={u.side === "enemy" ? colors["token-monster"] : colors["token-player"]} stroke={u.side === "enemy" ? colors.danger : colors.temp} strokeWidth={2} />
-      <Text text={initials(u.name)} width={r * 2} height={r * 2} x={-r} y={-r} align="center" verticalAlign="middle" fontStyle="bold" fontSize={r * 0.9} fill="white" listening={false} />
+      <Group ref={body} rotation={down ? 80 : 0} scaleX={down ? 0.85 : 1} scaleY={down ? 0.85 : 1}>
+        <Circle radius={r} fill={u.side === "enemy" ? colors["token-monster"] : colors["token-player"]} stroke={u.side === "enemy" ? colors.danger : colors.temp} strokeWidth={2} shadowColor="black" shadowBlur={4} shadowOpacity={0.4} />
+        <Text text={initials(u.name)} width={r * 2} height={r * 2} x={-r} y={-r} align="center" verticalAlign="middle" fontStyle="bold" fontSize={r * 0.9} fill="white" listening={false} />
+        <Circle ref={flash} radius={r} fill="#ef4444" opacity={0} listening={false} />
+      </Group>
       {down && <Text text={u.dead ? "✝" : "💤"} x={r * 0.3} y={-r * 1.2} fontSize={r * 0.8} listening={false} />}
       {u.conditions.includes("Prone") && !down && <Text text="⤓" x={-r * 1.25} y={-r * 1.2} fontSize={r * 0.8} fill={colors.warn} listening={false} />}
       {/* HP bar */}
       <Rect x={-r} y={r + 3} width={r * 2} height={4} fill={colors["surface-3"]} cornerRadius={2} listening={false} />
-      <Rect x={-r} y={r + 3} width={r * 2 * hpPct} height={4} fill={hpPct > 0.5 ? colors.heal : colors.warn} cornerRadius={2} listening={false} />
+      <Rect x={-r} y={r + 3} width={r * 2 * hpPct} height={4} fill={hpPct > 0.5 ? colors.heal : hpPct > 0.25 ? colors.warn : colors.danger} cornerRadius={2} listening={false} />
     </Group>
   );
 }
 
-function FloatingText({ x, y, text, fill, size }: { x: number; y: number; text: string; fill: string; size: number }) {
+/** An arrow or a bolt of magic flying to its target. */
+function Shot({ from, to, tone, cell, colors }: { from: { x: number; y: number }; to: { x: number; y: number }; tone: ShotTone; cell: number; colors: ThemeColors }) {
+  const ref = useRef<Konva.Group>(null);
+  useEffect(() => {
+    const n = ref.current;
+    if (!n) return;
+    const dist = Math.hypot(to.x - from.x, to.y - from.y);
+    n.to({ x: to.x, y: to.y, duration: Math.min(0.35, 0.08 + dist / (cell * 30)), onFinish: () => n.to({ opacity: 0, duration: 0.1 }) });
+  }, [from.x, from.y, to.x, to.y, cell]);
+  const angle = (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
+  const color = TONE_COLOR(colors, tone);
+  return (
+    <Group ref={ref} x={from.x} y={from.y} rotation={angle}>
+      {tone === "arrow" ? (
+        <Line points={[-cell * 0.35, 0, 0, 0]} stroke={color} strokeWidth={3} lineCap="round" />
+      ) : (
+        <>
+          <Circle radius={cell * 0.16} fill={color} shadowColor={color} shadowBlur={16} />
+          <Line points={[-cell * 0.4, 0, 0, 0]} stroke={color} strokeWidth={cell * 0.12} opacity={0.4} lineCap="round" />
+        </>
+      )}
+    </Group>
+  );
+}
+
+/** A ring of light where a spell goes off or healing lands. */
+function Burst({ at, tone, cell, colors }: { at: { x: number; y: number }; tone: ShotTone; cell: number; colors: ThemeColors }) {
+  const ref = useRef<Konva.Circle>(null);
+  useEffect(() => {
+    const n = ref.current;
+    if (!n) return;
+    n.to({ radius: cell * 0.75, opacity: 0, duration: 0.6 });
+  }, [cell]);
+  const color = TONE_COLOR(colors, tone);
+  return <Circle ref={ref} x={at.x} y={at.y} radius={cell * 0.2} stroke={color} strokeWidth={4} fill={color} opacity={0.6} shadowColor={color} shadowBlur={14} />;
+}
+
+function FloatingText({ x, y, text, fill, size, pop }: { x: number; y: number; text: string; fill: string; size: number; pop?: boolean }) {
   const ref = useRef<Konva.Text>(null);
   useEffect(() => {
-    ref.current?.to({ y: y - size * 1.6, opacity: 0, duration: 1.3 });
-  }, [y, size]);
-  return <Text ref={ref} x={x - 60} y={y} width={120} align="center" text={text} fill={fill} fontSize={size} fontStyle="bold" shadowColor="black" shadowBlur={4} />;
+    const n = ref.current;
+    if (!n) return;
+    if (pop) n.to({ scaleX: 1.4, scaleY: 1.4, duration: 0.15, onFinish: () => n.to({ scaleX: 1, scaleY: 1, duration: 0.15 }) });
+    n.to({ y: y - size * 1.6, opacity: 0, duration: 1.3 });
+  }, [y, size, pop]);
+  return <Text ref={ref} x={x} y={y} offsetX={70} width={140} align="center" text={text} fill={fill} fontSize={size} fontStyle="bold" shadowColor="black" shadowBlur={4} />;
 }

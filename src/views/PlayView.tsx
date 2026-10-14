@@ -25,7 +25,7 @@ import { characterKey, suggestedSpec } from "../game/builder";
 import { MAX_PARTY, availableMembers, deleteCharacter, togglePick } from "../game/party-store";
 import { bindSaves } from "../game/save-bind";
 import { claimSave, legacySaves, useActiveProfile, usePlayers } from "../store/players";
-import { withProgress } from "../game/party";
+import { XP_BY_CR, withProgress } from "../game/party";
 import { INJURIES } from "../game/injuries";
 import { num } from "../game/tuning";
 
@@ -289,7 +289,7 @@ function PlayingAs() {
 }
 
 function Battle({ game }: { game: GameState }) {
-  const { scenario, log, fx, aiRunning, mode: playMode } = usePlay();
+  const { scenario, log, fx, paths, aiRunning, mode: playMode } = usePlay();
   const [mode, setMode] = useState<BoardMode>({ kind: "move" });
   const [hoverId, setHoverId] = useState<string | null>(null);
   const active = currentUnit(game);
@@ -354,6 +354,7 @@ function Battle({ game }: { game: GameState }) {
             mode={mode}
             interactive={heroTurn}
             fx={fx}
+            paths={paths}
             onMove={(to) => active && dispatch({ type: "move", unitId: active.id, to })}
             onTarget={(targetId) => {
               if (!active || mode.kind !== "target") return;
@@ -739,6 +740,58 @@ function fledText(game: GameState): string {
     .join(" ");
 }
 
+/** Who did what: damage, healing, foes dropped, and the battle's hero. */
+function BattleSummary({ game }: { game: GameState }) {
+  const tally = usePlay((s) => s.tally);
+  const heroes = game.units.filter((u) => u.side === "party");
+  const score = (id: string) => {
+    const t = tally[id];
+    return t ? t.dealt + t.healed * 0.75 + t.downed * 6 : 0;
+  };
+  const mvp = [...heroes].sort((a, b) => score(b.id) - score(a.id))[0];
+  const slain = game.units.filter((u) => u.side === "enemy" && u.dead);
+  const xp = slain.reduce((n, u) => n + (XP_BY_CR[u.stats.cr ?? ""] ?? 0), 0);
+  if (!heroes.some((h) => tally[h.id])) return null;
+  return (
+    <div className="mt-3 space-y-2 text-left text-sm">
+      <table className="w-full text-xs">
+        <thead className="text-faint">
+          <tr>
+            <th className="text-left font-normal">Hero</th>
+            <th className="font-normal" title="Damage dealt">⚔</th>
+            <th className="font-normal" title="Damage taken">🩸</th>
+            <th className="font-normal" title="Healing">✚</th>
+            <th className="font-normal" title="Foes dropped">💀</th>
+          </tr>
+        </thead>
+        <tbody>
+          {heroes.map((h) => {
+            const t = tally[h.id] ?? { dealt: 0, taken: 0, healed: 0, downed: 0 };
+            return (
+              <tr key={h.id} className={clsx("border-t border-line/50", h.id === mvp?.id && score(h.id) > 0 && "font-semibold text-strong")}>
+                <td className="py-0.5">
+                  {h.id === mvp?.id && score(h.id) > 0 ? "⭐ " : ""}
+                  {h.name.split(" ")[0]}
+                  {h.dead ? " ✝" : h.hp <= 0 ? " 💤" : ""}
+                </td>
+                <td className="text-center tabular-nums">{t.dealt}</td>
+                <td className="text-center tabular-nums">{t.taken}</td>
+                <td className="text-center tabular-nums">{t.healed || ""}</td>
+                <td className="text-center tabular-nums">{t.downed || ""}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {slain.length > 0 && (
+        <p className="text-center text-xs text-muted">
+          {slain.length} foe{slain.length === 1 ? "" : "s"} defeated · worth {xp} XP
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Outcome({ game }: { game: GameState }) {
   const scenario = usePlay((s) => s.scenario);
   const playMode = usePlay((s) => s.mode);
@@ -748,12 +801,16 @@ function Outcome({ game }: { game: GameState }) {
   const downed = game.units.filter((u) => u.side === "party" && !u.dead && u.hp <= 0).length;
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-80 rounded-lg border border-line bg-surface p-6 text-center shadow-2xl">
-        <h3 className={clsx("text-3xl font-bold", won ? "text-heal" : "text-danger")}>{won ? "Victory!" : game.fled ? "Retreat" : "Defeat"}</h3>
-        <p className="mt-2 text-sm text-muted">
+      <div className="w-[min(26rem,92vw)] rounded-lg border border-line bg-surface p-6 text-center shadow-2xl [animation:pop-in_0.35s_ease-out]">
+        <div className="text-5xl" aria-hidden>
+          {won ? "🏆" : game.fled ? "🏃" : "☠"}
+        </div>
+        <h3 className={clsx("font-display text-3xl font-bold", won ? "text-heal" : "text-danger")}>{won ? "Victory!" : game.fled ? "Retreat" : "Defeat"}</h3>
+        <p className="mt-1 text-sm text-muted">
           {won ? `Won in ${game.round} round${game.round === 1 ? "" : "s"}.` : game.fled ? fledText(game) : "The party has fallen."}
           {won && (fallen || downed) ? ` ${fallen ? `${fallen} fallen` : ""}${fallen && downed ? ", " : ""}${downed ? `${downed} unconscious` : ""}.` : ""}
         </p>
+        <BattleSummary game={game} />
         <div className="mt-4 flex flex-col gap-2">
           {playMode === "town" ? (
             <button className="btn btn-primary font-display" onClick={() => finishTownBattle()}>

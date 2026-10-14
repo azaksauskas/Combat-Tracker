@@ -40,6 +40,8 @@ function hydrate(id: string) {
     context: battle?.context ?? null,
     log: battle?.log ?? [],
     fx: [],
+    paths: {},
+    tally: {},
     aiRunning: false,
   });
   useCampaign.setState({ state: (doc.campaign as CampaignState | null) ?? null });
@@ -57,7 +59,7 @@ function follow() {
     boundTo = null;
     if (!id) {
       hydrating = true;
-      usePlay.setState({ game: null, scenario: null, log: [], fx: [], aiRunning: false });
+      usePlay.setState({ game: null, scenario: null, log: [], fx: [], paths: {}, tally: {}, aiRunning: false });
       useCampaign.setState({ state: null });
       hydrating = false;
       return;
@@ -119,6 +121,8 @@ export function bindSaves() {
         battle: () => usePlay.getState().game,
         campaign: () => useCampaign.getState().state,
         setBattle: (game: GameState) => usePlay.setState({ game }),
+        fx: () => usePlay.getState().fx,
+        tally: () => usePlay.getState().tally,
       },
     });
 }
