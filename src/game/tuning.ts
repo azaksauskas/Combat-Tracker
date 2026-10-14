@@ -100,6 +100,12 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Settlers", "settlers.inviteChance", "Invite chance per happy settler per day", 0.08, undefined, { step: 0.01, max: 1 }),
   f("Settlers", "settlers.moodDrift", "How fast moods follow opinions (0–1)", 0.3, undefined, { step: 0.05, max: 1 }),
   f("Settlers", "settlers.hireCost", "Gold to hire a worker at the tavern", 20),
+  f("Settlers", "trades.untrainedPace", "Pace of a worker without the building's trade", 0.5, "1 = as good as the right trade. Crafting there takes longer by the same factor.", { step: 0.05, min: 0.1, max: 1 }),
+  f("Settlers", "trades.hireTradeMultiplier", "Hiring a chosen trade costs × this", 1.5, undefined, { step: 0.1, min: 1 }),
+  f("Settlers", "trades.callGold", "Notice for a trade: gold", 10),
+  f("Settlers", "trades.callDays", "Notice for a trade: days it stays up", 3, undefined, { min: 1 }),
+  f("Settlers", "trades.callBonus", "Notice: extra traveller chance per day", 0.15, undefined, { step: 0.01, max: 1 }),
+  f("Settlers", "trades.callPull", "Notice: chance a traveller has the trade asked for", 0.7, undefined, { step: 0.05, max: 1 }),
 
   // Events
   f("Events (chance per day)", "events.thief", "Thieves: base chance", 0.06, "Plus the town's power ÷ the number below.", { step: 0.01, max: 1 }),
@@ -125,7 +131,24 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Factions", "militia.holdShare", "Militia holds (smaller losses) from this share of the raiders' strength", 0.6, undefined, { step: 0.05, max: 1 }),
   f("Factions", "militia.heldLoss", "Losses when the militia holds (share of a full raid)", 0.4, undefined, { step: 0.05, max: 1 }),
 
+  // Patrols and contracts
+  f("Patrols & contracts", "patrol.bounty", "Patrol bounty (level 1, first of the day)", 8),
+  f("Patrols & contracts", "patrol.perLevel", "Bounty: extra per hero level above 1 (share)", 0.5, undefined, { step: 0.1 }),
+  f("Patrols & contracts", "patrol.decay", "Each further patrol the same day pays × this", 0.5, "0.5 = 8, 4, 2, 1 gold…", { step: 0.05, max: 1 }),
+  f("Patrols & contracts", "patrol.hours", "Game hours a patrol takes", 4),
+  f("Patrols & contracts", "patrol.difficulty", "Patrol fight size (× a Low 2024 budget)", 1, undefined, { step: 0.1, min: 0.1 }),
+  f("Patrols & contracts", "xp.patrolMultiplier", "XP from patrols and contracts (multiplier)", 0.5, undefined, { step: 0.25 }),
+  f("Patrols & contracts", "contract.chance", "Chance a new contract is posted each morning", 0.5, "When the board has room: 1, +1 with a staffed market, +1 with a staffed tavern.", { step: 0.05, max: 1 }),
+  f("Patrols & contracts", "contract.days", "Days a contract stays on the board", 4, undefined, { min: 1 }),
+  f("Patrols & contracts", "contract.hours", "Game hours a contract takes", 8),
+  f("Patrols & contracts", "contract.rewardMultiplier", "Contract rewards (multiplier)", 1, undefined, { step: 0.1 }),
+  f("Patrols & contracts", "contract.perLevel", "Rewards: extra per hero level above 1 (share)", 0.5, undefined, { step: 0.1 }),
+  f("Patrols & contracts", "contract.difficulty", "Contract fight size (× a Moderate 2024 budget)", 1, undefined, { step: 0.1, min: 0.1 }),
+
   // Crafting
+  f("Crafting", "price.food", "Market price: food", 2),
+  f("Crafting", "price.materials", "Market price: materials", 3),
+  f("Crafting", "price.sellShare", "Selling pays this share of the price", 0.5, undefined, { step: 0.05, max: 1 }),
   f("Crafting", "price.iron", "Market price: iron", 6),
   f("Crafting", "price.herbs", "Market price: herbs", 4),
   f("Crafting", "price.dust", "Market price: arcane dust", 15),

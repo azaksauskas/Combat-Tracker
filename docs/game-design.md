@@ -393,6 +393,30 @@ picker into a real sign-in without changing the data model.
     parting opportunity attack, then the fight is lost. Fleeing an
     adventure fight or a lair costs extra hours on the way back
     (`travel.fleeHours`); fleeing a raid leaves the town to the raiders.
+- **Feedback round, phase B: the town's economy.**
+  - Trades: every staffed building wants a trade (farm: farmer, lumber
+    camp: woodcutter, market: trader, tavern: brewer, apothecary:
+    herbalist, watchtower: guard, smithy: smith, shrine: priest). Anyone
+    can do the job, but at half pace (`trades.untrainedPace`): half the
+    output, and crafting there takes twice as long.
+  - Settlers take the job of their trade first. The player can put anyone
+    anywhere, or tell them to rest. Settlers mind: working their trade
+    pleases them; a workplace of their trade they aren't working, or none
+    at all, doesn't.
+  - The town lists what it needs ("the apothecary stands empty: it needs a
+    herbalist"). A notice at the hall (10 gold, 3 days) calls for a trade:
+    more travellers, mostly of that trade, and they stay. The tavern can
+    hire a chosen trade for 1.5× the price.
+  - Market: buy and sell food, materials, iron, herbs and arcane dust
+    (selling pays half the price), to cover a shortage quickly.
+  - Patrols: a small fight near the town (Low 2024 budget, random foes),
+    4 hours, a bounty of 8 gold at level 1 that halves with each patrol the
+    same day. Half XP.
+  - Contracts: jobs posted on the town's board in the mornings (one, plus
+    one each for a staffed market and tavern), lasting 4 days: a Moderate
+    fight for gold and goods (food, materials, herbs, dust), 8 hours.
+  - Every number is on the balance page (Settlers, Patrols & contracts,
+    Crafting).
 
 ## Future ideas
 

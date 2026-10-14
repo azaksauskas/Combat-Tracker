@@ -4,6 +4,7 @@ import { mulberry32 } from "./rng";
 import type { Faction } from "../domain/faction";
 import { regionDay, regionHour } from "./region";
 import { num } from "./tuning";
+import { contractsDay } from "./economy";
 
 /**
  * Towns and the world clock. Pure: every function takes a town and returns a
@@ -104,21 +105,153 @@ export const isBuilt = (b: Building) => b.readyAt === undefined;
 export const built = (t: Town) => t.buildings.filter(isBuilt);
 export const beds = (t: Town) => built(t).reduce((n, b) => n + (BUILDINGS[b.type].beds ?? 0), 0);
 
-/** Which built buildings have a worker: settlers take jobs in the order buildings went up. */
+// --- Trades and jobs ------------------------------------------------------------------
+
+/** The trade each staffed building wants. Anyone can do the job, but others work at a slower pace. */
+export const TRADE_FOR: Partial<Record<BuildingType, string>> = {
+  farm: "farmer",
+  lumber: "woodcutter",
+  market: "trader",
+  tavern: "brewer",
+  apothecary: "herbalist",
+  watchtower: "guard",
+  smithy: "smith",
+  shrine: "priest",
+};
+/** Trades newcomers can have. */
+export const TRADES = [...new Set(Object.values(TRADE_FOR))] as string[];
+/** The building a trade belongs to. */
+export const buildingForTrade = (trade: string) => (Object.entries(TRADE_FOR) as [BuildingType, string][]).find(([, tr]) => tr === trade)?.[0];
+
+/**
+ * Who works where: building id → settler id. Settlers the player placed keep
+ * their place; the rest take open jobs, the right trade first, in the order
+ * the buildings went up. Settlers told to rest don't work.
+ */
+export function assignments(t: Town): Map<string, string> {
+  const jobs = built(t).filter((b) => BUILDINGS[b.type].staffed);
+  const out = new Map<string, string>();
+  const busy = new Set<string>();
+  for (const s of t.settlers)
+    if (s.job && s.job !== "rest" && jobs.some((b) => b.id === s.job) && !out.has(s.job)) {
+      out.set(s.job, s.id);
+      busy.add(s.id);
+    }
+  const free = () => t.settlers.filter((s) => !busy.has(s.id) && s.job !== "rest" && !(s.job && out.get(s.job) === s.id));
+  for (const matchTrade of [true, false])
+    for (const b of jobs) {
+      if (out.has(b.id)) continue;
+      const s = free().find((x) => !matchTrade || x.trade === TRADE_FOR[b.type]);
+      if (s) {
+        out.set(b.id, s.id);
+        busy.add(s.id);
+      }
+    }
+  return out;
+}
+
+/** Which built buildings have a worker. */
 export function staffing(t: Town): Map<string, boolean> {
-  let free = t.settlers.length;
+  const who = assignments(t);
   const out = new Map<string, boolean>();
-  for (const b of built(t)) {
-    if (!BUILDINGS[b.type].staffed) continue;
-    out.set(b.id, free > 0);
-    if (free > 0) free--;
-  }
+  for (const b of built(t)) if (BUILDINGS[b.type].staffed) out.set(b.id, who.has(b.id));
   return out;
 }
 export const working = (t: Town, type: BuildingType) => {
   const staff = staffing(t);
   return built(t).filter((b) => b.type === type && staff.get(b.id)).length;
 };
+
+/** How well a building is worked: 1 with someone of the right trade, less with anyone else, 0 empty. */
+export function pace(t: Town, buildingId: string, who = assignments(t)): number {
+  const b = t.buildings.find((x) => x.id === buildingId);
+  const s = t.settlers.find((x) => x.id === who.get(buildingId));
+  if (!b || !s) return 0;
+  return s.trade === TRADE_FOR[b.type] ? 1 : num("trades.untrainedPace");
+}
+
+/** All the work done at buildings of a type (2 farms with farmers = 2; one with a stranger = 0.5). */
+export function output(t: Town, type: BuildingType): number {
+  const who = assignments(t);
+  return built(t)
+    .filter((b) => b.type === type)
+    .reduce((n, b) => n + pace(t, b.id, who), 0);
+}
+
+/** The best pace among buildings of a type: crafting there takes hours ÷ this. */
+export const bestPace = (t: Town, type: BuildingType) => {
+  const who = assignments(t);
+  return Math.max(0, ...built(t).filter((b) => b.type === type).map((b) => pace(t, b.id, who)));
+};
+
+/** Game hours a job takes at a building, slower without the right trade. */
+export const craftHours = (t: Town, type: BuildingType, hours: number) => Math.ceil(hours / Math.max(0.1, bestPace(t, type) || 1));
+
+export interface Need {
+  trade: string;
+  building: BuildingType;
+  text: string;
+}
+
+/** What the town lacks: empty workplaces, and workplaces run by the wrong trade. */
+export function needs(t: Town): Need[] {
+  const who = assignments(t);
+  const out: Need[] = [];
+  for (const b of built(t)) {
+    const trade = TRADE_FOR[b.type];
+    if (!trade) continue;
+    const def = BUILDINGS[b.type];
+    if (!who.has(b.id)) out.push({ trade, building: b.type, text: `The ${def.name.toLowerCase()} stands empty: it needs a ${trade}` });
+    else if (pace(t, b.id, who) < 1) {
+      const s = t.settlers.find((x) => x.id === who.get(b.id))!;
+      out.push({ trade, building: b.type, text: `${s.name} works the ${def.name.toLowerCase()} at ${Math.round(num("trades.untrainedPace") * 100)}% pace: it needs a ${trade}` });
+    }
+  }
+  return out;
+}
+
+const an = (word: string) => (/^[aeiou]/i.test(word) ? `an ${word}` : `a ${word}`);
+
+/** What a settler thinks of their work. */
+function jobFeeling(t: Town, s: Settler, who: Map<string, string>): { text: string; delta: number } | null {
+  const place = [...who].find(([, sid]) => sid === s.id)?.[0];
+  const at = place ? t.buildings.find((b) => b.id === place) : undefined;
+  const home = buildingForTrade(s.trade);
+  if (at && TRADE_FOR[at.type] === s.trade) return { delta: 8, text: `Working as ${an(s.trade)}, as I hoped` };
+  if (s.job === "rest") return { delta: 2, text: "Resting, as the heroes asked" };
+  if (home && built(t).some((b) => b.type === home)) return { delta: -8, text: `There's ${an(BUILDINGS[home].name.toLowerCase())} here, but I'm not working it` };
+  if (home) return { delta: -4, text: `No ${BUILDINGS[home].name.toLowerCase()} here for ${an(s.trade)}` };
+  if (!at) return { delta: -3, text: "Nothing to do all day" };
+  return null;
+}
+
+/** A notice at the town hall calling for someone of a trade. */
+export const callCost = () => num("trades.callGold");
+export function postCall(t: Town, trade: string): Town {
+  if (!TRADES.includes(trade)) throw new Error(`Nobody knows what a ${trade} is`);
+  if (t.gold < callCost()) throw new Error(`Needs ${callCost()} gold`);
+  const until = Math.floor(t.hours) + num("trades.callDays") * 24;
+  return {
+    ...t,
+    gold: t.gold - callCost(),
+    call: { trade, until },
+    log: [...t.log, { at: t.hours, text: `Posted a notice: a ${trade} wanted (until ${clockText(until)}).`, tone: "info" as const }].slice(-MAX_TOWN_LOG),
+  };
+}
+
+/** The player puts a settler to work somewhere, tells them to rest, or lets them choose (null). */
+export function assign(t: Town, settlerId: string, job: string | null): Town {
+  if (job && job !== "rest" && !built(t).some((b) => b.id === job && BUILDINGS[b.type].staffed)) throw new Error("That's not a workplace");
+  return {
+    ...t,
+    settlers: t.settlers.map((s) => {
+      if (s.id === settlerId) return job ? { ...s, job } : { ...s, job: undefined };
+      // Whoever had that place goes back to choosing.
+      if (job && job !== "rest" && s.job === job) return { ...s, job: undefined };
+      return s;
+    }),
+  };
+}
 
 /** Why this building can't be started now, or null if it can. */
 export function cantBuild(t: Town, type: BuildingType, renown: number): string | null {
@@ -155,6 +288,8 @@ export function foundTown(name: string, now: number, seed: number, gold = num("t
     lastTheft: -1000,
     threats: [],
     raidNews: [],
+    patrols: { day: 0, count: 0 },
+    contracts: [],
     buildings: [{ id: "hall", type: "hall" }],
     settlers: [],
     log: [{ at: DAWN, text: `${name.trim() || "The town"} is founded.`, tone: "good" }],
@@ -218,7 +353,7 @@ const REP_MAX = 10;
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
 /** How someone with this alignment feels about living in the town right now. */
-export function opinion(t: Town, alignment: string, ctx: SimContext, hour = t.hours): Opinion {
+export function opinion(t: Town, alignment: string, ctx: SimContext, hour = t.hours, settler?: Settler): Opinion {
   const reasons: Opinion["reasons"] = [];
   const add = (delta: number, text: string) => delta !== 0 && reasons.push({ delta, text });
   const mouths = Math.max(1, t.settlers.length);
@@ -235,6 +370,10 @@ export function opinion(t: Town, alignment: string, ctx: SimContext, hour = t.ho
   if (t.spirit >= 5) add(Math.round(t.spirit / 2), "Proud of our heroes");
   else if (t.spirit <= -5) add(Math.round(t.spirit / 2), "Our heroes keep failing");
   if (ctx.ownerAway) add(-6, "The hall stands empty");
+  if (settler) {
+    const f = jobFeeling(t, settler, assignments(t));
+    if (f) add(f.delta, f.text);
+  }
   // Beliefs: do the heroes act the way this person thinks is right?
   const me = axesOf(alignment);
   const fit = (me.law * t.reputation.law + me.good * t.reputation.good) / REP_MAX;
@@ -282,31 +421,32 @@ export function applyDeeds(t: Town, deeds: { law: number; good: number }): Town 
 /** Triumphs lift the town's spirit; defeats and deaths sink it. */
 export const lift = (t: Town, delta: number): Town => ({ ...t, spirit: clamp(t.spirit + delta, -20, 20) });
 
-function newcomer(t: Town, h: number, rng: () => number, from: string): Settler {
+function newcomer(t: Town, h: number, rng: () => number, from: string, trade?: string): Settler {
   const taken = new Set(t.settlers.map((s) => s.name));
   const name = pick(NAMES.filter((n) => !taken.has(n)).concat(`${pick(NAMES, rng)} the Younger`), rng);
-  return { id: `s${h}-${Math.floor(rng() * 1e6)}`, name, trade: pick(TRADES, rng), from, arrivedAt: h, alignment: randomAlignment(rng), mood: 60, mind: "" };
+  return { id: `s${h}-${Math.floor(rng() * 1e6)}`, name, trade: trade ?? pick(TRADES, rng), from, arrivedAt: h, alignment: randomAlignment(rng), mood: 60, mind: "" };
 }
 
 /** A staffed tavern can hire a worker on the spot. */
-export const hireCost = () => num("settlers.hireCost");
-export function hire(t: Town): Town {
+/** Hiring at the tavern; asking for a particular trade costs more. */
+export const hireCost = (trade?: string) => Math.round(num("settlers.hireCost") * (trade ? num("trades.hireTradeMultiplier") : 1));
+export function hire(t: Town, trade?: string): Town {
   if (!working(t, "tavern")) throw new Error("Hiring needs a staffed tavern");
   if (t.settlers.length >= beds(t)) throw new Error("No free bed for a new worker");
-  if (t.gold < hireCost()) throw new Error(`Needs ${hireCost()} gold`);
+  const cost = hireCost(trade);
+  if (t.gold < cost) throw new Error(`Needs ${cost} gold`);
   const seeded = mulberry32(t.seed);
-  const s = newcomer(t, Math.floor(t.hours), seeded.rng, "Hired at the tavern");
+  const s = newcomer(t, Math.floor(t.hours), seeded.rng, "Hired at the tavern", trade);
   return {
     ...t,
-    gold: t.gold - hireCost(),
+    gold: t.gold - cost,
     seed: seeded.seed(),
     settlers: [...t.settlers, { ...s, mood: 55, mind: "Here for the wages" }],
-    log: [...t.log, { at: t.hours, text: `Hired ${s.name}, a ${s.trade}, for ${hireCost()} gold.`, tone: "good" as const }].slice(-MAX_TOWN_LOG),
+    log: [...t.log, { at: t.hours, text: `Hired ${s.name}, a ${s.trade}, for ${cost} gold.`, tone: "good" as const }].slice(-MAX_TOWN_LOG),
   };
 }
 
 const NAMES = ["Aldo", "Bryn", "Cora", "Dunstan", "Elsie", "Fenn", "Greta", "Hollis", "Ida", "Jory", "Kestrel", "Lute", "Mabry", "Nell", "Osric", "Pell", "Quinn", "Rosa", "Sten", "Tilda", "Ulric", "Vesna", "Wren", "Yorick"];
-const TRADES = ["farmer", "woodcutter", "carpenter", "brewer", "herbalist", "hunter", "trader", "mason", "weaver", "guard"];
 const pick = <T,>(xs: readonly T[], rng: () => number) => xs[Math.floor(rng() * xs.length)]!;
 const roll = (n: number, sides: number, rng: () => number) => Array.from({ length: n }, () => Math.floor(rng() * sides) + 1).reduce((a, b) => a + b, 0);
 
@@ -324,18 +464,18 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
     };
   }
   // Raiders and deadlines keep their hour.
-  if (ctx.factions?.length) t = regionHour(t, h, rng, ctx.factions, { towers: working(t, "watchtower") }, say);
+  if (ctx.factions?.length) t = regionHour(t, h, rng, ctx.factions, { towers: output(t, "watchtower") }, say);
   if (h % 24 !== DAWN) return t;
 
   // --- A new day: production, mouths to feed, then whatever the day brings.
   let { gold, food, materials } = t;
   const stash = { ...t.stash };
-  food += num("prod.hallFood") + num("prod.farmFood") * working(t, "farm");
-  materials += num("prod.hallMaterials") + num("prod.lumberMaterials") * working(t, "lumber");
+  food += num("prod.hallFood") + Math.round(num("prod.farmFood") * output(t, "farm"));
+  materials += num("prod.hallMaterials") + Math.round(num("prod.lumberMaterials") * output(t, "lumber"));
   const markets = working(t, "market");
-  gold += markets * (num("prod.marketGold") + Math.floor(t.settlers.length / Math.max(1, num("prod.marketSettlersPerGold")))) + num("prod.tavernGold") * working(t, "tavern");
+  gold += Math.round(output(t, "market") * (num("prod.marketGold") + Math.floor(t.settlers.length / Math.max(1, num("prod.marketSettlersPerGold")))) + num("prod.tavernGold") * output(t, "tavern"));
   let components = t.components;
-  if (working(t, "apothecary")) components = { ...components, herbs: components.herbs + num("prod.apothecaryHerbs") };
+  if (working(t, "apothecary")) components = { ...components, herbs: components.herbs + Math.max(1, Math.round(num("prod.apothecaryHerbs") * output(t, "apothecary"))) };
   if (working(t, "apothecary") && day(h) % Math.max(1, Math.round(num("prod.potionEveryDays"))) === 0) {
     stash["potion-healing"] = (stash["potion-healing"] ?? 0) + 1;
     say("The apothecary brewed a Potion of Healing.", "good");
@@ -362,7 +502,7 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
   }
   // Moods drift towards what each settler thinks of the town; the unhappy leave, the happy bring others.
   const moods = t.settlers.map((s0) => {
-    const o = opinion(t, s0.alignment, ctx, h);
+    const o = opinion(t, s0.alignment, ctx, h, s0);
     const mood = clamp(Math.round(s0.mood + (o.target - s0.mood) * num("settlers.moodDrift") - (hungry > 0 ? 15 : 0)), 0, 100);
     return { ...s0, mood, mind: say1(o, mood < 50 ? "bad" : "good") };
   });
@@ -380,20 +520,32 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
     say(`${s.name}, a ${s.trade}, came because a friend here wrote how good life is.`, "good");
   } else if (free > 0) {
     // Travellers: the more appealing the town, the more stop by; the tavern spreads the word.
-    const chance = clamp((appeal(t, ctx) - 30) / 150, num("settlers.travellerMin"), num("settlers.travellerMax")) + (working(t, "tavern") ? num("settlers.tavernBonus") : 0);
+    // A notice at the hall brings people of the trade asked for.
+    const call = t.call && t.call.until >= h ? t.call : undefined;
+    const chance =
+      clamp((appeal(t, ctx) - 30) / 150, num("settlers.travellerMin"), num("settlers.travellerMax")) + (working(t, "tavern") ? num("settlers.tavernBonus") : 0) + (call ? num("trades.callBonus") : 0);
     if (rng() < chance) {
-      const s = newcomer(t, h, rng, working(t, "tavern") ? "Heard about the town at the tavern" : "Wandered in from the road");
-      const o = opinion(t, s.alignment, ctx, h);
-      if (o.target >= num("settlers.stayAt")) {
-        t = { ...t, settlers: [...t.settlers, { ...s, mood: o.target, mind: say1(o, "good") }] };
-        say(`${s.name}, a ${s.trade} (${s.alignment}), arrived and asked to stay.`, "good");
+      const answered = call && rng() < num("trades.callPull") ? call.trade : undefined;
+      const s = newcomer(t, h, rng, answered ? `Answered the notice for a ${answered}` : working(t, "tavern") ? "Heard about the town at the tavern" : "Wandered in from the road", answered);
+      // They'd take an open job of their trade, so judge the town as if they had.
+      const o = opinion(t, s.alignment, ctx, h, s);
+      if (o.target >= num("settlers.stayAt") || answered) {
+        t = { ...t, settlers: [...t.settlers, { ...s, mood: Math.max(o.target, answered ? 60 : 0), mind: answered ? "Came for the work on the notice" : say1(o, "good") }] };
+        if (answered) t = { ...t, call: undefined };
+        say(`${s.name}, a ${s.trade} (${s.alignment}), ${answered ? "answered the notice and moved in" : "arrived and asked to stay"}.`, "good");
       } else say(`${s.name}, a ${s.trade}, looked around and moved on: "${say1(o, "bad") || "Not for me"}."`, "info");
     }
   } else if (rng() < 0.05) {
     say("A traveller asked for a bed, but every bed is taken. Build a house.", "info");
   }
+  if (t.call && t.call.until < h) {
+    say(`Nobody answered the notice for a ${t.call.trade}.`, "info");
+    t = { ...t, call: undefined };
+  }
+  // Work on the board.
+  t = contractsDay(t, h, rng, ctx.renown, say);
   // The region takes notice.
-  if (ctx.factions?.length) t = regionDay(t, h, rng, ctx.factions, { power: power(t, ctx), towers: working(t, "watchtower"), renown: ctx.renown }, say);
+  if (ctx.factions?.length) t = regionDay(t, h, rng, ctx.factions, { power: power(t, ctx), towers: output(t, "watchtower"), renown: ctx.renown }, say);
   // Pride in the heroes fades.
   if (t.spirit !== 0) t = { ...t, spirit: t.spirit - Math.sign(t.spirit) };
   if (rng() < num("events.caravan")) {

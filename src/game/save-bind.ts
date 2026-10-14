@@ -4,7 +4,7 @@ import type { LogLine } from "./log";
 import type { Scenario } from "./scenarios";
 import type { GameState } from "./state";
 import type { UnitSetup } from "./engine";
-import { runAi, usePlay } from "./store";
+import { runAi, usePlay, type TownBattleContext } from "./store";
 import { CLIENT_ID, updatePlayer, useActiveProfile, usePlayers } from "../store/players";
 
 /**
@@ -18,7 +18,7 @@ interface SavedBattle {
   game: GameState;
   scenario: (Scenario & { custom?: UnitSetup[] }) | null;
   mode: "skirmish" | "campaign" | "town";
-  context?: { kind: "raid" | "lair"; faction: string; heroes?: string[] } | null;
+  context?: TownBattleContext | null;
   log: LogLine[];
 }
 

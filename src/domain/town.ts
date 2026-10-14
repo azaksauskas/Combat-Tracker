@@ -42,6 +42,8 @@ export const SettlerSchema = z.object({
   mood: z.number().catch(60),
   /** What's on their mind, in their words. */
   mind: z.string().catch(""),
+  /** Where the player put them: a building id, or "rest". Absent: they take whatever job needs them. */
+  job: z.string().optional().catch(undefined),
 });
 export type Settler = z.infer<typeof SettlerSchema>;
 
@@ -53,6 +55,23 @@ export const TownEventSchema = z.object({
 });
 export type TownEvent = z.infer<typeof TownEventSchema>;
 export const MAX_TOWN_LOG = 120;
+
+/** A job posted on the town's notice board: a fight, for a reward. */
+export const ContractSchema = z.object({
+  id,
+  title: z.string().catch("A job"),
+  text: z.string().catch(""),
+  /** Which kind of foe (see game/patrol.ts). */
+  foe: z.string().catch("bandits"),
+  reward: z
+    .object({ gold: z.number().catch(0), food: z.number().catch(0), materials: z.number().catch(0), herbs: z.number().catch(0), dust: z.number().catch(0) })
+    .catch({ gold: 0, food: 0, materials: 0, herbs: 0, dust: 0 }),
+  /** Game hour when it's no longer needed. */
+  expiresAt: z.number().catch(0),
+  /** Fixes the battle for this contract. */
+  seed: z.number().catch(1),
+});
+export type Contract = z.infer<typeof ContractSchema>;
 
 /** A raid the player hasn't read about yet (shown once, then cleared). */
 export const RaidNewsSchema = z.object({
@@ -99,6 +118,12 @@ export const TownSchema = z.object({
   lastTheft: z.number().catch(-1000),
   /** The region's factions and how interested each is in this town. */
   threats: lenient(ThreatSchema),
+  /** A notice calling for someone of a trade, until this game hour. */
+  call: z.object({ trade: z.string(), until: z.number() }).optional().catch(undefined),
+  /** Patrols the heroes went on this game day (bounties shrink with each). */
+  patrols: z.object({ day: z.number().catch(0), count: z.number().catch(0) }).catch({ day: 0, count: 0 }),
+  /** Work posted on the town's board: fights for pay. */
+  contracts: lenient(ContractSchema),
   /** Raids to tell the player about. */
   raidNews: lenient(RaidNewsSchema),
   /** Other players may move in. */

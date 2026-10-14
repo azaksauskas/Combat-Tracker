@@ -16,11 +16,16 @@ import { setupFor } from "./scenarios";
 import { quitGame, startBattle, usePlay } from "./store";
 import { chosenParty, recordAftermath } from "./party-store";
 import { INJURIES, aftermath } from "./injuries";
+import { completeContract, notePatrol, patrolBounty, rewardText, tradeAtMarket, type Good } from "./economy";
+import { PATROL_FOES, foeBattle } from "./patrol";
 import { MAX_LEVEL, XP_BY_CR, XP_FOR_LEVEL, levelForXp } from "./party";
 import {
   onlineMsPerHour,
   advance,
   awayReport,
+  craftHours,
+  assign,
+  postCall,
   applyDeeds,
   bringHome,
   catchUp,
@@ -322,10 +327,12 @@ export function sleep() {
 
 // --- Crafting -----------------------------------------------------------------------
 
-function work(cost: Cost, hours: number, what: string, change: (t: Town) => Town) {
+/** A job at a workplace: pay, then wait (longer without a worker of the right trade). */
+function work(at: BuildingType, cost: Cost, baseHours: number, what: string, change: (t: Town) => Town) {
   const id = me();
   const t = docOf(id)?.town;
   if (!id || !t) return false;
+  const hours = craftHours(t, at, baseHours);
   const why = cantAfford(t, cost);
   if (why) {
     toast.error(why);
@@ -336,12 +343,13 @@ function work(cost: Cost, hours: number, what: string, change: (t: Town) => Town
   return true;
 }
 
+
 /** Fit a mod to one of the player's heroes at the smithy. */
 export function craftMod(heroKey: string, heroName: string, modId: string) {
   const mod = MODS[modId];
   const id = me();
   if (!mod || !id) return;
-  if (!work(mod.cost, mod.hours, `The smith fitted ${heroName}'s ${SLOTS[mod.slot].toLowerCase()} with: ${mod.name}`, (t) => t)) return;
+  if (!work("smithy", mod.cost, mod.hours, `The smith fitted ${heroName}'s ${SLOTS[mod.slot].toLowerCase()} with: ${mod.name}`, (t) => t)) return;
   updatePlayer(id, (d) => ({ ...d, gear: { ...d.gear, [heroKey]: fitMod(d.gear[heroKey] ?? [], modId) } }));
   addChronicle(id, [{ kind: "loot", text: `${heroName}'s ${SLOTS[mod.slot].toLowerCase()} now has: ${mod.name} (${mod.description.replace(/\.$/, "")}).` }]);
 }
@@ -354,16 +362,7 @@ export function removeMod(heroKey: string, modId: string) {
 export function brew(itemId: string, name: string) {
   const b = BREWS[itemId];
   if (!b) return;
-  work(b.cost, b.hours, `The apothecary brewed a ${name}`, (t) => ({ ...t, stash: { ...t.stash, [itemId]: (t.stash[itemId] ?? 0) + 1 } }));
-}
-
-export function buy(component: Component, n = 1) {
-  const id = me();
-  const t = docOf(id)?.town;
-  if (!id || !t) return;
-  const price = COMPONENTS[component].price * n;
-  if (t.gold < price) return toast.error(`Needs ${price} gold`);
-  setTown(id, (x) => addComponents({ ...x, gold: x.gold - price }, { [component]: n }));
+  work("apothecary", b.cost, b.hours, `The apothecary brewed a ${name}`, (t) => ({ ...t, stash: { ...t.stash, [itemId]: (t.stash[itemId] ?? 0) + 1 } }));
 }
 
 /** Iron and dust from a won battle go to the town's stores. */
@@ -378,17 +377,68 @@ export function salvageBattle(game: GameState, battle: string) {
   setTown(id, (t) => ({ ...addComponents(t, found), log: [...t.log, { at: t.hours, text, tone: "good" as const }].slice(-MAX_TOWN_LOG) }));
 }
 
-/** Hire a worker at the tavern (gold, a free bed). */
-export function hireWorker() {
+/** Hire a worker at the tavern (gold, a free bed); naming a trade costs more. */
+export function hireWorker(trade?: string) {
+  townAction((t) => hire(t, trade));
+}
+
+/** Put up a notice at the hall asking for someone of a trade. */
+export function postNotice(trade: string) {
+  townAction((t) => postCall(t, trade));
+}
+
+/** Move a settler to a workplace, tell them to rest ("rest"), or let them choose (null). */
+export function assignSettler(settlerId: string, job: string | null) {
+  townAction((t) => assign(t, settlerId, job));
+}
+
+/** Buy (n > 0) or sell (n < 0) at the market. */
+export function marketTrade(good: Good, n: number) {
+  townAction((t) => tradeAtMarket(t, good, n));
+}
+
+function townAction(change: (t: Town) => Town) {
   const id = me();
   const t = docOf(id)?.town;
   if (!id || !t) return;
   try {
-    const next = hire(t);
+    const next = change(t);
     updatePlayer(id, (d) => ({ ...d, town: next }));
   } catch (err) {
     toast.error(err instanceof Error ? err.message : String(err));
   }
+}
+
+// --- Patrols and contracts -------------------------------------------------------------
+
+/** The heroes' level for sizing fights: the best among those going. */
+export const partyLevel = (party: ReturnType<typeof chosenParty>) => Math.max(1, ...party.map((e) => e.build().stats?.level ?? 1));
+
+/** Ride out around the town looking for trouble, for a small bounty. */
+export function startPatrol() {
+  const id = me();
+  const t = docOf(id)?.town;
+  if (!id || !t) return;
+  const party = chosenParty();
+  if (!party.length) return toast.error("Pick the heroes who'll go first");
+  const seed = (t.seed ^ Math.floor(t.hours * 7919)) >>> 0;
+  const foe = PATROL_FOES[seed % PATROL_FOES.length]!;
+  const sc = foeBattle(foe, partyLevel(party), party.length, "low", seed);
+  const { board, units } = setupFor(sc, party);
+  startBattle(sc, board, units, { stash: { ...t.stash } }, "town", { kind: "patrol", heroes: party.map((e) => e.key) });
+}
+
+/** Take a job from the town's board. */
+export function startContract(contractId: string) {
+  const id = me();
+  const t = docOf(id)?.town;
+  const c = t?.contracts.find((x) => x.id === contractId);
+  if (!id || !t || !c) return;
+  const party = chosenParty();
+  if (!party.length) return toast.error("Pick the heroes who'll go first");
+  const sc = foeBattle(c.foe, partyLevel(party), party.length, "moderate", c.seed, c.title);
+  const { board, units } = setupFor(sc, party);
+  startBattle(sc, board, units, { stash: { ...t.stash } }, "town", { kind: "contract", contract: c.id, heroes: party.map((e) => e.key) });
 }
 
 // --- The region: tribute, raids and lairs ------------------------------------------------
@@ -444,17 +494,47 @@ export function startTownBattle(kind: "raid" | "lair", fid: string) {
 export function finishTownBattle(retreat = false) {
   const id = me();
   const { game, context, scenario } = usePlay.getState();
-  const f = context ? factionOf(context.faction) : undefined;
-  if (!id || !game || !context || !f) return quitGame();
+  if (!id || !game || !context) return quitGame();
   const fled = retreat || !!game.fled;
   const won = !fled && game.outcome === "victory";
   const keys = context.heroes ?? [];
   recordAftermath(aftermath(game, (uid) => (/^p\d+$/.test(uid) ? keys[Number(uid.slice(1))] : undefined)));
+  const battle = scenario?.name ?? "a fight";
+  const keepStash = (t: Town): Town => ({ ...t, stash: { ...(game.stash ?? t.stash) } });
+
+  if (context.kind === "patrol" || context.kind === "contract") {
+    const town = docOf(id)?.town;
+    if (!town) return quitGame();
+    const patrol = context.kind === "patrol";
+    const bounty = patrol ? patrolBounty(town, partyLevel(chosenParty())) : 0;
+    const contract = town.contracts.find((c) => c.id === context.contract);
+    updatePlayer(id, (d) => {
+      if (!d.town) return d;
+      let t = keepStash(d.town);
+      if (patrol) {
+        t = notePatrol(t);
+        if (won) t = { ...t, gold: t.gold + bounty, log: [...t.log, { at: t.hours, text: `The heroes' patrol cleared ${battle.replace(/^Patrol: /, "")}: ${bounty} gold bounty.`, tone: "good" as const }].slice(-MAX_TOWN_LOG) };
+      } else if (won && contract) t = completeContract(t, contract.id);
+      return { ...d, town: t };
+    });
+    if (won) {
+      salvageBattle(game, battle);
+      awardXp(id, game, keys, undefined, num("xp.patrolMultiplier"));
+      toast.success(patrol ? `Bounty: ${bounty} gold` : `Job done: ${contract ? rewardText(contract.reward) : "paid"}`);
+    }
+    addChronicle(id, [{ kind: "fight", text: won ? (patrol ? `Patrolled: ${battle.replace(/^Patrol: /, "")}, for ${bounty} gold.` : `Finished a job: ${battle}.`) : fled ? `Fell back from ${battle}.` : `Lost ${battle}.` }]);
+    const hours = num(patrol ? "patrol.hours" : "contract.hours") + (fled ? num("travel.fleeHours") : 0);
+    passTime(hours, patrol ? "The heroes rode out on patrol" : `The heroes went out on a job`);
+    return quitGame();
+  }
+
+  const f = context.faction ? factionOf(context.faction) : undefined;
+  if (!f) return quitGame();
   const result = context.kind === "raid" ? raidResult : lairResult;
-  updatePlayer(id, (d) => (d.town ? { ...d, town: { ...result(d.town, f, won), stash: { ...(game.stash ?? d.town.stash) } } } : d));
+  updatePlayer(id, (d) => (d.town ? { ...d, town: keepStash(result(d.town, f, won)) } : d));
   if (won) {
-    salvageBattle(game, scenario?.name ?? f.name);
-    awardXp(id, game, context.heroes ?? [], context.kind === "lair" ? f.milestone : undefined);
+    salvageBattle(game, battle);
+    awardXp(id, game, keys, context.kind === "lair" ? f.milestone : undefined);
   }
   addChronicle(id, [
     {
@@ -476,10 +556,10 @@ export function finishTownBattle(retreat = false) {
 }
 
 /** XP for the heroes who fought (monsters' XP shared out), and a lair's milestone level. */
-function awardXp(id: string, game: GameState, keys: string[], milestone: number | undefined) {
+function awardXp(id: string, game: GameState, keys: string[], milestone: number | undefined, multiplier = num("xp.battleMultiplier")) {
   if (!keys.length) return;
   const monsterXp = game.units.filter((u) => u.side === "enemy" && u.dead).reduce((n, u) => n + (XP_BY_CR[u.stats.cr ?? ""] ?? 0), 0);
-  const share = Math.floor((monsterXp * num("xp.battleMultiplier")) / keys.length);
+  const share = Math.floor((monsterXp * multiplier) / keys.length);
   const names = new Map(chosenParty().map((e) => [e.key, e.label]));
   const ups: string[] = [];
   let best = 0;
@@ -510,7 +590,7 @@ export const raiseCost = (): Cost => ({ gold: num("shrine.raiseGold"), dust: num
 export function treatInjury(heroKey: string, heroName: string, injury: string) {
   const id = me();
   if (!id) return;
-  if (!work(treatCost(), num("shrine.treatHours"), `The shrine tended ${heroName}'s ${INJURIES[injury]?.name.toLowerCase() ?? "wound"}`, (t) => t)) return;
+  if (!work("shrine", treatCost(), num("shrine.treatHours"), `The shrine tended ${heroName}'s ${INJURIES[injury]?.name.toLowerCase() ?? "wound"}`, (t) => t)) return;
   updatePlayer(id, (d) => {
     const list = [...(d.injuries[heroKey] ?? [])];
     const i = list.indexOf(injury);
@@ -524,7 +604,7 @@ export function treatInjury(heroKey: string, heroName: string, injury: string) {
 export function raiseHero(heroKey: string, heroName: string) {
   const id = me();
   if (!id) return;
-  if (!work(raiseCost(), num("shrine.raiseHours"), `The shrine's priests raised ${heroName} from the dead`, (t) => t)) return;
+  if (!work("shrine", raiseCost(), num("shrine.raiseHours"), `The shrine's priests raised ${heroName} from the dead`, (t) => t)) return;
   updatePlayer(id, (d) => ({ ...d, fallen: d.fallen.filter((k) => k !== heroKey) }));
   addChronicle(id, [{ kind: "story", text: `${heroName} was raised from the dead at the shrine.` }]);
 }

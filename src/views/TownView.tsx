@@ -3,13 +3,17 @@ import { useEffect, useState } from "react";
 import { Dialog } from "../components/Dialog";
 import { BUILDING_TYPES, type Town } from "../domain/town";
 import type { Profile } from "../domain/players";
+import { TRADES, TRADE_FOR, assignments, callCost, needs, pace } from "../game/town";
 import { BUILDINGS, hireCost, beds, built, cantBuild, clockText, durationText, helpsLeft, isBuilt, opinion, power, renownOf, sleepHours, staffing, type SimContext } from "../game/town";
 import { reputationText } from "../domain/alignment";
 import { raiseCost, raiseHero, treatCost, treatInjury } from "../game/town-store";
 import { INJURIES } from "../game/injuries";
 import { allFactions, payTributeTo, refuseTributeTo, startTownBattle } from "../game/town-store";
 import { STAGE_TEXT, canStrike, threatOf } from "../game/region";
-import { bindTown, hireWorker, brew, build, buy, craftMod, found, goHome, helpOut, joinTown, liveHours, removeMod, renameTown, setOpen, sleep, today, townContext, useTownUi } from "../game/town-store";
+import { assignSettler, marketTrade, partyLevel, postNotice, startContract, startPatrol } from "../game/town-store";
+import { GOODS, GOOD_INFO, boardSize, buyPrice, patrolBounty, patrolsToday, rewardText, sellPrice, stock } from "../game/economy";
+import { chosenParty } from "../game/party-store";
+import { bindTown, hireWorker, brew, build, craftMod, found, goHome, helpOut, joinTown, liveHours, removeMod, renameTown, setOpen, sleep, today, townContext, useTownUi } from "../game/town-store";
 import { BREWS, COMPONENTS, MODS, SLOTS, applyMods, cantAfford, costText, fits, type Component, type Slot } from "../game/crafting";
 import { ITEMS, withProgress } from "../game/party";
 import { availableMembers, myCharacters } from "../game/party-store";
@@ -77,7 +81,6 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
   const hours = liveHours(t, now);
   const ctx = townContext(ownerId);
   const r = renownOf(renown);
-  const staff = staffing(t);
   const [name, setName] = useState(t.name);
   const residents = useResidents(ownerId);
   useEffect(() => setName(t.name), [t.name]);
@@ -117,6 +120,8 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
 
       <Alarms town={t} hours={hours} />
 
+      <Board town={t} hours={hours} />
+
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-4">
           <section className="rounded-lg border border-line bg-surface p-3 shadow" aria-label="Buildings">
@@ -133,7 +138,7 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
                       {def.icon} {def.name}
                     </div>
                     {isBuilt(b) ? (
-                      def.staffed && <div className={clsx("text-xs", staff.get(b.id) ? "text-heal" : "text-warn")}>{staff.get(b.id) ? "Staffed" : "Needs a worker"}</div>
+                      def.staffed && <Worker town={t} buildingId={b.id} />
                     ) : (
                       <>
                         <div className="text-xs text-muted">Building · {durationText(Math.ceil(left))} left</div>
@@ -164,7 +169,7 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
                       </span>
                       <span className="flex-1 text-xs text-muted">{def.description}</span>
                       <span className="mt-1 text-xs text-faint">
-                        {def.cost.gold} gold · {def.cost.materials} materials · {def.hours} h{def.staffed ? " · needs a worker" : ""}
+                        {def.cost.gold} gold · {def.cost.materials} materials · {def.hours} h{def.staffed ? ` · needs a ${TRADE_FOR[type] ?? "worker"}` : ""}
                       </span>
                       {why && <span className="text-xs text-warn">{why}</span>}
                     </button>
@@ -319,6 +324,8 @@ function Settlers({ town: t, ctx, residents }: { town: Town; ctx: SimContext; re
   const tavern = staffedOf(t, "tavern");
   const workers = [...staffing(t).values()];
   const idle = workers.filter((x) => !x).length;
+  const jobOf = new Map([...assignments(t)].map(([b, sid]) => [sid, b]));
+  const [hireTrade, setHireTrade] = useState("");
   return (
     <section className="space-y-3 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Settlers">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -336,16 +343,18 @@ function Settlers({ town: t, ctx, residents }: { town: Town; ctx: SimContext; re
               <span className="text-xl" title={`Mood ${s.mood}/100`} aria-label={`Mood ${s.mood} of 100`}>
                 {face(s.mood)}
               </span>
-              <span>
+              <span className="min-w-0 flex-1">
                 <strong className="text-strong">{s.name}</strong>
                 {s.trade && <span className="text-muted">, {s.trade}</span>} <span className="text-xs text-faint">· {s.alignment}</span>
                 {s.mind && <span className={clsx("block text-xs italic", s.mood < 40 ? "text-danger" : "text-muted")}>“{s.mind}”</span>}
                 <span className="block text-xs text-faint">{s.from}</span>
+                <JobPicker town={t} settlerId={s.id} job={s.job} at={jobOf.get(s.id)} />
               </span>
             </li>
           ))}
         </ul>
       )}
+      <Needs town={t} />
       {residents.length > 0 && <p className="text-sm">Heroes living here: {residents.map((p) => p.name).join(", ")}</p>}
       <div className="rounded-md border border-line bg-surface-2/60 p-2 text-sm" aria-label="Appeal">
         <div>
@@ -363,9 +372,24 @@ function Settlers({ town: t, ctx, residents }: { town: Town; ctx: SimContext; re
         <p className="mt-1 text-xs text-faint">
           Travellers come more often to an appealing town, and far more with a tavern. Each settler also judges the heroes' deeds by their own beliefs; content settlers invite friends, miserable ones leave.
         </p>
-        <button className="btn mt-2 text-sm" disabled={!tavern || free <= 0 || t.gold < hireCost()} onClick={hireWorker} title={!tavern ? "Needs a staffed tavern" : free <= 0 ? "No free bed" : ""}>
-          🍺 Hire a worker ({hireCost()} gold){!tavern ? " · needs a staffed tavern" : ""}
-        </button>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <select className="field py-1 text-sm" value={hireTrade} onChange={(e) => setHireTrade(e.target.value)} aria-label="Trade to hire" disabled={!tavern}>
+            <option value="">Anyone ({hireCost()} gold)</option>
+            {TRADES.map((tr) => (
+              <option key={tr} value={tr}>
+                A {tr} ({hireCost(tr)} gold)
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn text-sm"
+            disabled={!tavern || free <= 0 || t.gold < hireCost(hireTrade || undefined)}
+            onClick={() => hireWorker(hireTrade || undefined)}
+            title={!tavern ? "Needs a staffed tavern" : free <= 0 ? "No free bed" : ""}
+          >
+            🍺 Hire{!tavern ? " · needs a staffed tavern" : ""}
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -385,7 +409,7 @@ function Workshop({ town: t }: { town: Town }) {
   if (!smithy && !apothecary && !market && !shrine)
     return (
       <section className="rounded-lg border border-dashed border-line p-3 text-sm text-muted" aria-label="Workshop">
-        <strong className="text-strong">Workshop.</strong> Build and staff a smithy to fit mods to your heroes, an apothecary to brew potions, a market to buy iron, herbs and arcane dust, or a shrine to heal lasting injuries and raise the fallen. Iron and dust are also salvaged from battles won on adventures.
+        <strong className="text-strong">Workshop.</strong> Build and staff a smithy to fit mods to your heroes, an apothecary to brew potions, a market to buy and sell food, materials, iron, herbs and arcane dust, or a shrine to heal lasting injuries and raise the fallen. Iron and dust are also salvaged from battles won on adventures.
       </section>
     );
   return (
@@ -414,17 +438,153 @@ function Workshop({ town: t }: { town: Town }) {
           </ul>
         </div>
       )}
-      {market && (
-        <div>
-          <h3 className="mb-1 text-xs font-bold tracking-wider text-faint uppercase">⚖ Market</h3>
-          <div className="flex flex-wrap gap-2">
-            {(Object.keys(COMPONENTS) as Component[]).map((k) => (
-              <button key={k} className="btn text-sm" disabled={t.gold < COMPONENTS[k].price} onClick={() => buy(k)}>
-                Buy {COMPONENTS[k].icon} {COMPONENTS[k].name.toLowerCase()} ({COMPONENTS[k].price} gold)
-              </button>
-            ))}
-          </div>
+      {market && <Market town={t} />}
+    </section>
+  );
+}
+
+/** Who works a building, and how well. */
+function Worker({ town: t, buildingId }: { town: Town; buildingId: string }) {
+  const b = t.buildings.find((x) => x.id === buildingId)!;
+  const who = t.settlers.find((x) => x.id === assignments(t).get(buildingId));
+  const trade = TRADE_FOR[b.type];
+  if (!who) return <div className="text-xs text-warn">Empty · needs a {trade ?? "worker"}</div>;
+  const p = pace(t, buildingId);
+  return (
+    <div className={clsx("text-xs", p >= 1 ? "text-heal" : "text-warn")}>
+      {who.name}
+      {who.trade ? `, ${who.trade}` : ""}
+      {p < 1 ? ` · ${Math.round(p * 100)}% pace, wants a ${trade}` : ""}
+    </div>
+  );
+}
+
+/** Where a settler works: let them choose, put them somewhere, or tell them to rest. */
+function JobPicker({ town: t, settlerId, job, at }: { town: Town; settlerId: string; job: string | undefined; at: string | undefined }) {
+  const places = built(t).filter((b) => BUILDINGS[b.type].staffed);
+  const label = (id: string) => {
+    const b = t.buildings.find((x) => x.id === id)!;
+    const same = places.filter((x) => x.type === b.type);
+    return `${BUILDINGS[b.type].icon} ${BUILDINGS[b.type].name}${same.length > 1 ? ` ${same.indexOf(b) + 1}` : ""}`;
+  };
+  if (!places.length) return null;
+  return (
+    <label className="mt-0.5 flex items-center gap-1 text-xs text-muted">
+      Works:
+      <select className="field px-1 py-0 text-xs" value={job && (job === "rest" || places.some((b) => b.id === job)) ? job : ""} onChange={(e) => assignSettler(settlerId, e.target.value || null)} aria-label="Job">
+        <option value="">{at ? `${label(at)} (their choice)` : "Nothing: takes the next opening"}</option>
+        {places.map((b) => (
+          <option key={b.id} value={b.id}>
+            {label(b.id)}
+          </option>
+        ))}
+        <option value="rest">Rest</option>
+      </select>
+    </label>
+  );
+}
+
+/** What the town is short of, and a notice at the hall to call for it. */
+function Needs({ town: t }: { town: Town }) {
+  const list = needs(t);
+  const call = t.call;
+  const trades = [...new Set(list.map((n) => n.trade))];
+  if (!list.length && !call) return null;
+  return (
+    <div className="rounded-md border border-warn/50 bg-warn/5 p-2 text-sm" aria-label="Town needs">
+      <strong className="text-strong">The town needs</strong>
+      <ul className="mt-1 space-y-0.5 text-xs">
+        {list.map((n) => (
+          <li key={n.text} className="text-warn">
+            • {n.text}
+          </li>
+        ))}
+      </ul>
+      {call ? (
+        <p className="mt-1 text-xs text-muted">📜 A notice is up at the hall: a {call.trade} wanted, until {clockText(call.until)}. Travellers of that trade come more often, and stay.</p>
+      ) : (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {trades.map((tr) => (
+            <button key={tr} className="btn px-2 py-0.5 text-xs" disabled={t.gold < callCost()} onClick={() => postNotice(tr)} title={`A notice at the hall for ${num("trades.callDays")} days`}>
+              📜 Call for a {tr} ({callCost()} gold)
+            </button>
+          ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Buy and sell the town's stores. */
+function Market({ town: t }: { town: Town }) {
+  return (
+    <div aria-label="Market">
+      <h3 className="mb-1 text-xs font-bold tracking-wider text-faint uppercase">⚖ Market</h3>
+      <p className="mb-1 text-xs text-muted">Short of something? Buy it, or sell what you can spare. The market buys at {Math.round(num("price.sellShare") * 100)}% of the price.</p>
+      <table className="w-full text-sm">
+        <tbody>
+          {GOODS.map((g) => {
+            const info = GOOD_INFO[g];
+            const have = stock(t, g);
+            const buyCost = Math.ceil(buyPrice(g) * info.lot);
+            const sellGain = Math.floor(sellPrice(g) * info.lot);
+            return (
+              <tr key={g} className="border-t border-line/50">
+                <td className="py-1">
+                  {info.icon} {info.name} <span className="text-xs text-faint">({have})</span>
+                </td>
+                <td className="py-1 text-right">
+                  <button className="btn px-2 py-0.5 text-xs" disabled={t.gold < buyCost} onClick={() => marketTrade(g, info.lot)}>
+                    Buy {info.lot} · {buyCost} gold
+                  </button>{" "}
+                  <button className="btn px-2 py-0.5 text-xs" disabled={have < info.lot || sellGain <= 0} onClick={() => marketTrade(g, -info.lot)}>
+                    Sell {info.lot} · +{sellGain} gold
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Patrols and the town's notice board: small fights for small pay. */
+function Board({ town: t, hours }: { town: Town; hours: number }) {
+  const bounty = patrolBounty(t, partyLevel(chosenParty()));
+  const next = Math.max(1, Math.round(bounty * num("patrol.decay")));
+  return (
+    <section className="space-y-2 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Notice board">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-xs font-bold tracking-wider text-faint uppercase">📜 Work around town</h3>
+        <span className="text-xs text-faint">Board: {t.contracts.length}/{boardSize(t)} jobs · more room with a staffed market and tavern</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <button className="btn font-display" onClick={startPatrol}>
+          ⚔ Ride out on patrol
+        </button>
+        <span className="text-xs text-muted">
+          A small fight nearby · {num("patrol.hours")} h · bounty {bounty} gold{patrolsToday(t) > 0 ? ` (patrol ${patrolsToday(t) + 1} today; the next pays ${next})` : `, then ${next}, less each time today`}
+        </span>
+      </div>
+      {t.contracts.length === 0 ? (
+        <p className="text-xs text-muted italic">No jobs posted. New ones turn up in the mornings.</p>
+      ) : (
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {t.contracts.map((c) => (
+            <li key={c.id} className="flex flex-col rounded-md border border-line bg-surface-2 p-2 text-sm">
+              <strong className="text-strong">{c.title}</strong>
+              <span className="flex-1 text-xs text-muted">{c.text}</span>
+              <span className="mt-1 text-xs">
+                Pays <strong className="text-heal">{rewardText(c.reward)}</strong> · {num("contract.hours")} h · gone in {durationText(Math.max(0, Math.ceil(c.expiresAt - hours)))}
+              </span>
+              <button className="btn mt-1 self-start px-2 py-0.5 text-xs" onClick={() => startContract(c.id)}>
+                Take the job
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );

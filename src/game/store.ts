@@ -18,13 +18,24 @@ export interface Fx {
   tone: "damage" | "heal" | "miss" | "crit";
 }
 
+/** What a town battle is for: defending against a raid, a lair, a patrol, or a job from the board. */
+export interface TownBattleContext {
+  kind: "raid" | "lair" | "patrol" | "contract";
+  /** Raids and lairs. */
+  faction?: string;
+  /** Contracts. */
+  contract?: string;
+  /** Hero keys, in the order of the party's units (p0, p1, …). */
+  heroes?: string[];
+}
+
 interface PlayState {
   game: GameState | null;
   scenario: (Scenario & { custom?: UnitSetup[] }) | null;
-  /** "campaign": the battle belongs to an adventure; "town": a raid or a lair attack for the player's town. */
+  /** "campaign": the battle belongs to an adventure; "town": a fight for the player's town (raid, lair, patrol, contract). */
   mode: "skirmish" | "campaign" | "town";
   /** For town battles: what's being fought for. */
-  context?: { kind: "raid" | "lair"; faction: string; heroes?: string[] } | null;
+  context?: TownBattleContext | null;
   log: LogLine[];
   fx: Fx[];
   aiRunning: boolean;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { setTuning } from "./tuning";
 import { TownSchema, type Town } from "../domain/town";
-import { hireCost, appeal, applyDeeds, hire, lift, opinion, startingReputation, BUILDINGS, DAWN, maxCatchUpHours, offlineMsPerHour, advance, awayReport, beds, bringHome, cantBuild, catchUp, clockText, durationText, foundTown, power, staffing, startBuilding, takeStash, welcome } from "./town";
+import { hireCost, appeal, applyDeeds, hire, lift, opinion, startingReputation, BUILDINGS, DAWN, maxCatchUpHours, offlineMsPerHour, advance, awayReport, beds, bringHome, cantBuild, catchUp, clockText, durationText, foundTown, power, staffing, startBuilding, assign, assignments, craftHours, needs, output, postCall, takeStash, welcome } from "./town";
 
 const ctx = { renown: 1, residents: [] };
 const T0 = 1_000_000;
@@ -44,13 +45,46 @@ describe("towns", () => {
   it("a day of production: food, materials, gold, and settlers eat", () => {
     let t = foundTown("A", T0, 1);
     t = { ...t, buildings: [...t.buildings, { id: "f", type: "farm" }, { id: "m", type: "market" }] };
-    t = welcome(welcome(t, { name: "A", trade: "", from: "x" }, "1"), { name: "B", trade: "", from: "x" }, "2");
+    t = welcome(welcome(t, { name: "A", trade: "farmer", from: "x" }, "1"), { name: "B", trade: "trader", from: "x" }, "2");
     const before = { food: t.food, materials: t.materials, gold: t.gold };
     const next = advance({ ...t, seed: 12345 }, 24, T0, ctx).town;
     // Food: +1 hall +4 farm −2 settlers; materials +1; market 2 + 1 (two settlers), give or take a random event.
     expect(next.food - before.food).toBeGreaterThanOrEqual(3);
     expect(next.materials - before.materials).toBeLessThanOrEqual(1);
     expect(next.gold - before.gold).not.toBe(0);
+  });
+
+  it("the right trade works at full pace; the player can move workers around", () => {
+    let t = foundTown("A", T0, 1);
+    t = { ...t, buildings: [...t.buildings, { id: "f", type: "farm" }, { id: "a", type: "apothecary" }] };
+    t = welcome(welcome(t, { name: "Hob", trade: "herbalist", from: "x" }, "h"), { name: "Fae", trade: "farmer", from: "x" }, "f1");
+    // Each takes the job of their trade, whatever the building order.
+    expect(Object.fromEntries(assignments(t))).toEqual({ a: "h", f: "f1" });
+    expect(output(t, "farm")).toBe(1);
+    expect(needs(t)).toEqual([]);
+    // Moving the farmer to the apothecary: the herbalist takes the farm, both at half pace.
+    t = assign(t, "f1", "a");
+    expect(Object.fromEntries(assignments(t))).toEqual({ a: "f1", f: "h" });
+    expect(output(t, "farm")).toBe(0.5);
+    expect(craftHours(t, "apothecary", 6)).toBe(12);
+    expect(needs(t).map((n) => n.trade)).toEqual(["farmer", "herbalist"]);
+    // They mind.
+    expect(opinion(t, "Neutral", ctx, t.hours, t.settlers[0]).reasons.map((r) => r.text)).toContain("There's an apothecary here, but I'm not working it");
+    // Back to choosing, the farmer returns to the farm; with the herbalist resting, the apothecary is empty.
+    t = assign(assign(t, "f1", null), "h", "rest");
+    expect(needs(t).map((n) => n.text)).toEqual(["The apothecary stands empty: it needs a herbalist"]);
+  });
+
+  it("a notice brings someone of the trade asked for", () => {
+    setTuning({ "trades.callBonus": 1 });
+    let t = { ...foundTown("A", T0, 5), gold: 50, food: 100 };
+    t = postCall(t, "smith");
+    expect(t.gold).toBe(40);
+    const { town } = advance(t, 24 * 3, T0, ctx);
+    expect(town.settlers.some((s) => s.trade === "smith" && /notice/.test(s.from))).toBe(true);
+    expect(town.call).toBeUndefined();
+    expect(() => postCall(t, "astronaut")).toThrow();
+    setTuning({});
   });
 
   it("hunger drives settlers away over a few days, and they say why", () => {
