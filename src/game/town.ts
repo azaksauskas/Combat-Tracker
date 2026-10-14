@@ -468,14 +468,14 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
   if (h % 24 !== DAWN) return t;
 
   // --- A new day: production, mouths to feed, then whatever the day brings.
-  let { gold, food, materials } = t;
+  const made = production(t);
+  let food = t.food + made.food;
+  const materials = t.materials + made.materials;
+  const gold = t.gold + made.gold;
   const stash = { ...t.stash };
-  food += num("prod.hallFood") + Math.round(num("prod.farmFood") * output(t, "farm"));
-  materials += num("prod.hallMaterials") + Math.round(num("prod.lumberMaterials") * output(t, "lumber"));
   const markets = working(t, "market");
-  gold += Math.round(output(t, "market") * (num("prod.marketGold") + Math.floor(t.settlers.length / Math.max(1, num("prod.marketSettlersPerGold")))) + num("prod.tavernGold") * output(t, "tavern"));
   let components = t.components;
-  if (working(t, "apothecary")) components = { ...components, herbs: components.herbs + Math.max(1, Math.round(num("prod.apothecaryHerbs") * output(t, "apothecary"))) };
+  if (made.herbs) components = { ...components, herbs: components.herbs + made.herbs };
   if (working(t, "apothecary") && day(h) % Math.max(1, Math.round(num("prod.potionEveryDays"))) === 0) {
     stash["potion-healing"] = (stash["potion-healing"] ?? 0) + 1;
     say("The apothecary brewed a Potion of Healing.", "good");
@@ -483,7 +483,7 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
   // Everyone eats; whoever goes without is miserable.
   const settlers: Settler[] = t.settlers;
   let hungry = 0;
-  food -= settlers.length * num("prod.foodPerSettler");
+  food -= made.eaten;
   if (food < 0) {
     hungry = -food;
     food = 0;
@@ -563,6 +563,23 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
     say("A bumper harvest: +5 food and a basket of herbs.", "good");
   }
   return t;
+}
+
+/** What the town makes each morning (before random events), and what its people eat. */
+export function production(t: Town) {
+  return {
+    food: num("prod.hallFood") + Math.round(num("prod.farmFood") * output(t, "farm")),
+    materials: num("prod.hallMaterials") + Math.round(num("prod.lumberMaterials") * output(t, "lumber")),
+    gold: Math.round(output(t, "market") * (num("prod.marketGold") + Math.floor(t.settlers.length / Math.max(1, num("prod.marketSettlersPerGold")))) + num("prod.tavernGold") * output(t, "tavern")),
+    herbs: working(t, "apothecary") ? Math.max(1, Math.round(num("prod.apothecaryHerbs") * output(t, "apothecary"))) : 0,
+    eaten: t.settlers.length * num("prod.foodPerSettler"),
+  };
+}
+
+/** The day's change in each store, for the town's header (random events aside). */
+export function dailyChange(t: Town) {
+  const p = production(t);
+  return { gold: p.gold, food: p.food - p.eaten, materials: p.materials, herbs: p.herbs };
 }
 
 // --- Skipping time ---------------------------------------------------------------------

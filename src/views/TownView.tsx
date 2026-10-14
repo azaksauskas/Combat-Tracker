@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { Dialog } from "../components/Dialog";
 import { BUILDING_TYPES, type Town } from "../domain/town";
 import type { Profile } from "../domain/players";
-import { TRADES, TRADE_FOR, assignments, callCost, needs, pace } from "../game/town";
+import { TRADES, TRADE_FOR, assignments, callCost, dailyChange, needs } from "../game/town";
+import { BuildingPanel, TownScene, face, tradeIcon } from "./TownScene";
 import { BUILDINGS, hireCost, beds, built, cantBuild, clockText, durationText, helpsLeft, isBuilt, opinion, power, renownOf, sleepHours, staffing, type SimContext } from "../game/town";
 import { reputationText } from "../domain/alignment";
 import { raiseCost, raiseHero, treatCost, treatInjury } from "../game/town-store";
@@ -77,150 +78,307 @@ function FoundTown({ renown }: { renown: number }) {
   );
 }
 
+type TownTab = "town" | "build" | "people" | "workshop" | "jobs" | "region" | "log";
+
+function useTownTab(): [TownTab, (t: TownTab) => void] {
+  const [tab, setTabState] = useState<TownTab>(() => {
+    try {
+      return (localStorage.getItem("town-tab") as TownTab | null) ?? "town";
+    } catch {
+      return "town";
+    }
+  });
+  const setTab = (next: TownTab) => {
+    setTabState(next);
+    try {
+      localStorage.setItem("town-tab", next);
+    } catch {
+      /* not remembered: fine */
+    }
+  };
+  return [tab, setTab];
+}
+
 function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; renown: number }) {
   const now = useNow();
   const hours = liveHours(t, now);
   const ctx = townContext(ownerId);
-  const r = renownOf(renown);
-  const [name, setName] = useState(t.name);
   const residents = useResidents(ownerId);
-  useEffect(() => setName(t.name), [t.name]);
+  const [tab, setTab] = useTownTab();
+  const [selected, setSelected] = useState<string | null>(null);
+  const urgent = t.threats.filter((th) => th.stage === "demanding" || th.stage === "raiding").length;
+  const unhappy = t.settlers.filter((x) => x.mood < 40).length;
+  const tabs: { id: TownTab; label: string; badge?: number; tone?: "warn" | "danger" | "info" }[] = [
+    { id: "town", label: "🏡 Village" },
+    { id: "build", label: "🔨 Build" },
+    { id: "people", label: `👥 People`, badge: needs(t).length + unhappy || undefined, tone: "warn" },
+    { id: "workshop", label: "⚒ Workshop" },
+    { id: "jobs", label: "📜 Jobs", badge: t.contracts.length || undefined, tone: "info" as const },
+    { id: "region", label: "🗺 Region", badge: urgent || undefined, tone: "danger" as const },
+    { id: "log", label: "📖 Events" },
+  ];
+  const current = tab;
 
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-end justify-between gap-3 rounded-lg border border-line bg-surface p-4 shadow">
-        <div>
-          <input
-            className="w-full bg-transparent font-display text-2xl font-bold text-accent outline-none focus:underline"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={() => name !== t.name && renameTown(name)}
-            aria-label="Town name"
-          />
-          <p className="text-sm text-muted">
-            <span className="font-semibold text-strong tabular-nums" aria-label="Town clock">
-              🕯 {clockText(hours)}
-            </span>{" "}
-            · Renown: {r.title} · Power {power(t, ctx)} · Known as{" "}
-            <span className="text-strong" title={`Law ${t.reputation.law}, good ${t.reputation.good} (from −10 to +10)`}>
-              {reputationText(t.reputation)}
-            </span>
-          </p>
-        </div>
-        <dl className="flex flex-wrap gap-x-4 gap-y-1 text-center text-sm" aria-label="Stores">
-          <Stat label="Gold" value={t.gold} icon="🪙" />
-          <Stat label="Food" value={t.food} icon="🍞" warn={t.food < t.settlers.length} />
-          <Stat label="Materials" value={t.materials} icon="🪵" />
-          <Stat label="Settlers" value={`${t.settlers.length}/${beds(t)}`} icon="🧑‍🌾" />
-          <Stat label="Potions" value={Object.values(t.stash).reduce((a, b) => a + b, 0)} icon="🧪" />
-          {(Object.keys(COMPONENTS) as Component[]).map((k) => (
-            <Stat key={k} label={COMPONENTS[k].name} value={t.components[k]} icon={COMPONENTS[k].icon} />
-          ))}
-        </dl>
-      </header>
-
+    <div className="space-y-3">
+      <TownHeader town={t} hours={hours} renown={renown} ctx={ctx} />
       <Alarms town={t} hours={hours} />
+      <div className="flex flex-wrap gap-1 border-b border-line" role="tablist" aria-label="Town">
+        {tabs.map((x) => (
+          <button
+            key={x.id}
+            role="tab"
+            aria-selected={current === x.id}
+            className={clsx("-mb-px flex items-center gap-1 rounded-t-md border px-3 py-1.5 text-sm", current === x.id ? "border-line border-b-surface bg-surface font-semibold text-accent" : "border-transparent text-muted hover:text-strong")}
+            onClick={() => setTab(x.id)}
+          >
+            {x.label}
+            {x.badge && (
+              <span className={clsx("rounded-full px-1.5 text-[10px] font-bold text-white", x.tone === "danger" ? "bg-danger" : x.tone === "warn" ? "bg-warn" : "bg-accent")}>{x.badge}</span>
+            )}
+          </button>
+        ))}
+      </div>
 
-      <Board town={t} hours={hours} />
-
-      <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
-        <div className="space-y-4">
-          <section className="rounded-lg border border-line bg-surface p-3 shadow" aria-label="Buildings">
-            <h3 className="mb-2 text-xs font-bold tracking-wider text-faint uppercase">
-              Buildings · {t.buildings.length}/{r.maxBuildings}
-            </h3>
-            <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {t.buildings.map((b) => {
-                const def = BUILDINGS[b.type];
-                const left = b.readyAt !== undefined ? Math.max(0, b.readyAt - hours) : 0;
-                return (
-                  <li key={b.id} className="rounded-md border border-line bg-surface-2 p-2 text-sm">
-                    <div className="font-semibold text-strong">
-                      {def.icon} {def.name}
-                    </div>
-                    {isBuilt(b) ? (
-                      def.staffed && <Worker town={t} buildingId={b.id} />
-                    ) : (
-                      <>
-                        <div className="text-xs text-muted">Building · {durationText(Math.ceil(left))} left</div>
-                        <div className="mt-1 h-1.5 rounded bg-surface-3">
-                          <div className="h-1.5 rounded bg-accent" style={{ width: `${100 - (left / def.hours) * 100}%` }} />
-                        </div>
-                      </>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-            <h4 className="mt-4 mb-1 text-xs font-bold tracking-wider text-faint uppercase">Build</h4>
-            <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {BUILDING_TYPES.filter((type) => type !== "hall").map((type) => {
-                const def = BUILDINGS[type];
-                const why = cantBuild(t, type, renown);
-                return (
-                  <li key={type}>
-                    <button
-                      className="flex h-full w-full flex-col rounded-md border border-line bg-surface p-2 text-left text-sm hover:border-accent disabled:opacity-50 disabled:hover:border-line"
-                      disabled={!!why}
-                      onClick={() => build(type)}
-                      title={why ?? `Build a ${def.name.toLowerCase()}`}
-                    >
-                      <span className="font-semibold text-strong">
-                        {def.icon} {def.name}
-                      </span>
-                      <span className="flex-1 text-xs text-muted">{def.description}</span>
-                      <span className="mt-1 text-xs text-faint">
-                        {def.cost.gold} gold · {def.cost.materials} materials · {def.hours} h{def.staffed ? ` · needs a ${TRADE_FOR[type] ?? "worker"}` : ""}
-                      </span>
-                      {why && <span className="text-xs text-warn">{why}</span>}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-
-          <Workshop town={t} />
-
-          <Settlers town={t} ctx={ctx} residents={residents} />
+      {current === "town" && (
+        <div className="grid gap-4 lg:grid-cols-[1fr_19rem]">
+          <div className="space-y-3">
+            <TownScene town={t} hours={hours} renown={renown} selected={selected} onSelect={setSelected} onBuild={() => setTab("build")} />
+            {selected && <BuildingPanel town={t} buildingId={selected} onClose={() => setSelected(null)} />}
+            <NeedsChips town={t} onOpen={() => setTab("people")} />
+          </div>
+          <aside className="space-y-3">
+            <TimeCard town={t} hours={hours} />
+            <QuickJobs town={t} onOpen={() => setTab("jobs")} />
+            <RecentEvents town={t} onOpen={() => setTab("log")} />
+          </aside>
         </div>
-
-        <aside className="space-y-4">
-          <section className="space-y-2 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Time">
-            <h3 className="text-xs font-bold tracking-wider text-faint uppercase">Time</h3>
-            <p className="text-xs text-muted">While you're here, {num("time.onlineMinutesPerHour") === 1 ? "a minute" : `${num("time.onlineMinutesPerHour")} minutes`} of real time is an hour. While you're away, the town carries on{num("time.offlineHoursPerHour") === 1 ? " at the pace of the real world" : ` (a real hour is ${(1 / num("time.offlineHoursPerHour")).toFixed(1)} game hours)`}.</p>
-            <div className="grid grid-cols-2 gap-1">
-              <button className="btn text-sm" onClick={sleep} disabled={sleepHours(hours) === null} title={sleepHours(hours) === null ? "Sleep comes after 20:00" : "Sleep until dawn"}>
-                💤 Sleep{sleepHours(hours) !== null ? ` (${sleepHours(hours)} h)` : ""}
-              </button>
-              <button className="btn text-sm" onClick={helpOut} disabled={helpsLeft(t, today()) <= 0} title="Once per bed in town, per real day">
-                🔨 Help out (1 day)
-              </button>
-            </div>
-            <p className="text-xs text-faint">
-              {sleepHours(hours) === null ? `Sleep comes after ${num("time.sleepFrom")}:00. ` : ""}Help out: {helpsLeft(t, today())} of {beds(t)} left today (one per bed).
-            </p>
-            <label className="flex items-center gap-2 text-sm">
+      )}
+      {current === "build" && <BuildList town={t} renown={renown} onBuilt={() => setTab("town")} />}
+      {current === "people" && <Settlers town={t} ctx={ctx} residents={residents} />}
+      {current === "workshop" && <Workshop town={t} />}
+      {current === "jobs" && <Board town={t} hours={hours} />}
+      {current === "region" && (
+        <div className="space-y-3">
+          <Region town={t} renown={renown} />
+          <div className="grid gap-3 md:grid-cols-2">
+            <Waystone />
+            <label className="flex items-center gap-2 self-start rounded-lg border border-line bg-surface p-3 text-sm shadow">
               <input type="checkbox" checked={t.open} onChange={(e) => setOpen(e.target.checked)} /> Other heroes may move in
             </label>
-          </section>
-          <Region town={t} renown={renown} />
-          <Waystone />
-          <section className="rounded-lg border border-line bg-surface p-3 shadow" aria-label="Town log">
-            <h3 className="mb-1 text-xs font-bold tracking-wider text-faint uppercase">What's been happening</h3>
-            <ol className="max-h-80 space-y-1 overflow-y-auto text-sm">
-              {[...t.log].reverse().map((e, i) => (
-                <li key={i} className={e.tone === "good" ? "text-heal" : e.tone === "bad" ? "text-danger" : "text-muted"}>
-                  <span className="text-xs text-faint">{clockText(e.at)} · </span>
-                  {e.text}
-                </li>
-              ))}
-            </ol>
-          </section>
-        </aside>
-      </div>
+          </div>
+        </div>
+      )}
+      {current === "log" && <TownLog town={t} />}
     </div>
   );
+}
+
+/** Name, clock, fame and the stores, with how each changes per day. */
+function TownHeader({ town: t, hours, renown, ctx }: { town: Town; hours: number; renown: number; ctx: SimContext }) {
+  const [name, setName] = useState(t.name);
+  useEffect(() => setName(t.name), [t.name]);
+  const daily = dailyChange(t);
+  const h = Math.floor(hours) % 24;
+  const night = h >= 20 || h < 6;
+  const potions = Object.values(t.stash).reduce((a, b) => a + b, 0);
+  const foodDays = daily.food < 0 ? Math.floor(t.food / -daily.food) : null;
+  return (
+    <header className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface px-4 py-3 shadow">
+      <div className="min-w-0">
+        <input
+          className="w-full bg-transparent font-display text-2xl font-bold text-accent outline-none focus:underline"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => name !== t.name && renameTown(name)}
+          aria-label="Town name"
+        />
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+          <span className="rounded-full bg-surface-2 px-2 py-0.5 font-semibold text-strong tabular-nums" aria-label="Town clock" title={night ? "Night: you can sleep until dawn" : "Day"}>
+            {night ? "🌙" : "☀️"} {clockText(hours)}
+          </span>
+          <span className="rounded-full bg-surface-2 px-2 py-0.5" title={`Renown: ${renownOf(renown).reach}`}>
+            ⭐ {renownOf(renown).title}
+          </span>
+          <span className="rounded-full bg-surface-2 px-2 py-0.5" title={`Law ${t.reputation.law}, good ${t.reputation.good} (from −10 to +10). Power ${power(t, ctx)}.`}>
+            ⚖ {reputationText(t.reputation)}
+          </span>
+        </div>
+      </div>
+      <dl className="flex flex-wrap gap-1.5" aria-label="Stores">
+        <Res icon="🪙" label="Gold" value={t.gold} delta={daily.gold} />
+        <Res icon="🍞" label="Food" value={t.food} delta={daily.food} warn={foodDays !== null && foodDays < 3} note={foodDays !== null ? `Runs out in ${foodDays} day${foodDays === 1 ? "" : "s"}` : undefined} />
+        <Res icon="🪵" label="Materials" value={t.materials} delta={daily.materials} />
+        <Res icon="🧑‍🌾" label="Settlers" value={`${t.settlers.length}/${beds(t)}`} />
+        <Res icon="🧪" label="Potions" value={potions} />
+        {(Object.keys(COMPONENTS) as Component[]).map((k) => (
+          <Res key={k} icon={COMPONENTS[k].icon} label={COMPONENTS[k].name} value={t.components[k]} delta={k === "herbs" ? daily.herbs : 0} />
+        ))}
+      </dl>
+    </header>
+  );
+}
+
+/** One store: icon, amount, and the day's change. */
+function Res({ icon, label, value, delta, warn, note }: { icon: string; label: string; value: number | string; delta?: number; warn?: boolean; note?: string }) {
+  return (
+    <div className={clsx("rounded-lg border px-2 py-1 text-center", warn ? "border-danger bg-danger/10" : "border-line bg-surface-2")} title={`${label}${delta ? `: ${delta > 0 ? "+" : ""}${delta} a day` : ""}${note ? `. ${note}` : ""}`}>
+      <dt className="sr-only">{label}</dt>
+      <dd className="flex items-baseline gap-1">
+        <span className="text-base">{icon}</span>
+        <span className={clsx("font-bold tabular-nums", warn ? "text-danger" : "text-strong")}>{value}</span>
+        {!!delta && <span className={clsx("text-[10px] font-semibold tabular-nums", delta > 0 ? "text-heal" : "text-danger")}>{delta > 0 ? `+${delta}` : delta}/d</span>}
+      </dd>
+    </div>
+  );
+}
+
+/** What's missing, as small clickable chips. */
+function NeedsChips({ town: t, onOpen }: { town: Town; onOpen: () => void }) {
+  const list = needs(t);
+  if (!list.length) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      <span className="font-semibold text-warn">The town needs:</span>
+      {list.map((n) => (
+        <button key={n.text} className="rounded-full border border-warn/50 bg-warn/10 px-2 py-0.5 text-warn hover:bg-warn/20" onClick={onOpen} title={n.text}>
+          {tradeIcon(n.trade)} a {n.trade} for the {BUILDINGS[n.building].name.toLowerCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The clock and what to do with time. */
+function TimeCard({ town: t, hours }: { town: Town; hours: number }) {
+  const sleepFor = sleepHours(hours);
+  return (
+    <section className="space-y-2 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Time">
+      <h3 className="text-xs font-bold tracking-wider text-faint uppercase">⏳ Pass the time</h3>
+      <div className="grid grid-cols-2 gap-1">
+        <button className="btn text-sm" onClick={sleep} disabled={sleepFor === null} title={sleepFor === null ? `Sleep comes after ${num("time.sleepFrom")}:00` : "Sleep until dawn"}>
+          💤 Sleep{sleepFor !== null ? ` (${sleepFor} h)` : ""}
+        </button>
+        <button className="btn text-sm" onClick={helpOut} disabled={helpsLeft(t, today()) <= 0} title="A day's work around town. Once per bed, per real day">
+          🔨 Help out
+        </button>
+      </div>
+      <p className="text-[11px] text-faint">
+        1 real minute = 1 hour here. Help out: {helpsLeft(t, today())}/{beds(t)} left today.
+      </p>
+    </section>
+  );
+}
+
+/** A nudge towards the patrols and jobs. */
+function QuickJobs({ town: t, onOpen }: { town: Town; onOpen: () => void }) {
+  const bounty = patrolBounty(t, partyLevel(chosenParty()));
+  return (
+    <section className="space-y-2 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Quick jobs">
+      <h3 className="text-xs font-bold tracking-wider text-faint uppercase">⚔ Work for the heroes</h3>
+      <button className="btn w-full font-display text-sm" onClick={startPatrol}>
+        Ride out on patrol · 🪙 {bounty}
+      </button>
+      <button className="btn btn-ghost w-full text-sm" onClick={onOpen}>
+        📜 {t.contracts.length ? `${t.contracts.length} job${t.contracts.length === 1 ? "" : "s"} on the board` : "The board is empty"} →
+      </button>
+    </section>
+  );
+}
+
+function RecentEvents({ town: t, onOpen }: { town: Town; onOpen: () => void }) {
+  const recent = [...t.log].reverse().slice(0, 5);
+  return (
+    <section className="space-y-1 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Recent events">
+      <h3 className="text-xs font-bold tracking-wider text-faint uppercase">📖 Lately</h3>
+      <ol className="space-y-1 text-xs">
+        {recent.map((e, i) => (
+          <li key={i} className={clsx("flex gap-1", e.tone === "good" ? "text-heal" : e.tone === "bad" ? "text-danger" : "text-muted")}>
+            <span aria-hidden>{e.tone === "good" ? "▲" : e.tone === "bad" ? "▼" : "•"}</span>
+            <span>{e.text}</span>
+          </li>
+        ))}
+      </ol>
+      <button className="btn btn-ghost w-full px-2 py-0.5 text-xs" onClick={onOpen}>
+        All events →
+      </button>
+    </section>
+  );
+}
+
+function TownLog({ town: t }: { town: Town }) {
+  return (
+    <section className="rounded-lg border border-line bg-surface p-3 shadow" aria-label="Town log">
+      <ol className="space-y-1 text-sm">
+        {[...t.log].reverse().map((e, i) => (
+          <li key={i} className={clsx("flex gap-2", e.tone === "good" ? "text-heal" : e.tone === "bad" ? "text-danger" : "text-muted")}>
+            <span className="w-28 shrink-0 text-xs text-faint tabular-nums">{clockText(e.at)}</span>
+            <span>{e.text}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/** What can be built: icon, cost and time at a glance; the description on hover. */
+function BuildList({ town: t, renown, onBuilt }: { town: Town; renown: number; onBuilt: () => void }) {
+  const r = renownOf(renown);
+  const full = t.buildings.length >= r.maxBuildings;
+  const busy = t.buildings.some((b) => !isBuilt(b));
+  return (
+    <div className="space-y-3" aria-label="Buildings">
+      {(full || busy) && (
+        <p className={clsx("rounded-md border px-3 py-2 text-sm", full ? "border-warn/60 bg-warn/10 text-warn" : "border-line bg-surface-2 text-muted")}>
+          {full
+            ? `🔒 All ${r.maxBuildings} plots are used. Heroes ${r.title.toLowerCase()} get no more room: more renown (levels) brings more plots.`
+            : "🏗 The builders are busy: one project at a time."}
+        </p>
+      )}
+      <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {BUILDING_TYPES.filter((type) => type !== "hall").map((type) => {
+          const def = BUILDINGS[type];
+          const why = cantBuild(t, type, renown);
+          const roomOrBusy = full || busy;
+          const have = t.buildings.filter((b) => b.type === type).length;
+          const trade = TRADE_FOR[type];
+          return (
+            <li key={type}>
+              <button
+                className="flex h-full w-full gap-3 rounded-lg border border-line bg-surface p-2 text-left text-sm shadow-sm hover:border-accent disabled:opacity-55 disabled:hover:border-line"
+                disabled={!!why}
+                onClick={() => {
+                  build(type);
+                  onBuilt();
+                }}
+                title={def.description}
+              >
+                <span className="text-4xl leading-none">{def.icon}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline justify-between gap-1">
+                    <strong className="text-strong">{def.name}</strong>
+                    {have > 0 && <span className="text-[10px] text-faint">have {have}</span>}
+                  </span>
+                  <span className="line-clamp-2 block text-xs text-muted">{def.description}</span>
+                  <span className="mt-1 flex flex-wrap gap-1 text-[11px]">
+                    <Chip bad={t.gold < def.cost.gold}>🪙 {def.cost.gold}</Chip>
+                    {def.cost.materials > 0 && <Chip bad={t.materials < def.cost.materials}>🪵 {def.cost.materials}</Chip>}
+                    <Chip>⏱ {def.hours} h</Chip>
+                    {trade && <Chip>{tradeIcon(trade)} {trade}</Chip>}
+                  </span>
+                  {why && !roomOrBusy && <span className="mt-0.5 block text-[11px] text-warn">{why}</span>}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function Chip({ children, bad }: { children: React.ReactNode; bad?: boolean }) {
+  return <span className={clsx("rounded-full px-1.5 py-0.5", bad ? "bg-danger/15 text-danger" : "bg-surface-2 text-muted")}>{children}</span>;
 }
 
 /** Tribute demands and coming raids, with what the heroes can do about them. */
@@ -235,7 +393,7 @@ function Alarms({ town: t, hours }: { town: Town; hours: number }) {
         if (!f) return null;
         const left = th.dueAt !== undefined ? Math.max(0, th.dueAt - hours) : 0;
         return (
-          <div key={th.faction} className="flex flex-wrap items-center gap-2 rounded-lg border-2 border-danger bg-danger/10 p-3 text-sm">
+          <div key={th.faction} className="flex flex-wrap items-center gap-2 rounded-lg border-2 border-danger bg-danger/10 p-3 text-sm max-sm:[&>div]:basis-[calc(100%-3rem)]">
             <span className="text-2xl">{f.icon}</span>
             <div className="min-w-0 flex-1">
               <strong className="text-strong">
@@ -279,8 +437,12 @@ function Region({ town: t, renown }: { town: Town; renown: number }) {
   return (
     <section className="space-y-2 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Region">
       <h3 className="text-xs font-bold tracking-wider text-faint uppercase">🗺 The region</h3>
-      <RegionMap town={t} renown={renown} />
-      <p className="text-[11px] text-faint">Dotted lines: scouts watching. Red arrows: a raid on its way. Green: friends. Click a lair you know to strike it.</p>
+      <div className="grid gap-4 md:grid-cols-[minmax(0,30rem)_1fr]">
+      <div>
+        <RegionMap town={t} renown={renown} />
+        <p className="mt-1 text-[11px] text-faint">Dotted lines: scouts watching. Red arrows: a raid on its way. Green: friends. Click a lair you know to strike it.</p>
+      </div>
+      <div>
       <ul className="space-y-2">
         {factions.map((f) => {
           const th = threatOf(t, f.id);
@@ -312,13 +474,13 @@ function Region({ town: t, renown }: { town: Town; renown: number }) {
           );
         })}
       </ul>
-      <p className="text-xs text-faint">Factions notice a town as its power grows, faster when its reputation offends them. Those who share your outlook turn friendly. A watchtower slows them down.</p>
+      <p className="mt-2 text-xs text-faint">Factions notice a town as its power grows, faster when its reputation offends them. Those who share your outlook turn friendly. A watchtower slows them down.</p>
+      </div>
+      </div>
     </section>
   );
 }
 
-const FACES = ["😠", "🙁", "😐", "🙂", "😄"];
-const face = (mood: number) => FACES[Math.min(4, Math.floor(mood / 20))]!;
 
 /** Who lives here, how they feel and why; how the town looks to newcomers; hiring. */
 function Settlers({ town: t, ctx, residents }: { town: Town; ctx: SimContext; residents: Profile[] }) {
@@ -340,17 +502,30 @@ function Settlers({ town: t, ctx, residents }: { town: Town; ctx: SimContext; re
       {t.settlers.length === 0 ? (
         <p className="text-sm text-muted italic">Nobody lives here yet.</p>
       ) : (
-        <ul className="grid gap-2 text-sm sm:grid-cols-2">
+        <ul className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-3">
           {t.settlers.map((s) => (
-            <li key={s.id} className="flex gap-2">
-              <span className="text-xl" title={`Mood ${s.mood}/100`} aria-label={`Mood ${s.mood} of 100`}>
-                {face(s.mood)}
+            <li key={s.id} className="flex gap-2 rounded-lg border border-line bg-surface-2/60 p-2">
+              <span className="flex flex-col items-center">
+                <span className="text-3xl leading-none" title={`Mood ${s.mood}/100`} aria-label={`Mood ${s.mood} of 100`}>
+                  {face(s.mood)}
+                </span>
+                <span className="mt-1 h-1 w-9 rounded bg-surface-3">
+                  <span className={clsx("block h-1 rounded", s.mood < 40 ? "bg-danger" : s.mood < 60 ? "bg-warn" : "bg-heal")} style={{ width: `${s.mood}%` }} />
+                </span>
               </span>
               <span className="min-w-0 flex-1">
-                <strong className="text-strong">{s.name}</strong>
-                {s.trade && <span className="text-muted">, {s.trade}</span>} <span className="text-xs text-faint">· {s.alignment}</span>
-                {s.mind && <span className={clsx("block text-xs italic", s.mood < 40 ? "text-danger" : "text-muted")}>“{s.mind}”</span>}
-                <span className="block text-xs text-faint">{s.from}</span>
+                <span className="flex flex-wrap items-baseline gap-1">
+                  <strong className="text-strong">{s.name}</strong>
+                  {s.trade && (
+                    <span className="rounded-full bg-surface-3 px-1.5 text-[11px] text-muted">
+                      {tradeIcon(s.trade)} {s.trade}
+                    </span>
+                  )}
+                </span>
+                {s.mind && <span className={clsx("block truncate text-xs italic", s.mood < 40 ? "text-danger" : "text-muted")} title={s.mind}>“{s.mind}”</span>}
+                <span className="block truncate text-[11px] text-faint" title={`${s.alignment} · ${s.from}`}>
+                  {s.alignment} · {s.from}
+                </span>
                 <JobPicker town={t} settlerId={s.id} job={s.job} at={jobOf.get(s.id)} />
               </span>
             </li>
@@ -376,7 +551,7 @@ function Settlers({ town: t, ctx, residents }: { town: Town; ctx: SimContext; re
           Travellers come more often to an appealing town, and far more with a tavern. Each settler also judges the heroes' deeds by their own beliefs; content settlers invite friends, miserable ones leave.
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <select className="field py-1 text-sm" value={hireTrade} onChange={(e) => setHireTrade(e.target.value)} aria-label="Trade to hire" disabled={!tavern}>
+          <select className="field w-auto py-1 text-sm" value={hireTrade} onChange={(e) => setHireTrade(e.target.value)} aria-label="Trade to hire" disabled={!tavern}>
             <option value="">Anyone ({hireCost()} gold)</option>
             {TRADES.map((tr) => (
               <option key={tr} value={tr}>
@@ -446,21 +621,6 @@ function Workshop({ town: t }: { town: Town }) {
   );
 }
 
-/** Who works a building, and how well. */
-function Worker({ town: t, buildingId }: { town: Town; buildingId: string }) {
-  const b = t.buildings.find((x) => x.id === buildingId)!;
-  const who = t.settlers.find((x) => x.id === assignments(t).get(buildingId));
-  const trade = TRADE_FOR[b.type];
-  if (!who) return <div className="text-xs text-warn">Empty · needs a {trade ?? "worker"}</div>;
-  const p = pace(t, buildingId);
-  return (
-    <div className={clsx("text-xs", p >= 1 ? "text-heal" : "text-warn")}>
-      {who.name}
-      {who.trade ? `, ${who.trade}` : ""}
-      {p < 1 ? ` · ${Math.round(p * 100)}% pace, wants a ${trade}` : ""}
-    </div>
-  );
-}
 
 /** Where a settler works: let them choose, put them somewhere, or tell them to rest. */
 function JobPicker({ town: t, settlerId, job, at }: { town: Town; settlerId: string; job: string | undefined; at: string | undefined }) {
@@ -707,16 +867,6 @@ function Smithy({ town: t }: { town: Town }) {
   );
 }
 
-function Stat({ label, value, icon, warn }: { label: string; value: number | string; icon: string; warn?: boolean }) {
-  return (
-    <div>
-      <dt className="text-xs text-faint">{label}</dt>
-      <dd className={clsx("text-lg font-bold tabular-nums", warn ? "text-danger" : "text-strong")}>
-        {icon} {value}
-      </dd>
-    </div>
-  );
-}
 
 function useResidents(ownerId: string): Profile[] {
   const profiles = usePlayers((s) => s.profiles);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { setTuning } from "./tuning";
 import { TownSchema, type Town } from "../domain/town";
-import { hireCost, appeal, applyDeeds, hire, lift, opinion, startingReputation, BUILDINGS, DAWN, maxCatchUpHours, offlineMsPerHour, advance, awayReport, beds, bringHome, cantBuild, catchUp, clockText, durationText, foundTown, power, staffing, startBuilding, assign, assignments, craftHours, needs, output, postCall, takeStash, welcome } from "./town";
+import { hireCost, appeal, applyDeeds, hire, lift, opinion, startingReputation, BUILDINGS, DAWN, maxCatchUpHours, offlineMsPerHour, advance, awayReport, beds, bringHome, cantBuild, catchUp, clockText, durationText, foundTown, power, staffing, startBuilding, assign, assignments, craftHours, needs, output, postCall, dailyChange, takeStash, welcome } from "./town";
 
 const ctx = { renown: 1, residents: [] };
 const T0 = 1_000_000;
@@ -85,6 +85,14 @@ describe("towns", () => {
     expect(town.call).toBeUndefined();
     expect(() => postCall(t, "astronaut")).toThrow();
     setTuning({});
+  });
+
+  it("the header's daily change matches what a morning really brings (without events)", () => {
+    let t = foundTown("A", T0, 1);
+    t = { ...t, buildings: [...t.buildings, { id: "f", type: "farm" }], settlers: [] };
+    t = welcome(welcome(t, { name: "A", trade: "farmer", from: "x" }, "1"), { name: "B", trade: "", from: "x" }, "2");
+    // Hall +1, farm +4, two mouths −2.
+    expect(dailyChange(t)).toEqual({ gold: 0, food: 3, materials: 1, herbs: 0 });
   });
 
   it("hunger drives settlers away over a few days, and they say why", () => {
