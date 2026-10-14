@@ -3,6 +3,7 @@ import { PARTY, type ContentEntry } from "../content/srd";
 import { secureRng, type Rng } from "../domain/dice";
 import { ActionSchema, abilityMod, type Ability, type Feature, type StatAction, type StatBlock } from "../domain/statblock";
 import { SKILL_ABILITY } from "./skills";
+import { ARMORS, WEAPONS, gearName, isGear, weaponAttacks } from "./arsenal";
 import type { Cell } from "./board";
 import { defaultResources, type UnitSetup } from "./engine";
 import type { GameState } from "./state";
@@ -28,7 +29,7 @@ export interface Hero {
   /** Hit dice left to spend on short rests (max = level). */
   hitDice: number;
   resources: Record<string, number>;
-  /** Item ids this hero has equipped, e.g. ["weapon-plus-1"]. */
+  /** Item ids this hero has equipped, e.g. ["weapon-plus-1"], or a weapon found on the road slung on their back. */
   equipment: string[];
   dead: boolean;
 }
@@ -391,6 +392,40 @@ export function unequip(party: Party, heroKey: string, itemId: string): Party {
     heroes: party.heroes.map((h) => (h.key === heroKey ? { ...h, equipment: h.equipment.filter((e) => e !== itemId) } : h)),
   };
 }
+
+/** Any item's name: a magic item, a potion, or a weapon or armour from the arsenal. */
+export const itemName = (id: string) => ITEMS[id]?.name ?? gearName(id);
+/** Weapons and armour (found on the road; they go to the town's armoury). */
+export const isFoundGear = (id: string) => !(id in ITEMS) && isGear(id);
+
+/**
+ * Sling a weapon found on the road across a hero's back: it becomes their
+ * spare, drawn in a fight. A found weapon it replaces goes back in the pack;
+ * the hero's own spare is carried home either way.
+ */
+export function takeUpWeapon(party: Party, heroKey: string, weaponId: string): Party {
+  const hero = party.heroes.find((h) => h.key === heroKey);
+  if (!hero || hero.dead || !WEAPONS[weaponId] || (party.items[weaponId] ?? 0) <= 0) return party;
+  const items = { ...party.items, [weaponId]: party.items[weaponId]! - 1 };
+  const old = hero.equipment.find((e) => WEAPONS[e]);
+  if (old) items[old] = (items[old] ?? 0) + 1;
+  const actions = [...hero.stats.actions.filter((a) => !(a.kind === "attack" && a.hand === "spare")), ...weaponAttacks(hero.stats, weaponId, "spare", false)];
+  return {
+    ...party,
+    items,
+    heroes: party.heroes.map((h) => (h.key === heroKey ? { ...h, stats: { ...h.stats, actions }, equipment: [...h.equipment.filter((e) => e !== old), weaponId] } : h)),
+  };
+}
+
+/** What the party brings home for the armoury: found gear in the pack, and the weapons heroes took up (key → weapon). */
+export function foundGear(party: Party): { stash: Record<string, number>; spares: Record<string, string> } {
+  const stash = Object.fromEntries(Object.entries(party.items).filter(([id, n]) => n > 0 && isFoundGear(id)));
+  const spares = Object.fromEntries(party.heroes.flatMap((h) => h.equipment.filter((e) => WEAPONS[e]).map((w) => [h.key, w] as const)));
+  return { stash, spares };
+}
+
+/** Every weapon and armour id, for the adventure editor's item list. */
+export const GEAR_IDS = [...Object.keys(WEAPONS), ...Object.keys(ARMORS)];
 
 /** Living heroes as game units, placed on the given start squares. */
 export function heroSetups(party: Party, starts: Cell[]): UnitSetup[] {

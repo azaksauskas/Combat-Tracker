@@ -1,6 +1,6 @@
 import type { ChronicleEntry } from "../domain/players";
 import type { CampaignState } from "./adventure";
-import { ITEMS } from "./party";
+import { itemName } from "./party";
 
 /**
  * Turns a step of an adventure into chronicle entries for the DM: what the
@@ -12,7 +12,7 @@ export type ChronicleDraft = Omit<ChronicleEntry, "id" | "at" | "status">;
 
 const itemList = (items: Record<string, number>) =>
   Object.entries(items)
-    .map(([id, n]) => `${n > 1 ? `${n} × ` : ""}${ITEMS[id]?.name ?? id}`)
+    .map(([id, n]) => `${n > 1 ? `${n} × ` : ""}${itemName(id)}`)
     .join(", ");
 
 export function chronicleStep(before: CampaignState | null, after: CampaignState | null, title: string): ChronicleDraft[] {

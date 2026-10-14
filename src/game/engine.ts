@@ -50,6 +50,8 @@ export type Command =
   | { type: "grapple"; unitId: string; targetId: string }
   /** Break free of a grapple (action). */
   | { type: "escape"; unitId: string }
+  /** Draw the spare weapon and stow the one in hand, or back (free, once a turn). */
+  | { type: "swap"; unitId: string }
   /** A routed creature on the edge of the board runs off. */
   | { type: "flee"; unitId: string }
   /** A dying hero rolls their death save (the player clicks; the AI does it for monsters' allies). */
@@ -310,6 +312,7 @@ function takeDamage(ctx: Ctx, u: Unit, amount: number, detail: string, opts: { c
   // Characters: massive damage kills outright, otherwise Unconscious.
   if (rest >= u.hpMax) return kill(ctx, u);
   u.death = { successes: 0, failures: 0, stable: false };
+  u.wentDown = true;
   ctx.events.push({ type: "down", unitId: u.id });
   addCondition(ctx, u, "Unconscious");
   addCondition(ctx, u, "Prone");
@@ -319,7 +322,7 @@ function dropConcentration(ctx: Ctx, u: Unit) {
   if (!u.concentration) return;
   ctx.events.push({ type: "feature", unitId: u.id, name: "Concentration lost", detail: u.concentration });
   u.concentration = null;
-  ctx.s.effects = ctx.s.effects.filter((e) => !(e.kind === "bless" && e.source === u.id));
+  ctx.s.effects = ctx.s.effects.filter((e) => !((e.kind === "bless" || e.kind === "faith") && e.source === u.id));
 }
 
 function heal(ctx: Ctx, u: Unit, amount: number) {
@@ -362,7 +365,8 @@ function makeAttack(ctx: Ctx, a: Unit, t: Unit, action: AttackAction, opts: { op
   const cover = coverOf(ctx.s as GameState, a, t);
   const coverBonus = cover === "total" ? 5 : cover;
   if (coverBonus) reasons.push(`− ${COVER_NAME[coverBonus]} (+${coverBonus} AC)`);
-  let ac = t.ac + coverBonus + (ctx.s.effects.some((e) => e.kind === "shield" && e.target === t.id) ? 5 : 0);
+  const warded = (kind: "shield" | "faith") => ctx.s.effects.some((e) => e.kind === kind && e.target === t.id);
+  let ac = t.ac + coverBonus + (warded("shield") ? 5 : 0) + (warded("faith") ? 2 : 0);
   let hit = natural === 20 || (natural !== 1 && roll.total >= ac);
   // Shield (reaction): +5 AC until the caster's next turn, if that turns the hit into a miss.
   if (hit && natural !== 20 && roll.total < ac + 5 && castShield(ctx, t)) {
@@ -490,9 +494,9 @@ function castBuff(ctx: Ctx, caster: Unit, targets: Unit[], action: BuffAction) {
     caster.concentration = action.name;
   }
   for (const t of targets) {
-    if (action.buff === "bless") {
-      ctx.s.effects.push({ id: `e${ctx.s.nextId++}`, kind: "bless", source: caster.id, target: t.id, expires: { unit: caster.id, at: "start", turns: 10 } });
-      ctx.events.push({ type: "effect", effect: "bless", source: caster.id, target: t.id });
+    if (action.buff === "bless" || action.buff === "faith") {
+      ctx.s.effects.push({ id: `e${ctx.s.nextId++}`, kind: action.buff, source: caster.id, target: t.id, expires: { unit: caster.id, at: "start", turns: 10 } });
+      ctx.events.push({ type: "effect", effect: action.buff, source: caster.id, target: t.id });
     } else {
       t.hpMax += 5;
       ctx.events.push({ type: "feature", unitId: t.id, name: action.name, detail: "+5 max HP" });
@@ -600,6 +604,15 @@ function moraleCheck(ctx: Ctx, u: Unit) {
 const eval_cr = (cr: string) => (cr.includes("/") ? Number(cr.split("/")[0]) / Number(cr.split("/")[1]) : Number(cr));
 
 export const onEdge = (s: GameState, c: Cell) => c.x === 0 || c.y === 0 || c.x === s.board.width - 1 || c.y === s.board.height - 1;
+
+/** Is this weapon in hand? (Main and off-hand while the spare is on the back, and the other way round.) */
+export function weaponInHand(u: Unit, action: StatAction): true | string {
+  if (action.kind !== "attack" || !action.hand) return true;
+  const spare = action.hand === "spare";
+  if (spare && !u.wieldingSpare) return `${action.name.replace(" (thrown)", "")} is on ${u.name}'s back: swap weapons first`;
+  if (!spare && u.wieldingSpare) return `${u.name} is holding the spare weapon: swap back first`;
+  return true;
+}
 
 /** A skill check bonus: the stat block's skill if listed, else the ability modifier. */
 function skillBonus(u: Unit, skill: string, ability: (typeof ABILITY_KEYS)[number]): number {
@@ -809,6 +822,8 @@ function run(ctx: Ctx, cmd: Command) {
     case "action": {
       const action: StatAction | undefined = u.stats.actions.find((a) => a.id === cmd.actionId);
       if (!action) throw new GameError("Unknown action");
+      const handOk = weaponInHand(u, action);
+      if (handOk !== true) throw new GameError(handOk);
       // Casting or striking gives a hidden creature away (attacks do it after the roll).
       if (action.kind !== "attack" && has(u, "Hidden")) removeCondition(ctx, u, "Hidden");
       const cost = action.bonusAction ? "bonusAction" : "action";
@@ -976,6 +991,15 @@ function run(ctx: Ctx, cmd: Command) {
         addEffect(ctx, { kind: "grapple", source: u.id, target: t.id, expires: { unit: u.id, at: "end", turns: 1000 } });
       } else if (cmd.prone) addCondition(ctx, t, "Prone");
       else pushAway(ctx, u, t);
+      return;
+    }
+    case "swap": {
+      if (!u.stats.actions.some((a) => a.kind === "attack" && a.hand === "spare")) throw new GameError(`${u.name} has no spare weapon`);
+      if (u.turn.swapped) throw new GameError("Already swapped weapons this turn");
+      u.turn.swapped = true;
+      u.wieldingSpare = !u.wieldingSpare;
+      const now = u.stats.actions.find((a) => a.kind === "attack" && a.hand === (u.wieldingSpare ? "spare" : "main"));
+      ctx.events.push({ type: "feature", unitId: u.id, name: "Swaps weapons", detail: `now holds ${now?.name.replace(" (thrown)", "") ?? "their weapon"}` });
       return;
     }
     case "flee": {

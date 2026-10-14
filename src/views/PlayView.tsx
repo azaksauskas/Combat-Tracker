@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { HpBar } from "../components/HpBar";
 import { actionDamage, describeAction, formatMod, type StatAction } from "../domain/statblock";
 import { averageDamage, hitChance } from "../game/ai";
-import { canAct, checkTarget, currentUnit } from "../game/engine";
+import { canAct, checkTarget, currentUnit, weaponInHand } from "../game/engine";
 import { GameBoard, type BoardMode } from "../game/GameBoard";
 import { SCENARIOS, encounterScenario, objectiveText, type Scenario } from "../game/scenarios";
 import { mapScenario } from "../game/maps";
@@ -17,12 +17,13 @@ import { distanceFt } from "../game/board";
 import { AdventureView } from "./AdventureView";
 import { AwayReportDialog, TownView } from "./TownView";
 import { RaidNewsDialog, ThreatBar } from "./RaidAlerts";
+import { HeroesView } from "./HeroesView";
 import { finishTownBattle } from "../game/town-store";
 import { CharacterBuilder } from "../components/CharacterBuilder";
 import type { CharacterSpec } from "../domain/character";
 import { newId } from "../domain/combat";
 import { characterKey, suggestedSpec } from "../game/builder";
-import { MAX_PARTY, availableMembers, deleteCharacter, togglePick } from "../game/party-store";
+import { MAX_PARTY, availableMembers, deleteCharacter, recoveryLeft, togglePick } from "../game/party-store";
 import { bindSaves } from "../game/save-bind";
 import { claimSave, legacySaves, useActiveProfile, usePlayers } from "../store/players";
 import { XP_BY_CR, withProgress } from "../game/party";
@@ -60,7 +61,7 @@ export function PlayView() {
 
 /** Between adventures: your town, or setting out. */
 function Home() {
-  const [tab, setTab] = useState<"town" | "adventure">("town");
+  const [tab, setTab] = useState<"town" | "heroes" | "adventure">("town");
   return (
     <div className="mx-auto w-full max-w-6xl space-y-4">
       <ClaimOldSave />
@@ -68,6 +69,7 @@ function Home() {
         {(
           [
             ["town", "🏘 Town"],
+            ["heroes", "🧙 Heroes"],
             ["adventure", "🗺 Adventures & skirmishes"],
           ] as const
         ).map(([k, label]) => (
@@ -87,6 +89,8 @@ function Home() {
       </div>
       {tab === "town" ? (
         <TownView />
+      ) : tab === "heroes" ? (
+        <HeroesView />
       ) : (
         <>
           <ThreatBar onGoTown={() => setTab("town")} />
@@ -197,6 +201,7 @@ function PartyPicker() {
   const progress = usePlayers((s) => (activeId ? s.docs[activeId]?.progress : undefined));
   const fallenKeys = usePlayers((s) => (activeId ? s.docs[activeId]?.fallen : undefined)) ?? [];
   const injuries = usePlayers((s) => (activeId ? s.docs[activeId]?.injuries : undefined));
+  const doc = usePlayers((s) => (activeId ? s.docs[activeId] : undefined));
   const members = availableMembers(characters).map((e) => withProgress(e, progress?.[e.key]));
   const custom = new Map(characters.map((c) => [characterKey(c), c]));
   return (
@@ -227,6 +232,7 @@ function PartyPicker() {
                   <span className="block text-xs text-faint">{p.subtitle}</span>
                   {isFallen && <span className="block text-xs text-danger">Fallen: raise them at a shrine</span>}
                   {hurt.length > 0 && <span className="block text-xs text-warn">🩹 {hurt.map((x) => INJURIES[x]?.name).join(", ")}</span>}
+                  {recoveryLeft(doc, p.key) > 0 && <span className="block text-xs text-warn">🛏 In the infirmary: {recoveryLeft(doc, p.key)} h more (stays home)</span>}
                 </span>
               </label>
               {spec && (
@@ -478,14 +484,29 @@ function HeroPanel({
           <SpellSlots unit={u} />
           {u.concentration && <p className="text-xs text-highlight">Concentrating on {u.concentration}</p>}
 
+          {u.stats.actions.some((a) => a.kind === "attack" && a.hand === "spare") && (
+            <button
+              className="btn w-full text-xs"
+              disabled={!heroTurn || !!u.turn.swapped}
+              onClick={() => send({ type: "swap", unitId: u.id })}
+              title="Free, once a turn: draw the weapon on your back and stow the one in hand"
+            >
+              🔄 {u.wieldingSpare ? "Back to" : "Draw"}{" "}
+              {(u.stats.actions.find((a) => a.kind === "attack" && a.hand === (u.wieldingSpare ? "main" : "spare"))?.name ?? "the other weapon").replace(" (thrown)", "")}
+              {u.turn.swapped ? " · swapped this turn" : ""}
+            </button>
+          )}
+
           <div className="space-y-1.5">
             {u.stats.actions.map((a) => {
               const selected = mode.kind !== "move" && mode.actionId === a.id;
               const noSlot = !!a.slot && (u.resources[`slot${a.slot}`] ?? 0) <= 0;
+              const stowed = weaponInHand(u, a) !== true;
               return (
                 <button
                   key={a.id}
-                  disabled={!heroTurn || !u.turn[a.bonusAction ? "bonusAction" : "action"] || noSlot}
+                  title={stowed ? (weaponInHand(u, a) as string) : undefined}
+                  disabled={!heroTurn || !u.turn[a.bonusAction ? "bonusAction" : "action"] || noSlot || stowed}
                   onClick={() => setMode(selected ? { kind: "move" } : isArea(a) ? { kind: "area", actionId: a.id } : { kind: "target", actionId: a.id })}
                   aria-pressed={selected}
                   className={clsx(
@@ -493,7 +514,10 @@ function HeroPanel({
                     selected ? "border-accent bg-accent/10" : "border-line bg-surface-2 hover:border-accent",
                   )}
                 >
-                  <div className="font-semibold text-strong">{a.name}</div>
+                  <div className="font-semibold text-strong">
+                    {a.name}
+                    {stowed && <span className="ml-1 text-xs font-normal text-faint">(on your back)</span>}
+                  </div>
                   <div className="text-xs text-muted">{describeAction(a)}</div>
                 </button>
               );
@@ -712,7 +736,7 @@ function TargetPreview({ game, attacker, actionId, target }: { game: GameState; 
       effect = `heals ${action.dice}${action.ability ? ` + ${action.ability.toUpperCase()}` : ""}`;
       break;
     case "buff":
-      odds = action.buff === "bless" ? "+1d4 to attacks and saves" : "+5 max HP";
+      odds = action.buff === "bless" ? "+1d4 to attacks and saves" : action.buff === "faith" ? "+2 AC" : "+5 max HP";
       effect = action.concentration ? "concentration" : "until the end of the fight";
       break;
   }

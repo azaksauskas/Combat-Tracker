@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Party, applyFight, createParty, equip, gainXp, heroSetups, heroStats, levelForXp, longRest, shortRest, unequip } from "./party";
+import { type Party, applyFight, createParty, equip, foundGear, gainXp, heroSetups, heroStats, itemName, levelForXp, longRest, shortRest, takeUpWeapon, unequip } from "./party";
 import { boardFromAscii, createGame } from "./engine";
 import { produce } from "immer";
 
@@ -77,5 +77,22 @@ describe("party progression", () => {
     expect(r.fallen).toEqual(["Pip Thistlefoot"]);
     expect(r.party.heroes.find((h) => h.key === "wizard")!.hp).toBe(1);
     expect(r.party.items["potion-healing"]).toBe(1);
+  });
+});
+
+describe("weapons found on the road", () => {
+  it("a hero slings one on their back as the spare; the rest goes home to the armoury", () => {
+    let p = createParty();
+    p = { ...p, items: { longbow: 1, scimitar: 2, "chain-mail": 1, "potion-healing": 1 } };
+    p = takeUpWeapon(p, "fighter", "longbow");
+    const brann = p.heroes.find((h) => h.key === "fighter")!;
+    expect(brann.stats.actions.find((a) => a.name === "Longbow")).toMatchObject({ attackType: "ranged", hand: "spare" });
+    expect(brann.equipment).toContain("longbow");
+    // Taking up another found weapon puts the first back in the pack.
+    p = takeUpWeapon(p, "fighter", "scimitar");
+    expect(p.items.longbow).toBe(1);
+    expect(p.heroes.find((h) => h.key === "fighter")!.stats.actions.some((a) => a.name === "Longbow")).toBe(false);
+    expect(foundGear(p)).toEqual({ stash: { longbow: 1, scimitar: 1, "chain-mail": 1 }, spares: { fighter: "scimitar" } });
+    expect(itemName("chain-mail")).toBe("Chain Mail");
   });
 });

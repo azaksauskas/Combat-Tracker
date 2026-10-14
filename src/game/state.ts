@@ -16,6 +16,8 @@ export interface TurnBudget {
   attacksLeft?: number;
   /** A dying hero's turn: waiting for the player to roll the death save. */
   needsDeathSave?: boolean;
+  /** Already drew or stowed a weapon this turn. */
+  swapped?: boolean;
 }
 
 export interface DeathSaves {
@@ -54,6 +56,10 @@ export interface Unit {
   concentration?: string | null;
   /** Ran off the board (also marked dead: it's out of the fight). */
   fled?: boolean;
+  /** Dropped to 0 HP at some point in this battle (they'll need the infirmary). */
+  wentDown?: boolean;
+  /** The spare weapon is drawn (the main one is on the back). */
+  wieldingSpare?: boolean;
 }
 
 /** What winning means, besides beating every foe. */
@@ -66,7 +72,7 @@ export type Objective =
 /** Temporary effects from weapon masteries etc. */
 export interface Effect {
   id: string;
-  kind: "vex" | "sap" | "slow" | "guided" | "bless" | "shield" | "help" | "grapple";
+  kind: "vex" | "sap" | "slow" | "guided" | "bless" | "shield" | "help" | "grapple" | "faith";
   source: string;
   target: string;
   /**

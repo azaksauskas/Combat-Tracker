@@ -52,7 +52,7 @@ export function describeEvents(events: GameEvent[], s: GameState, startId: numbe
         add(`${name(e.targetId)} is ${e.added ? "now" : "no longer"} ${e.condition}`, "info");
         break;
       case "effect":
-        add(`${e.effect[0]!.toUpperCase()}${e.effect.slice(1)}: ${name(e.source)} → ${name(e.target)}`, "info");
+        add(`${e.effect === "faith" ? "Shield of Faith" : `${e.effect[0]!.toUpperCase()}${e.effect.slice(1)}`}: ${name(e.source)} → ${name(e.target)}`, "info");
         break;
       case "down":
         add(`${name(e.unitId)} falls unconscious!`, "bad");

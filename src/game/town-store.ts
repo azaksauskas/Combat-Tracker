@@ -11,10 +11,12 @@ import { addChronicle, updatePlayer, useActiveProfile, usePlayers } from "../sto
 import { randomSeed } from "./rng";
 import type { Faction } from "../domain/faction";
 import { BUILTIN_FACTIONS, lairResult, payTribute, raidResult, refuseTribute } from "./region";
-import { findScenario } from "./campaign-store";
+import { findScenario, useCampaign } from "./campaign-store";
 import { setupFor } from "./scenarios";
 import { quitGame, startBattle, usePlay } from "./store";
-import { chosenParty, recordAftermath } from "./party-store";
+import { spellProblem } from "./spellbook";
+import { chosenParty, heroAsNow, recordAftermath, recoveryLeft } from "./party-store";
+import { ARMORS, WEAPONS, gearName, loadoutProblem, startingKit, type Loadout } from "./arsenal";
 import { INJURIES, aftermath } from "./injuries";
 import { completeContract, notePatrol, patrolBounty, rewardText, tradeAtMarket, type Good } from "./economy";
 import { PATROL_FOES, foeBattle } from "./patrol";
@@ -26,6 +28,7 @@ import {
   advance,
   awayReport,
   craftHours,
+  working,
   bump,
   startUpgrade,
   assign,
@@ -322,6 +325,31 @@ export function homecoming(
   });
 }
 
+/** Weapons and armour found on an adventure go to the armoury; a weapon a hero took up stays on their back (their old spare goes to the armoury). */
+export function stowFinds(stash: Record<string, number>, spares: Record<string, string>) {
+  const id = me();
+  if (!id || (!Object.keys(stash).length && !Object.keys(spares).length)) return;
+  updatePlayer(id, (d) => {
+    const armory = { ...d.armory };
+    const loadouts = { ...d.loadouts };
+    for (const [k, n] of Object.entries(stash)) armory[k] = (armory[k] ?? 0) + n;
+    for (const [hero, weapon] of Object.entries(spares)) {
+      const built = heroAsNow(hero)?.build();
+      const was = loadouts[hero] ?? startingKit(built?.stats?.className);
+      if (was.spare) armory[was.spare] = (armory[was.spare] ?? 0) + 1;
+      loadouts[hero] = { ...was, spare: weapon };
+    }
+    return { ...d, armory, loadouts };
+  });
+  const names = [...Object.entries(stash).map(([k, n]) => `${n > 1 ? `${n} × ` : ""}${gearName(k)}`), ...Object.values(spares).map(gearName)];
+  addChronicle(id, [
+    {
+      kind: "story",
+      text: `Brought home for the armoury: ${names.join(", ")}.`,
+    },
+  ]);
+}
+
 /** Renown follows the best hero's level as soon as they level up. */
 export function noteLevel(level: number) {
   const id = me();
@@ -411,6 +439,103 @@ export function hireWorker(trade?: string) {
   townAction((t) => hire(t, trade));
 }
 
+// --- Weapons and armour ---------------------------------------------------------------
+
+/** Where gear comes from: the market sells simple weapons, light armour and shields; the smithy forges the rest. */
+export function gearSource(itemId: string): {
+  at: "market" | "smithy";
+  gold: number;
+  iron: number;
+  hours: number;
+} | null {
+  const k = num("gear.priceMultiplier");
+  const wp = WEAPONS[itemId];
+  const ar = ARMORS[itemId];
+  if (!wp && !ar) return null;
+  const price = Math.max(1, Math.round((wp?.price ?? ar!.price) * k));
+  const fromMarket = wp ? wp.category === "simple" : ar!.kind === "light" || ar!.kind === "shield";
+  if (fromMarket) return { at: "market", gold: price, iron: 0, hours: 0 };
+  return {
+    at: "smithy",
+    gold: price,
+    iron: Math.min(10, Math.max(1, Math.round(price / 25))),
+    hours: Math.min(24, 2 + Math.round(price / 25)),
+  };
+}
+
+/** Buy at the market, or have the smithy forge it; it goes to the armoury. */
+export function getGear(itemId: string) {
+  const src = gearSource(itemId);
+  const id = me();
+  const t = docOf(id)?.town;
+  if (!src || !id || !t) return;
+  const add = (d: PlayerDoc): PlayerDoc => ({
+    ...d,
+    armory: { ...d.armory, [itemId]: (d.armory[itemId] ?? 0) + 1 },
+  });
+  if (src.at === "market") {
+    if (!working(t, "market")) return void toast.error("Buying gear needs a staffed market");
+    if (!allowed("market")) return;
+    if (t.gold < src.gold) return void toast.error(`Needs ${src.gold} gold`);
+    updatePlayer(id, (d) =>
+      add({
+        ...d,
+        town: d.town ? { ...d.town, gold: d.town.gold - src.gold } : d.town,
+      }),
+    );
+    toast.success(`Bought: ${gearName(itemId)}`);
+    return;
+  }
+  if (!working(t, "smithy")) return void toast.error("Forging needs a staffed smithy");
+  if (work("smithy", { gold: src.gold, iron: src.iron }, src.hours, `The smith forged ${gearName(itemId)}`, (x) => x)) updatePlayer(id, add);
+}
+
+/** Change what a hero carries (in town only): the old item goes back to the armoury. */
+export function equipGear(heroKey: string, slot: keyof Loadout, itemId: string | null) {
+  const id = me();
+  const doc = docOf(id);
+  if (!id || !doc) return;
+  if (useCampaign.getState().state || usePlay.getState().game) return void toast.error("Gear is changed in town, between adventures");
+  const hero = heroAsNow(heroKey)?.build();
+  if (!hero?.stats) return;
+  const current: Loadout = doc.loadouts[heroKey] ?? startingKit(hero.stats.className);
+  const next: Loadout = { ...current, [slot]: itemId ?? undefined };
+  if (!itemId) delete next[slot];
+  // A two-handed weapon frees the off hand.
+  const freed: string[] = [];
+  if (slot === "main" && itemId && WEAPONS[itemId]?.props.includes("two-handed") && next.off) {
+    freed.push(next.off);
+    delete next.off;
+  }
+  const why = loadoutProblem(hero.stats, next);
+  if (why) return void toast.error(why);
+  if (itemId && (doc.armory[itemId] ?? 0) <= 0) return void toast.error(`No ${gearName(itemId)} in the armoury`);
+  const armory = { ...doc.armory };
+  if (itemId) armory[itemId] = (armory[itemId] ?? 0) - 1;
+  for (const back of [current[slot], ...freed]) if (back) armory[back] = (armory[back] ?? 0) + 1;
+  for (const k of Object.keys(armory)) if (armory[k]! <= 0) delete armory[k];
+  updatePlayer(id, (d) => ({
+    ...d,
+    loadouts: { ...d.loadouts, [heroKey]: next },
+    armory,
+  }));
+}
+
+/** Prepare a caster's spells for the next outing (in town only). */
+export function prepareSpells(heroKey: string, spellIds: string[]) {
+  const id = me();
+  if (!id || !docOf(id)) return;
+  if (useCampaign.getState().state || usePlay.getState().game) return void toast.error("Spells are prepared in town, between adventures");
+  const hero = heroAsNow(heroKey)?.build();
+  if (!hero?.stats) return;
+  const why = spellProblem(hero.stats, spellIds);
+  if (why) return void toast.error(why);
+  updatePlayer(id, (d) => ({
+    ...d,
+    spells: { ...d.spells, [heroKey]: spellIds },
+  }));
+}
+
 /** Start upgrading a building to its next level. */
 export function upgradeBuilding(buildingId: string) {
   if (!allowed("upgrade")) return;
@@ -459,13 +584,15 @@ function townAction(change: (t: Town) => Town) {
 /** The heroes' level for sizing fights: the best among those going. */
 export const partyLevel = (party: ReturnType<typeof chosenParty>) => Math.max(1, ...party.map((e) => e.build().stats?.level ?? 1));
 
+export const NO_ONE_FIT = "No one is fit to go: the heroes are in the infirmary or fallen";
+
 /** Ride out around the town looking for trouble, for a small bounty. */
 export function startPatrol() {
   const id = me();
   const t = docOf(id)?.town;
   if (!id || !t) return;
   const party = chosenParty();
-  if (!party.length) return toast.error("Pick the heroes who'll go first");
+  if (!party.length) return toast.error(NO_ONE_FIT);
   const seed = (t.seed ^ Math.floor(t.hours * 7919)) >>> 0;
   const foe = PATROL_FOES[seed % PATROL_FOES.length]!;
   const sc = foeBattle(foe, partyLevel(party), party.length, "low", seed);
@@ -480,7 +607,7 @@ export function startContract(contractId: string) {
   const c = t?.contracts.find((x) => x.id === contractId);
   if (!id || !t || !c) return;
   const party = chosenParty();
-  if (!party.length) return toast.error("Pick the heroes who'll go first");
+  if (!party.length) return toast.error(NO_ONE_FIT);
   const sc = foeBattle(c.foe, partyLevel(party), party.length, "moderate", c.seed, c.title);
   const { board, units } = setupFor(sc, party);
   startBattle(sc, board, units, { stash: { ...t.stash } }, "town", { kind: "contract", contract: c.id, heroes: party.map((e) => e.key) });
@@ -529,6 +656,7 @@ export function startTownBattle(kind: "raid" | "lair", fid: string) {
   const sc = findScenario(kind === "raid" ? f.raid : f.lair);
   if (!sc) return toast.error(`${f.name}'s ${kind === "raid" ? "raid" : "lair"} battle no longer exists. Ask the DM to fix the faction.`);
   const party = chosenParty();
+  if (!party.length) return void toast.error(NO_ONE_FIT);
   const { board, units } = setupFor(sc, party);
   const name = kind === "raid" ? `${f.name} raid ${t.name}` : `${f.name}'s lair`;
   // Potions from the town's stores are at hand; what's left goes back.
@@ -657,6 +785,30 @@ export function treatInjury(heroKey: string, heroName: string, injury: string) {
     return { ...d, injuries: { ...d.injuries, [heroKey]: list } };
   });
   addChronicle(id, [{ kind: "story", text: `${heroName}'s ${INJURIES[injury]?.name.toLowerCase() ?? "injury"} was healed at the shrine.` }]);
+}
+
+/** Give a hero in the infirmary a Potion of Healing from the town's stores: back on their feet sooner. */
+export function hastenRecovery(heroKey: string, heroName: string, potion = "potion-healing") {
+  const id = me();
+  const doc = docOf(id);
+  if (!id || !doc?.town) return;
+  if (recoveryLeft(doc, heroKey) <= 0) return;
+  if ((doc.town.stash[potion] ?? 0) <= 0) return void toast.error("No Potion of Healing in the town's stores");
+  const cut = num("infirmary.potionHours") * (potion === "potion-greater-healing" ? 2 : 1);
+  updatePlayer(id, (d) => {
+    if (!d.town) return d;
+    const stash = {
+      ...d.town.stash,
+      [potion]: (d.town.stash[potion] ?? 0) - 1,
+    };
+    if (stash[potion]! <= 0) delete stash[potion];
+    return {
+      ...d,
+      town: { ...d.town, stash },
+      recovery: { ...d.recovery, [heroKey]: (d.recovery[heroKey] ?? 0) - cut },
+    };
+  });
+  toast.success(`${heroName} drinks the potion: ${cut} hours sooner on their feet`);
 }
 
 /** Bring a fallen hero back. */

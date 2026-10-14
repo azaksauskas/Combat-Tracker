@@ -179,7 +179,9 @@ export function runAi() {
 }
 
 export function startGame(scenario: Scenario & { custom?: UnitSetup[] }) {
-  const { board, units } = setupFor(scenario, chosenParty());
+  const party = chosenParty();
+  if (!party.length) return void toast.error("No one is fit to fight: the heroes are in the infirmary or fallen");
+  const { board, units } = setupFor(scenario, party);
   startBattle(scenario, board, units, {}, "skirmish");
 }
 

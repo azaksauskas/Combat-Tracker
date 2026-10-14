@@ -3,7 +3,11 @@ import type { CharacterSpec } from "../domain/character";
 import { update, useGame } from "../store/game";
 import { activeDoc, addChronicle, updatePlayer, useActiveProfile } from "../store/players";
 import { toast } from "sonner";
-import { INJURIES, applyInjuries, type Aftermath } from "./injuries";
+import type { PlayerDoc } from "../domain/players";
+import { applyLoadout, startingKit, type Loadout } from "./arsenal";
+import { INJURIES, applyInjuries, recoveryHours, type Aftermath } from "./injuries";
+import { applySpells } from "./spellbook";
+import { working } from "./town";
 import { characterEntry } from "./builder";
 import { withMods } from "./crafting";
 import { withProgress } from "./party";
@@ -29,11 +33,49 @@ export function resolveParty(picks: string[], characters: CharacterSpec[], falle
 /** Characters the active player can pick from: theirs plus any shared ones in the library. */
 export const myCharacters = (): CharacterSpec[] => [...useGame.getState().library.characters, ...(activeDoc()?.characters ?? [])];
 
-/** The party for the next fight or adventure: at the level they've reached, with their mods and their injuries. The fallen stay home. */
+/** The party for the next fight or adventure: at the level they've reached, with their gear, spells, mods and injuries. The fallen and the recovering stay home. */
 export const chosenParty = () => {
   const doc = activeDoc();
-  return resolveParty(doc?.picks ?? [], myCharacters(), doc?.fallen ?? []).map((e) => withInjuries(withMods(withProgress(e, doc?.progress[e.key]), doc?.gear[e.key]), doc?.injuries[e.key]));
+  const home = [...(doc?.fallen ?? []), ...Object.keys(doc?.recovery ?? {}).filter((k) => recoveryLeft(doc, k) > 0)];
+  return resolveParty(doc?.picks ?? [], myCharacters(), home).map((e) => asNow(e, doc));
 };
+
+/** Game hours a hero still has to spend in the infirmary (0: fit). */
+export function recoveryLeft(doc: PlayerDoc | null | undefined, key: string): number {
+  const until = doc?.recovery[key];
+  if (until === undefined || !doc?.town) return 0;
+  return Math.max(0, Math.ceil(until - doc.town.hours));
+}
+
+/** A hero at the level they've reached, with their loadout, prepared spells, mods and injuries. */
+function asNow(e: ContentEntry, doc: PlayerDoc | null | undefined): ContentEntry {
+  const k = e.key;
+  return withInjuries(withMods(withSpells(withLoadout(withProgress(e, doc?.progress[k]), doc?.loadouts[k]), doc?.spells[k], doc?.loadouts[k]), doc?.gear[k]), doc?.injuries[k]);
+}
+
+/** One of the player's heroes as they are now: level, loadout, spells, mods and injuries. */
+export function heroAsNow(key: string): ContentEntry | undefined {
+  const e = availableMembers(myCharacters()).find((x) => x.key === key);
+  return e && asNow(e, activeDoc());
+}
+
+/** A hero with the weapons and armour they carry (their built-in kit when nothing was changed). */
+export function withLoadout(e: ContentEntry, loadout: Loadout | undefined): ContentEntry {
+  if (!loadout) return e;
+  return { ...e, build: () => applyLoadout(e.build(), loadout) };
+}
+
+/** A caster with the spells they prepared in town (their built-in list when nothing was changed). */
+export function withSpells(e: ContentEntry, spells: string[] | undefined, loadout: Loadout | undefined): ContentEntry {
+  if (!spells) return e;
+  return {
+    ...e,
+    build: () => {
+      const c = e.build();
+      return applySpells(c, spells, !(loadout ?? startingKit(c.stats?.className)).armor);
+    },
+  };
+}
 
 function withInjuries(e: ContentEntry, injuries: string[] | undefined): ContentEntry {
   if (!injuries?.length) return e;
@@ -44,20 +86,37 @@ function withInjuries(e: ContentEntry, injuries: string[] | undefined): ContentE
 export function recordAftermath(results: Aftermath[]) {
   const id = useActiveProfile.getState().id;
   if (!id || !results.length) return;
+  // Time in the infirmary, counted on the town's clock (no town: they heal on the road).
+  const town = activeDoc()?.town;
+  const shrine = !!town && working(town, "shrine") > 0;
+  const rest = new Map(town ? results.map((r) => [r.key, recoveryHours(r, shrine)] as const).filter(([, h]) => h > 0) : []);
   updatePlayer(id, (d) => {
     const injuries = { ...d.injuries };
     const fallen = [...d.fallen];
+    const recovery = { ...d.recovery };
+    const now = Math.floor(d.town?.hours ?? 0);
     for (const r of results) {
       if (r.fallen && !fallen.includes(r.key)) fallen.push(r.key);
       if (r.injury) injuries[r.key] = [...(injuries[r.key] ?? []), r.injury];
+      const h = rest.get(r.key);
+      if (h) recovery[r.key] = Math.max(recovery[r.key] ?? 0, now + h);
     }
-    return { ...d, injuries, fallen };
+    return { ...d, injuries, fallen, recovery };
   });
-  addChronicle(
-    id,
-    results.map((r) => (r.fallen ? { kind: "death" as const, text: `${r.name} died. Only a shrine can bring them back.` } : { kind: "death" as const, text: `${r.name} survived but carries a lasting injury: ${INJURIES[r.injury!]?.name} (${INJURIES[r.injury!]?.effect}).` })),
-  );
-  for (const r of results) toast[r.fallen ? "error" : "warning"](r.fallen ? `✝ ${r.name} has fallen.` : `${r.name}: ${INJURIES[r.injury!]?.name} — ${INJURIES[r.injury!]?.effect}`);
+  const lines = results.flatMap((r) => {
+    if (r.fallen) return [{ kind: "death" as const, text: `${r.name} died. Only a shrine can bring them back.` }];
+    const out: { kind: "death" | "story"; text: string }[] = [];
+    if (r.injury) out.push({ kind: "death", text: `${r.name} survived but carries a lasting injury: ${INJURIES[r.injury]?.name} (${INJURIES[r.injury]?.effect}).` });
+    const h = rest.get(r.key);
+    if (h) out.push({ kind: "story", text: `${r.name} ${r.downed ? "was carried" : "limped"} to the infirmary: ${h} hours of rest${shrine ? " (the shrine tends them)" : ""}.` });
+    return out;
+  });
+  if (lines.length) addChronicle(id, lines);
+  for (const r of results) {
+    if (r.fallen) toast.error(`✝ ${r.name} has fallen.`);
+    else if (r.injury) toast.warning(`${r.name}: ${INJURIES[r.injury]?.name} — ${INJURIES[r.injury]?.effect}`);
+    if (rest.get(r.key)) toast(`🛏 ${r.name}: ${rest.get(r.key)} h in the infirmary`);
+  }
 }
 
 /** The XP the chosen party carries into an adventure (the best of them; the others catch up). */

@@ -11,7 +11,7 @@ import { newId } from "../domain/combat";
 import { ABILITIES, ABILITY_NAMES, DAMAGE_TYPES } from "../domain/statblock";
 import { addScene, clueIndex, blankAdventure, deleteScene, duplicateAdventure, lintAdventure, parseAdventureJson, renameScene, sceneLinks, type Issue } from "../game/adventure-edit";
 import { beginAdventure } from "../game/campaign-store";
-import { ITEMS, MAX_LEVEL } from "../game/party";
+import { GEAR_IDS, ITEMS, MAX_LEVEL, itemName } from "../game/party";
 import { SCENARIOS } from "../game/scenarios";
 import { SKILLS } from "../game/skills";
 import { update, useGame } from "../store/game";
@@ -768,6 +768,13 @@ function EffectFields({ effect: e, onChange }: { effect: Effect; onChange: (e: E
                 {it.name}
               </option>
             ))}
+            <optgroup label="Weapons and armour (to the armoury)">
+              {GEAR_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {itemName(id)}
+                </option>
+              ))}
+            </optgroup>
           </select>
           <input className="field w-16 py-0.5" type="number" min={1} value={e.count ?? 1} aria-label="Count" onChange={(x) => onChange({ ...e, count: num(x.target.value, 1) === 1 ? undefined : num(x.target.value, 1) })} />
         </>

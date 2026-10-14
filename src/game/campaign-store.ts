@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { create } from "zustand";
 import { ADVENTURES } from "../content/adventures";
 import { acknowledge, choose, finishFight, finishShortRest, startAdventure, StoryError, type Adventure, type CampaignState } from "./adventure";
-import { equip, heroSetups, potionStash, unequip } from "./party";
+import { equip, foundGear, heroSetups, potionStash, takeUpWeapon, unequip } from "./party";
 import { SCENARIOS, encounterScenario, setupFor, type Scenario } from "./scenarios";
 import type { UnitSetup } from "./engine";
 import { mapScenario } from "./maps";
@@ -12,7 +12,7 @@ import { chosenParty, partyXp, recordAftermath, recordProgress } from "./party-s
 import { aftermath } from "./injuries";
 import { chronicleFight, chronicleStep } from "./chronicle";
 import { activeDoc, addChronicle, updatePlayer, useActiveProfile } from "../store/players";
-import { homecoming, noteLevel, packForAdventure, passTime, salvageBattle } from "./town-store";
+import { homecoming, noteLevel, packForAdventure, passTime, salvageBattle, stowFinds } from "./town-store";
 import { useGame } from "../store/game";
 
 /** The adventure in progress. Saved to the active player's document after every step (see save-bind.ts). */
@@ -43,6 +43,8 @@ function set(state: CampaignState | null) {
       return;
     }
     if (state?.ended === "victory") markCompleted(last.adventureId);
+    const finds = foundGear(last.party);
+    stowFinds(finds.stash, finds.spares);
     recordProgress(last.party.heroes, last.party.xp);
     // The adventure's starting purse stays behind; what they earned comes home.
     const earned = Math.max(0, last.party.gold - (adventureOf(last)?.startingGold ?? 0));
@@ -63,6 +65,7 @@ function markCompleted(adventureId: string) {
 
 /** Starts an adventure; one already completed is a replay, for fun only. */
 export function beginAdventure(adv: Adventure) {
+  if (!chosenParty().length) return void toast.error("No one is fit to go: the heroes are in the infirmary or fallen");
   quitGame();
   const replay = (activeDoc()?.completed ?? []).includes(adv.id);
   const started = { ...startAdventure(adv, undefined, chosenParty()), ...(replay ? { replay: true } : {}) };
@@ -105,6 +108,12 @@ export const completeShortRest = (spend: Record<string, number>) => {
 export const equipItem = (heroKey: string, itemId: string) => {
   const s = current();
   if (s) set({ ...s, party: equip(s.party, heroKey, itemId) });
+};
+
+/** Sling a weapon found on the road across a hero's back. */
+export const takeUpFoundWeapon = (heroKey: string, weaponId: string) => {
+  const s = current();
+  if (s) set({ ...s, party: takeUpWeapon(s.party, heroKey, weaponId) });
 };
 
 export const unequipItem = (heroKey: string, itemId: string) => {

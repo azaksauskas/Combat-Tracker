@@ -12,9 +12,11 @@ import {
   equipItem,
   goToBattle,
   pickChoice,
+  takeUpFoundWeapon,
   unequipItem,
 } from "../game/campaign-store";
-import { ITEMS, MAX_LEVEL, XP_FOR_LEVEL, type Hero, type Party } from "../game/party";
+import { ITEMS, MAX_LEVEL, XP_FOR_LEVEL, isFoundGear, type Hero, type Party } from "../game/party";
+import { WEAPONS, gearIcon, gearName, trainedWith } from "../game/arsenal";
 import { abilityMod, formatMod } from "../domain/statblock";
 import { useGame } from "../store/game";
 
@@ -97,6 +99,7 @@ function PartySheet({ party, clues }: { party: Party; clues: string[] }) {
   const nextXp = level < MAX_LEVEL ? XP_FOR_LEVEL[level + 1]! : null;
   const equipment = Object.entries(party.items).filter(([id, n]) => n > 0 && ITEMS[id]?.kind === "equipment");
   const potions = Object.entries(party.items).filter(([id, n]) => n > 0 && ITEMS[id]?.kind === "potion");
+  const gear = Object.entries(party.items).filter(([id, n]) => n > 0 && isFoundGear(id));
 
   return (
     <aside className="min-h-0 space-y-3 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow" aria-label="Party">
@@ -150,7 +153,27 @@ function PartySheet({ party, clues }: { party: Party; clues: string[] }) {
             </select>
           </div>
         ))}
-        {potions.length === 0 && equipment.length === 0 && <p className="text-xs text-faint italic">No items yet.</p>}
+        {gear.map(([id, n]) => (
+          <div key={id} className="mt-1 text-sm">
+            <span title={WEAPONS[id] ? "A weapon found on the road: a hero can sling it on their back, or it goes to the armoury at home" : "Goes to the armoury at home"}>
+              {gearIcon(id)} {n} × {gearName(id)}
+            </span>
+            {WEAPONS[id] && (
+              <select className="field mt-1 py-1 text-xs" value="" aria-label={`Take up ${gearName(id)}`} onChange={(e) => e.target.value && takeUpFoundWeapon(e.target.value, id)}>
+                <option value="">Sling on the back of…</option>
+                {party.heroes
+                  .filter((h) => !h.dead)
+                  .map((h) => (
+                    <option key={h.key} value={h.key}>
+                      {h.name}
+                      {trainedWith(h.stats, id) ? "" : " (untrained)"}
+                    </option>
+                  ))}
+              </select>
+            )}
+          </div>
+        ))}
+        {potions.length === 0 && equipment.length === 0 && gear.length === 0 && <p className="text-xs text-faint italic">No items yet.</p>}
       </section>
     </aside>
   );
@@ -179,11 +202,17 @@ function HeroCard({ hero: h }: { hero: Hero }) {
             </span>
           </div>
           <HpBar combatant={{ hpCurrent: h.hp, hpMax: h.hpMax, hpTemp: 0 }} className="mt-1" />
-          {h.equipment.map((e) => (
-            <button key={e} className="mt-1 text-xs text-accent hover:underline" onClick={() => unequipItem(h.key, e)} title="Unequip">
-              ⚔ {ITEMS[e]?.name} ✕
-            </button>
-          ))}
+          {h.equipment.map((e) =>
+            WEAPONS[e] ? (
+              <span key={e} className="mt-1 block text-xs text-muted" title="Found on the road; drawn in a fight. It stays with them at home.">
+                {gearIcon(e)} {gearName(e)} (on the back)
+              </span>
+            ) : (
+              <button key={e} className="mt-1 text-xs text-accent hover:underline" onClick={() => unequipItem(h.key, e)} title="Unequip">
+                ⚔ {ITEMS[e]?.name} ✕
+              </button>
+            ),
+          )}
         </>
       )}
     </li>

@@ -5,6 +5,7 @@ import type { Rng } from "../domain/dice";
 import { coverBetween, findPath, lineOfSight, reachableCells, type Cell } from "./board";
 import { apply, boardFromAscii, checkTarget, createGame, currentUnit, reachable, type Command, type UnitSetup } from "./engine";
 import { GameError, type GameEvent, type GameState } from "./state";
+import { applyLoadout, startingKit } from "./arsenal";
 
 // --- helpers ------------------------------------------------------------------
 
@@ -296,6 +297,25 @@ describe("objectives and morale", () => {
     const gone = run(r.state, { type: "flee", unitId: "gob" });
     expect(unitOf(gone.state, "gob")).toMatchObject({ fled: true, dead: true });
     expect(gone.state.outcome).toBe("victory");
+  });
+});
+
+// --- weapons in hand ---------------------------------------------------------------
+
+describe("drawing the spare weapon", () => {
+  it("a spare weapon must be drawn (free, once a turn) before it can be used", () => {
+    const brann = PARTY.find((p) => p.key === "fighter")!;
+    const kitted = applyLoadout(brann.build(), startingKit("Fighter"));
+    const hero: UnitSetup = { id: "brann", name: "Brann", side: "party", stats: kitted.stats!, ac: kitted.ac, hp: 12, speed: 30, pos: { x: 0, y: 0 } };
+    let s = game(OPEN, [hero, setup("gob", "goblin-warrior", { x: 5, y: 0 })]);
+    const thrown = actionId(s, "brann", "Javelin (thrown)");
+    expect(() => run(s, { type: "action", unitId: "brann", actionId: thrown, targetId: "gob" })).toThrow(/swap weapons first/);
+    s = run(s, { type: "swap", unitId: "brann" }).state;
+    expect(unitOf(s, "brann").wieldingSpare).toBe(true);
+    expect(() => run(s, { type: "swap", unitId: "brann" })).toThrow(/Already swapped/);
+    const r = run(s, { type: "action", unitId: "brann", actionId: thrown, targetId: "gob" }, dice([10, 20], [3, 6]));
+    expect(ofType(r.events, "attack")[0]!.action).toBe("Javelin (thrown)");
+    expect(() => run(s, { type: "action", unitId: "brann", actionId: actionId(s, "brann", "Greatsword"), targetId: "gob" })).toThrow(/swap back/);
   });
 });
 

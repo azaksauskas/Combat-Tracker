@@ -133,8 +133,8 @@ export const GOBLIN_TRAIL: Adventure = {
           label: "Search the wagon",
           once: true,
           success: {
-            text: "Coins, a healing potion, and a finely balanced blade with a faint silver sheen.",
-            effects: [{ type: "gold", amount: 40 }, { type: "item", id: "potion-healing" }, { type: "item", id: "weapon-plus-1" }, { type: "xp", amount: 275 }],
+            text: "Coins, a healing potion, a finely balanced blade with a faint silver sheen, and the bandit captain's longbow.",
+            effects: [{ type: "gold", amount: 40 }, { type: "item", id: "potion-healing" }, { type: "item", id: "weapon-plus-1" }, { type: "item", id: "longbow" }, { type: "xp", amount: 275 }],
             next: { scene: "bandit-loot" },
           },
         },
@@ -153,8 +153,8 @@ export const GOBLIN_TRAIL: Adventure = {
           label: "Search the camp",
           once: true,
           success: {
-            text: "Under a pile of furs: a purse of silver, a healing potion, and a sword far too fine for any goblin.",
-            effects: [{ type: "gold", amount: 30 }, { type: "item", id: "potion-healing" }, { type: "item", id: "weapon-plus-1" }, { type: "xp", amount: 250 }],
+            text: "Under a pile of furs: a purse of silver, a healing potion, a sword far too fine for any goblin, and a bundle of goblin scimitars.",
+            effects: [{ type: "gold", amount: 30 }, { type: "item", id: "potion-healing" }, { type: "item", id: "weapon-plus-1" }, { type: "item", id: "scimitar", count: 2 }, { type: "xp", amount: 250 }],
             next: { scene: "goblin-camp" },
           },
         },

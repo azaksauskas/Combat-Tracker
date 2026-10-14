@@ -514,6 +514,38 @@ picker into a real sign-in without changing the data model.
   - Objectives: "Hold the Ford" (survive 4 rounds) and "Run for the Gate"
     (get every standing hero onto the exit squares). Scenarios take a
     `goal`, and maps mark exits with X.
+- **Phase G: heroes first: gear, spells and the infirmary.** The town
+  exists to make the heroes stronger; the heroes are the game.
+  - 🧙 Heroes tab: each hero's sheet with four slots (main hand, off hand,
+    on the back, armour). Gear changes only in town, between adventures.
+    Weapons and armour follow the 2024 SRD (damage, properties, mastery,
+    AC); untrained gear is marked, armour a class can't wear isn't offered.
+    Each class starts with its kit (Brann: greatsword, javelin on his back,
+    chain mail). What's taken off goes to the 🗄 armoury.
+  - Getting gear: the market sells simple weapons, light armour and
+    shields for gold; the smithy forges martial weapons and heavier armour
+    from gold, iron and hours. Prices × `gear.priceMultiplier`.
+  - In a fight a hero holds their main weapon; the one on their back is
+    drawn with 🔄 (free, once a turn) and stowed the same way.
+  - ✨ Spells: Clerics and Wizards prepare cantrips and spells in town
+    within the 2024 limits (cantrips 3, 4 from level 4; prepared 4/5/6/7/9
+    at levels 1–5; spell levels up to 1/2/3). The catalogue holds the SRD
+    spells the engine runs, now with Shield of Faith (+2 AC,
+    concentration), Chill Touch, Ray of Frost, Toll the Dead, Ice Knife and
+    more. Shield and Mage Armor (AC 13 + Dex without armour) are features.
+  - 🛏 Infirmary: after a battle a hero who went down rests about a day
+    (24 h, +12 with a lasting injury); one who ended below half HP rests
+    less (up to 12 h, by HP lost). A staffed shrine halves the time, and
+    a Potion of Healing from the town's stores takes 8 hours off (greater:
+    16). Recovering heroes stay home: they aren't sent on adventures,
+    patrols, contracts or into skirmishes. Counted on the town's clock;
+    numbers under "Heroes" on the balance page.
+  - Found weapons: adventures can give weapons and armour (the DM picks
+    them in the editor's item list). On the road a hero can sling a found
+    weapon on their back as the spare; back home it stays their spare
+    (the old one goes to the armoury), and everything else found goes to
+    the armoury. The bandits' wagon has a longbow, the goblin camp
+    scimitars.
 
 ## Future ideas
 

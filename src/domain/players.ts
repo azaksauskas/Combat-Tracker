@@ -142,6 +142,16 @@ export const PlayerDocSchema = z.object({
   guildWork: z.object({ day: z.string().catch(""), total: z.number().catch(0) }).catch({ day: "", total: 0 }),
   /** When a guild founder last collected the tithe of a town their guild runs (real ms). */
   lastTithe: z.number().catch(0),
+  /** Each hero's weapons and armour (content key → loadout); absent: their starting kit. */
+  loadouts: z
+    .record(z.string(), z.object({ main: z.string().optional(), off: z.string().optional(), spare: z.string().optional(), armor: z.string().optional() }).catch({}))
+    .catch({}),
+  /** Heroes in the infirmary: content key → the town hour they're back on their feet. */
+  recovery: z.record(z.string(), z.number()).catch({}),
+  /** Each caster's prepared cantrips and spells (content key → spell ids); absent: their built-in list. */
+  spells: z.record(z.string(), z.array(z.string()).catch([])).catch({}),
+  /** Weapons and armour in the town's armoury, not carried by anyone: item id → count. */
+  armory: z.record(z.string(), z.number()).catch({}),
   /** Renown = the highest level any of the player's heroes has reached. */
   renown: z.number().catch(1),
   /** Which open page wrote last, so a page ignores the echo of its own save. */

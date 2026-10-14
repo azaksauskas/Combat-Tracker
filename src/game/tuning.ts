@@ -188,6 +188,10 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Spies & guilds", "guild.reclaimShare", "Taking the town back removes this share of the guild's influence", 0.6, undefined, { step: 0.05, max: 1 }),
 
   // Crafting
+  f("Crafting", "gear.priceMultiplier", "Weapons and armour: price × this", 1, "SRD prices; martial weapons and medium/heavy armour are forged at the smithy (gold + iron + hours).", {
+    step: 0.1,
+    min: 0.1,
+  }),
   f("Crafting", "price.food", "Market price: food", 2),
   f("Crafting", "price.materials", "Market price: materials", 3),
   f("Crafting", "price.sellShare", "Selling pays this share of the price", 0.5, undefined, { step: 0.05, max: 1 }),
@@ -215,6 +219,12 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Heroes", "shrine.raiseGold", "Shrine: raise the fallen, gold", 100),
   f("Heroes", "shrine.raiseDust", "Shrine: raise the fallen, arcane dust", 5),
   f("Heroes", "shrine.raiseHours", "Shrine: raise the fallen, hours", 24),
+  f("Heroes", "infirmary.downedHours", "Infirmary: hours for a hero who went down", 24),
+  f("Heroes", "infirmary.injuryHours", "Infirmary: extra hours with a lasting injury", 12),
+  f("Heroes", "infirmary.woundedHours", "Infirmary: hours for a hero who lost all their HP but stayed up (scaled by HP lost)", 12),
+  f("Heroes", "infirmary.woundedShare", "Infirmary: share of HP lost before a hero needs rest", 0.5, undefined, { step: 0.05, max: 1 }),
+  f("Heroes", "infirmary.shrineFactor", "Infirmary: time with a staffed shrine (×)", 0.5, undefined, { step: 0.05, max: 1 }),
+  f("Heroes", "infirmary.potionHours", "Infirmary: hours a Potion of Healing takes off (greater: twice)", 8),
   f("Heroes", "xp.battleMultiplier", "XP from town battles (multiplier)", 1, undefined, { step: 0.25 }),
   f("Heroes", "xp.adventureMultiplier", "XP from adventure battles (multiplier)", 1, undefined, { step: 0.25 }),
 ];

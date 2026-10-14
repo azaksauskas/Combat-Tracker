@@ -1,6 +1,7 @@
 import type { StatAction } from "../domain/statblock";
 import type { CombatantDraft } from "../store/actions";
 import { mulberry32 } from "./rng";
+import { num } from "./tuning";
 import type { GameState } from "./state";
 
 /**
@@ -52,9 +53,26 @@ export interface Aftermath {
   name: string;
   fallen?: true;
   injury?: string;
+  /** Dropped to 0 HP in the battle. */
+  downed?: true;
+  /** Share of their hit points they ended the battle without (0–1). */
+  hurt?: number;
 }
 
-/** What a battle left on the heroes: who died, who carries a new injury. */
+/**
+ * Game hours in the infirmary after a battle: about a day for a hero who went
+ * down (more with a lasting injury), less for lesser wounds, nothing for
+ * scratches. A staffed shrine tends them in half the time (all tunable).
+ */
+export function recoveryHours(r: Aftermath, shrine: boolean): number {
+  if (r.fallen) return 0;
+  let h = 0;
+  if (r.downed) h = num("infirmary.downedHours") + (r.injury ? num("infirmary.injuryHours") : 0);
+  else if ((r.hurt ?? 0) >= num("infirmary.woundedShare")) h = Math.round(num("infirmary.woundedHours") * (r.hurt ?? 0));
+  return Math.ceil(h * (shrine ? num("infirmary.shrineFactor") : 1));
+}
+
+/** What a battle left on the heroes: who died, who carries a new injury, who is hurt. */
 export function aftermath(game: GameState, keyOf: (unitId: string) => string | undefined): Aftermath[] {
   const rng = mulberry32(game.rngSeed ^ 0x5eed).rng;
   const ids = Object.keys(INJURIES);
@@ -63,8 +81,16 @@ export function aftermath(game: GameState, keyOf: (unitId: string) => string | u
     if (u.side !== "party") continue;
     const key = keyOf(u.id);
     if (!key) continue;
-    if (u.dead) out.push({ key, name: u.name, fallen: true });
-    else if ((u.death.worst ?? 0) >= 2) out.push({ key, name: u.name, injury: ids[Math.floor(rng() * ids.length)]! });
+    if (u.dead && !u.fled) {
+      out.push({ key, name: u.name, fallen: true });
+      continue;
+    }
+    const r: Aftermath = { key, name: u.name };
+    if ((u.death.worst ?? 0) >= 2) r.injury = ids[Math.floor(rng() * ids.length)]!;
+    if (u.wentDown) r.downed = true;
+    const hurt = u.hpMax > 0 ? Math.round((1 - Math.max(0, u.hp) / u.hpMax) * 100) / 100 : 0;
+    if (hurt > 0) r.hurt = hurt;
+    if (r.injury || r.downed || r.hurt) out.push(r);
   }
   return out;
 }

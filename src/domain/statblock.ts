@@ -105,6 +105,8 @@ export const AttackActionSchema = z.object({
   onHitCondition: z.string().optional(),
   /** Guiding Bolt: the next attack roll against the target has Advantage. */
   onHitEffect: z.enum(["guided"]).optional(),
+  /** Which hand's weapon this is (from the hero's loadout): a spare weapon must be drawn first. */
+  hand: z.enum(["main", "off", "spare"]).optional(),
   ...spellFields,
 });
 export type AttackAction = z.infer<typeof AttackActionSchema>;
@@ -144,12 +146,12 @@ export const HealActionSchema = z.object({
 });
 export type HealAction = z.infer<typeof HealActionSchema>;
 
-/** Spells that help allies: Bless (concentration) and Aid. */
+/** Spells that help allies: Bless and Shield of Faith (concentration), and Aid. */
 export const BuffActionSchema = z.object({
   id,
   kind: z.literal("buff"),
   name: str,
-  buff: z.enum(["bless", "aid"]),
+  buff: z.enum(["bless", "aid", "faith"]),
   range: z.number().catch(30),
   /** How many allies it can affect. */
   targets: z.number().catch(3),
@@ -237,7 +239,7 @@ const ordinal = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 
 export function describeAction(a: StatAction): string {
   if (a.kind === "heal") return `${spellTag(a)}heals ${a.dice}${a.ability ? ` + ${a.ability.toUpperCase()}` : ""} · ${a.range <= 5 ? "touch" : `${a.range} ft`}`;
   if (a.kind === "buff")
-    return `${spellTag(a)}${a.buff === "bless" ? "+1d4 to attacks and saves" : "+5 current and max HP"} · up to ${a.targets} allies within ${a.range} ft${a.concentration ? " · concentration" : ""}`;
+    return `${spellTag(a)}${a.buff === "bless" ? "+1d4 to attacks and saves" : a.buff === "faith" ? "+2 AC" : "+5 current and max HP"} · up to ${a.targets} all${a.targets === 1 ? "y" : "ies"} within ${a.range} ft${a.concentration ? " · concentration" : ""}`;
   if (a.kind === "missile") return `${spellTag(a)}${a.darts} darts × ${a.dice} ${a.damageType}, always hit · ${a.range} ft`;
   if (a.kind === "save") {
     const area = a.area ? `${a.area.size}-ft ${a.area.shape} · ` : `${a.range ?? 60} ft · `;

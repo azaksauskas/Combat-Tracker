@@ -4,7 +4,7 @@ import type { ContentEntry } from "../content/srd";
 import { mulberry32, randomSeed } from "./rng";
 import { SKILL_ABILITY, type Skill } from "./skills";
 import type { Adventure, Choice, Effect, Outcome } from "../domain/adventure";
-import { ITEMS, XP_FOR_LEVEL, applyFight, createParty, gainXp, longRest, shortRest, type Hero, type LevelUpReport, type Party } from "./party";
+import { ITEMS, XP_FOR_LEVEL, isFoundGear, itemName, applyFight, createParty, gainXp, longRest, shortRest, type Hero, type LevelUpReport, type Party } from "./party";
 import type { GameState } from "./state";
 
 /**
@@ -140,7 +140,7 @@ function applyEffects(s: CampaignState, effects: Effect[], rng: () => number) {
       case "item": {
         const n = e.count ?? 1;
         s.party = { ...s.party, items: { ...s.party.items, [e.id]: (s.party.items[e.id] ?? 0) + n } };
-        say(s, "reward", `Found: ${n > 1 ? `${n} × ` : ""}${ITEMS[e.id]?.name ?? e.id}`);
+        say(s, "reward", `Found: ${n > 1 ? `${n} × ` : ""}${itemName(e.id)}`);
         break;
       }
       case "flag":
@@ -313,7 +313,7 @@ export function validateAdventure(adv: Adventure, scenarioIds: string[]): string
           if (!has(n.victory)) errs.push(`${scene.id}/${c.id} → missing victory scene "${n.victory}"`);
           if (n.defeat && !has(n.defeat)) errs.push(`${scene.id}/${c.id} → missing defeat scene "${n.defeat}"`);
         }
-        for (const e of o.effects ?? []) if (e.type === "item" && !ITEMS[e.id]) errs.push(`${scene.id}/${c.id} → unknown item "${e.id}"`);
+        for (const e of o.effects ?? []) if (e.type === "item" && !ITEMS[e.id] && !isFoundGear(e.id)) errs.push(`${scene.id}/${c.id} → unknown item "${e.id}"`);
       }
   return errs;
 }
