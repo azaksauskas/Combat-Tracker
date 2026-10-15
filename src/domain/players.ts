@@ -146,6 +146,12 @@ export const PlayerDocSchema = z.object({
   loadouts: z
     .record(z.string(), z.object({ main: z.string().optional(), off: z.string().optional(), spare: z.string().optional(), armor: z.string().optional() }).catch({}))
     .catch({}),
+  /** Magic items the player owns; `on`: the hero carrying it (absent: in the treasury). */
+  treasure: z.array(z.object({ uid: z.string(), id: z.string(), on: z.string().optional() })).catch([]),
+  /** Loot chests not opened yet. */
+  chests: z.array(z.object({ id: z.string(), tier: z.number(), from: z.string().catch(""), seed: z.number() })).catch([]),
+  /** Unique treasures this player has found (each can be found once). */
+  uniques: z.array(z.string()).catch([]),
   /** Heroes in the infirmary: content key → the town hour they're back on their feet. */
   recovery: z.record(z.string(), z.number()).catch({}),
   /** Each caster's prepared cantrips and spells (content key → spell ids); absent: their built-in list. */

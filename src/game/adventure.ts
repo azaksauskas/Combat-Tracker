@@ -6,6 +6,7 @@ import { SKILL_ABILITY, type Skill } from "./skills";
 import type { Adventure, Choice, Effect, Outcome } from "../domain/adventure";
 import { ITEMS, XP_FOR_LEVEL, isFoundGear, itemName, applyFight, createParty, gainXp, longRest, shortRest, type Hero, type LevelUpReport, type Party } from "./party";
 import type { GameState } from "./state";
+import { isMagicItem } from "./treasure";
 
 /**
  * Adventures: scenes with choices. A choice may need a skill check (one
@@ -313,7 +314,7 @@ export function validateAdventure(adv: Adventure, scenarioIds: string[]): string
           if (!has(n.victory)) errs.push(`${scene.id}/${c.id} → missing victory scene "${n.victory}"`);
           if (n.defeat && !has(n.defeat)) errs.push(`${scene.id}/${c.id} → missing defeat scene "${n.defeat}"`);
         }
-        for (const e of o.effects ?? []) if (e.type === "item" && !ITEMS[e.id] && !isFoundGear(e.id)) errs.push(`${scene.id}/${c.id} → unknown item "${e.id}"`);
+        for (const e of o.effects ?? []) if (e.type === "item" && !ITEMS[e.id] && !isFoundGear(e.id) && !isMagicItem(e.id)) errs.push(`${scene.id}/${c.id} → unknown item "${e.id}"`);
       }
   return errs;
 }

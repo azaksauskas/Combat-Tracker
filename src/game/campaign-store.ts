@@ -12,7 +12,8 @@ import { chosenParty, partyXp, recordAftermath, recordProgress } from "./party-s
 import { aftermath } from "./injuries";
 import { chronicleFight, chronicleStep } from "./chronicle";
 import { activeDoc, addChronicle, updatePlayer, useActiveProfile } from "../store/players";
-import { homecoming, noteLevel, packForAdventure, passTime, salvageBattle, stowFinds } from "./town-store";
+import { grantChest, homecoming, noteLevel, packForAdventure, passTime, salvageBattle, stowFinds, stowTreasure } from "./town-store";
+import { isMagicItem } from "./treasure";
 import { useGame } from "../store/game";
 
 /** The adventure in progress. Saved to the active player's document after every step (see save-bind.ts). */
@@ -45,6 +46,9 @@ function set(state: CampaignState | null) {
     if (state?.ended === "victory") markCompleted(last.adventureId);
     const finds = foundGear(last.party);
     stowFinds(finds.stash, finds.spares);
+    // Magic items (in the pack or carried) go to the treasury; a won adventure leaves a chest.
+    stowTreasure([...Object.entries(last.party.items).flatMap(([k, n]) => (isMagicItem(k) ? Array<string>(Math.max(0, n)).fill(k) : [])), ...last.party.heroes.flatMap((h) => h.equipment.filter(isMagicItem))]);
+    if (state?.ended === "victory") grantChest(num("loot.adventureTier"), title, best(last));
     recordProgress(last.party.heroes, last.party.xp);
     // The adventure's starting purse stays behind; what they earned comes home.
     const earned = Math.max(0, last.party.gold - (adventureOf(last)?.startingGold ?? 0));

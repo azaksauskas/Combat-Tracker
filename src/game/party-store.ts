@@ -7,6 +7,7 @@ import type { PlayerDoc } from "../domain/players";
 import { applyLoadout, startingKit, type Loadout } from "./arsenal";
 import { INJURIES, applyInjuries, recoveryHours, type Aftermath } from "./injuries";
 import { applySpells } from "./spellbook";
+import { MAGIC_ITEMS, applyTreasure, type Carrying, type MagicItemDef } from "./treasure";
 import { working } from "./town";
 import { characterEntry } from "./builder";
 import { withMods } from "./crafting";
@@ -50,7 +51,30 @@ export function recoveryLeft(doc: PlayerDoc | null | undefined, key: string): nu
 /** A hero at the level they've reached, with their loadout, prepared spells, mods and injuries. */
 function asNow(e: ContentEntry, doc: PlayerDoc | null | undefined): ContentEntry {
   const k = e.key;
-  return withInjuries(withMods(withSpells(withLoadout(withProgress(e, doc?.progress[k]), doc?.loadouts[k]), doc?.spells[k], doc?.loadouts[k]), doc?.gear[k]), doc?.injuries[k]);
+  const kitted = withSpells(withLoadout(withProgress(e, doc?.progress[k]), doc?.loadouts[k]), doc?.spells[k], doc?.loadouts[k]);
+  return withInjuries(withTreasure(withMods(kitted, doc?.gear[k]), magicOn(doc, k), doc?.loadouts[k]), doc?.injuries[k]);
+}
+
+/** The magic items a hero carries. */
+export const magicOn = (doc: PlayerDoc | null | undefined, key: string): MagicItemDef[] =>
+  (doc?.treasure ?? []).filter((t) => t.on === key).flatMap((t) => (MAGIC_ITEMS[t.id] ? [MAGIC_ITEMS[t.id]!] : []));
+
+/** What a hero has in hand and on: a magic weapon needs a weapon, magic armour needs armour. */
+export function carrying(className: string | null | undefined, loadout: Loadout | undefined): Carrying {
+  const l = loadout ?? startingKit(className);
+  return { weapon: !!l.main, armor: !!l.armor, shield: l.off === "shield" };
+}
+
+/** A hero with their magic items. */
+function withTreasure(e: ContentEntry, items: MagicItemDef[], loadout: Loadout | undefined): ContentEntry {
+  if (!items.length) return e;
+  return {
+    ...e,
+    build: () => {
+      const c = e.build();
+      return applyTreasure(c, items, carrying(c.stats?.className, loadout));
+    },
+  };
 }
 
 /** One of the player's heroes as they are now: level, loadout, spells, mods and injuries. */
@@ -89,7 +113,10 @@ export function recordAftermath(results: Aftermath[]) {
   // Time in the infirmary, counted on the town's clock (no town: they heal on the road).
   const town = activeDoc()?.town;
   const shrine = !!town && working(town, "shrine") > 0;
-  const rest = new Map(town ? results.map((r) => [r.key, recoveryHours(r, shrine)] as const).filter(([, h]) => h > 0) : []);
+  const doc = activeDoc();
+  // A Periapt of Wound Closure (or the like) halves the stay.
+  const mends = (key: string) => (magicOn(doc, key).some((i) => i.effect.mending) ? 0.5 : 1);
+  const rest = new Map(town ? results.map((r) => [r.key, Math.ceil(recoveryHours(r, shrine) * mends(r.key))] as const).filter(([, h]) => h > 0) : []);
   updatePlayer(id, (d) => {
     const injuries = { ...d.injuries };
     const fallen = [...d.fallen];

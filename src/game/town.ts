@@ -72,6 +72,7 @@ const STATIC_BUILDINGS: Record<BuildingType, BuildingDef> = {
   watchtower: { name: "Watchtower", icon: "🗼", description: "Halves the chance of thieves.", cost: { gold: 20, materials: 20 }, hours: 16, staffed: true, max: 2 },
   smithy: { name: "Smithy", icon: "⚒", description: "Fits mods to your heroes' weapons, armour and spell foci.", cost: { gold: 50, materials: 25 }, hours: 24, staffed: true, max: 1 },
   shrine: { name: "Shrine", icon: "🕯", description: "Treats lasting injuries and, for a great price, raises the fallen. A place to pray lifts spirits.", cost: { gold: 40, materials: 20 }, hours: 16, staffed: true, max: 1 },
+  tower: { name: "Mage tower", icon: "🔮", description: "Gathers arcane dust, crafts wondrous items and breaks unwanted ones down into dust.", cost: { gold: 70, materials: 30 }, hours: 30, staffed: true, max: 1 },
 };
 
 /** Descriptions that quote tunable numbers. */
@@ -82,6 +83,7 @@ const DESCRIPTIONS: Partial<Record<BuildingType, () => string>> = {
   lumber: () => `${num("prod.lumberMaterials")} materials a day for building.`,
   market: () => `${num("prod.marketGold")} gold a day, plus 1 for every ${num("prod.marketSettlersPerGold")} settlers. Caravans pay better.`,
   tavern: () => `${num("prod.tavernGold")} gold a day, and travellers looking for a home stop by far more often.`,
+  tower: () => `Gathers ${num("prod.towerDust")} arcane dust a day; crafts wondrous items (better ones at higher levels) and breaks unwanted ones down into dust.`,
   apothecary: () => `Gathers ${num("prod.apothecaryHerbs")} herb a day and brews a Potion of Healing every ${num("prod.potionEveryDays")} days; brews more to order. Your next adventure takes the potions along.`,
 };
 
@@ -170,6 +172,7 @@ export const TRADE_FOR: Partial<Record<BuildingType, string>> = {
   watchtower: "guard",
   smithy: "smith",
   shrine: "priest",
+  tower: "mage",
 };
 /** Trades newcomers can have. */
 export const TRADES = [...new Set(Object.values(TRADE_FOR))] as string[];
@@ -620,12 +623,12 @@ function hour(t: Town, h: number, rng: () => number, ctx: SimContext, events: To
   return t;
 }
 
-export type Yield = { food: number; materials: number; gold: number; herbs: number };
-const STORES = ["food", "materials", "gold", "herbs"] as const;
+export type Yield = { food: number; materials: number; gold: number; herbs: number; dust: number };
+const STORES = ["food", "materials", "gold", "herbs", "dust"] as const;
 
 /** What one building makes in a day, with its level and its worker's pace. */
 export function yields(t: Town, b: Building, who = assignments(t)): Yield {
-  const out: Yield = { food: 0, materials: 0, gold: 0, herbs: 0 };
+  const out: Yield = { food: 0, materials: 0, gold: 0, herbs: 0, dust: 0 };
   if (!isBuilt(b)) return out;
   const k = levelBoost(b) * (BUILDINGS[b.type].staffed ? pace(t, b.id, who) : 1);
   switch (b.type) {
@@ -648,6 +651,9 @@ export function yields(t: Town, b: Building, who = assignments(t)): Yield {
     case "apothecary":
       out.herbs = num("prod.apothecaryHerbs") * k;
       break;
+    case "tower":
+      out.dust = num("prod.towerDust") * k;
+      break;
   }
   return out;
 }
@@ -655,7 +661,7 @@ export function yields(t: Town, b: Building, who = assignments(t)): Yield {
 /** What the town makes in a day (before random events), and what its people eat. */
 export function production(t: Town): Yield & { eaten: number } {
   const who = assignments(t);
-  const total: Yield & { eaten: number } = { food: 0, materials: 0, gold: 0, herbs: 0, eaten: t.settlers.length * num("prod.foodPerSettler") };
+  const total: Yield & { eaten: number } = { food: 0, materials: 0, gold: 0, herbs: 0, dust: 0, eaten: t.settlers.length * num("prod.foodPerSettler") };
   for (const b of built(t)) {
     const y = yields(t, b, who);
     for (const k of STORES) total[k] += y[k];
@@ -668,7 +674,7 @@ export function dailyChange(t: Town, tithe = 0) {
   const p = production(t);
   for (const k of STORES) p[k] *= 1 - tithe;
   const r = (n: number) => Math.round(n * 10) / 10;
-  return { gold: r(p.gold), food: r(p.food - p.eaten), materials: r(p.materials), herbs: r(p.herbs) };
+  return { gold: r(p.gold), food: r(p.food - p.eaten), materials: r(p.materials), herbs: r(p.herbs), dust: r(p.dust) };
 }
 
 /**
@@ -680,6 +686,7 @@ export function produceHour(t: Town, tithe = 0): Town {
   const acc = { ...t.acc };
   let { food, materials, gold } = t;
   let herbs = t.components.herbs;
+  let dust = t.components.dust;
   for (const b of built(t)) {
     const y = yields(t, b, who);
     for (const k of STORES) {
@@ -692,7 +699,8 @@ export function produceHour(t: Town, tithe = 0): Town {
       if (k === "food") food += whole;
       else if (k === "materials") materials += whole;
       else if (k === "gold") gold += whole;
-      else herbs += whole;
+      else if (k === "herbs") herbs += whole;
+      else dust += whole;
     }
   }
   let eat = (acc.eat ?? 0) + (t.settlers.length * num("prod.foodPerSettler")) / 24;
@@ -703,7 +711,7 @@ export function produceHour(t: Town, tithe = 0): Town {
   food -= served;
   // Forget work in progress at buildings that are gone.
   for (const key of Object.keys(acc)) if (key !== "eat" && !t.buildings.some((b) => key.startsWith(`${b.id}:`))) delete acc[key];
-  return { ...t, food, materials, gold, components: { ...t.components, herbs }, acc, missed: t.missed + (meals - served) };
+  return { ...t, food, materials, gold, components: { ...t.components, herbs, dust }, acc, missed: t.missed + (meals - served) };
 }
 
 /** How far along the next unit is at a building (0–1), for its progress bar. */

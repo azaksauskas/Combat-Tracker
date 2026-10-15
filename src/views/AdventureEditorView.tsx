@@ -12,6 +12,7 @@ import { ABILITIES, ABILITY_NAMES, DAMAGE_TYPES } from "../domain/statblock";
 import { addScene, clueIndex, blankAdventure, deleteScene, duplicateAdventure, lintAdventure, parseAdventureJson, renameScene, sceneLinks, type Issue } from "../game/adventure-edit";
 import { beginAdventure } from "../game/campaign-store";
 import { GEAR_IDS, ITEMS, MAX_LEVEL, itemName } from "../game/party";
+import { MAGIC_ITEMS, RARITY } from "../game/treasure";
 import { SCENARIOS } from "../game/scenarios";
 import { SKILLS } from "../game/skills";
 import { update, useGame } from "../store/game";
@@ -768,6 +769,13 @@ function EffectFields({ effect: e, onChange }: { effect: Effect; onChange: (e: E
                 {it.name}
               </option>
             ))}
+            <optgroup label="Magic items (to the treasury)">
+              {Object.values(MAGIC_ITEMS).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} · {RARITY[m.rarity].name.toLowerCase()}
+                </option>
+              ))}
+            </optgroup>
             <optgroup label="Weapons and armour (to the armoury)">
               {GEAR_IDS.map((id) => (
                 <option key={id} value={id}>

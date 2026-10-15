@@ -22,10 +22,11 @@ export const TRADE_ICON: Record<string, string> = {
   guard: "🛡",
   smith: "⚒",
   priest: "🕯",
+  mage: "🔮",
 };
 export const tradeIcon = (trade: string) => TRADE_ICON[trade] ?? "🧑";
 
-const STORE_ICON = { food: "🍞", materials: "🪵", gold: "🪙", herbs: "🌿" } as const;
+const STORE_ICON = { food: "🍞", materials: "🪵", gold: "🪙", herbs: "🌿", dust: "✨" } as const;
 const fmt = (n: number) => (Math.round(n * 10) / 10).toString();
 
 /** What one building gives, in a few words. */
@@ -42,9 +43,11 @@ export function buildingYield(t: Town, b: Building): string {
     case "watchtower":
       return p ? `Militia +${Math.round(num("militia.perTower") * p * (1 + num("upgrade.outputPerLevel") * (level - 1)))} · fewer thieves` : "Unmanned";
     case "smithy":
-      return p ? `Fits mods${p < 1 ? " (slowly)" : ""}` : "Cold forge: needs a worker";
+      return p ? `Fits mods, forges magic arms${p < 1 ? " (slowly)" : ""}` : "Cold forge: needs a worker";
     case "shrine":
       return p ? "Heals injuries, raises the fallen" : "Empty: needs a worker";
+    case "tower":
+      return p ? `${made.join(" ")} a day · wondrous items` : "Dark: needs a worker";
     default:
       if (!made.length) return BUILDINGS[b.type].staffed ? "Nothing without a worker" : "";
       return `${made.join(" ")} a day${b.type === "tavern" ? " · draws travellers · hiring" : b.type === "market" ? " · trading" : b.type === "apothecary" ? " · potions" : ""}`;

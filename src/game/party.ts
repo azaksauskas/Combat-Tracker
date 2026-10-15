@@ -4,6 +4,7 @@ import { secureRng, type Rng } from "../domain/dice";
 import { ActionSchema, abilityMod, type Ability, type Feature, type StatAction, type StatBlock } from "../domain/statblock";
 import { SKILL_ABILITY } from "./skills";
 import { ARMORS, WEAPONS, gearName, isGear, weaponAttacks } from "./arsenal";
+import { MAGIC_ITEMS } from "./treasure";
 import type { Cell } from "./board";
 import { defaultResources, type UnitSetup } from "./engine";
 import type { GameState } from "./state";
@@ -394,7 +395,7 @@ export function unequip(party: Party, heroKey: string, itemId: string): Party {
 }
 
 /** Any item's name: a magic item, a potion, or a weapon or armour from the arsenal. */
-export const itemName = (id: string) => ITEMS[id]?.name ?? gearName(id);
+export const itemName = (id: string) => ITEMS[id]?.name ?? MAGIC_ITEMS[id]?.name ?? gearName(id);
 /** Weapons and armour (found on the road; they go to the town's armoury). */
 export const isFoundGear = (id: string) => !(id in ITEMS) && isGear(id);
 

@@ -221,7 +221,7 @@ function TownHeader({ town: t, hours, renown, ctx, tithe }: { town: Town; hours:
         <Res icon="🧑‍🌾" label="Settlers" value={`${t.settlers.length}/${beds(t)}`} />
         <Res icon="🧪" label="Potions" value={potions} />
         {(Object.keys(COMPONENTS) as Component[]).map((k) => (
-          <Res key={k} icon={COMPONENTS[k].icon} label={COMPONENTS[k].name} value={t.components[k]} delta={k === "herbs" ? daily.herbs : 0} />
+          <Res key={k} icon={COMPONENTS[k].icon} label={COMPONENTS[k].name} value={t.components[k]} delta={k === "herbs" ? daily.herbs : k === "dust" ? daily.dust : 0} />
         ))}
       </dl>
     </header>
@@ -657,7 +657,7 @@ function Workshop({ town: t }: { town: Town }) {
   if (!smithy && !apothecary && !market && !shrine)
     return (
       <section className="rounded-lg border border-dashed border-line p-3 text-sm text-muted" aria-label="Workshop">
-        <strong className="text-strong">Workshop.</strong> Build and staff a smithy to fit mods to your heroes, an apothecary to brew potions, a market to buy and sell food, materials, iron, herbs and arcane dust, or a shrine to heal lasting injuries and raise the fallen. Iron and dust are also salvaged from battles won on adventures.
+        <strong className="text-strong">Workshop.</strong> Build and staff a smithy to fit mods to your heroes, an apothecary to brew potions, a market to buy and sell food, materials, iron, herbs and arcane dust, a shrine to heal lasting injuries and raise the fallen, or a mage tower for arcane dust and wondrous items. Iron and dust are also salvaged from battles won on adventures. Magic items are forged and crafted on the Heroes tab.
       </section>
     );
   return (

@@ -192,6 +192,8 @@ export const StatBlockSchema = z.object({
   proficiency: z.number().catch(2),
   /** Abilities with saving-throw proficiency. */
   saveProficiencies: z.array(z.enum(ABILITIES)).catch([]),
+  /** Bonus to every saving throw (Cloak of Protection and the like). */
+  allSaves: z.number().optional(),
   /** Skill name → total bonus, e.g. { Stealth: 6 }. */
   skills: z.record(z.string(), z.number()).catch({}),
   resistances: z.array(z.enum(DAMAGE_TYPES)).catch([]),
@@ -220,7 +222,7 @@ export const abilityMod = (score: number) => Math.floor((score - 10) / 2);
 export const formatMod = (n: number) => (n >= 0 ? `+${n}` : String(n));
 
 export function saveBonus(stats: StatBlock, ability: Ability) {
-  return abilityMod(stats.abilities[ability]) + (stats.saveProficiencies.includes(ability) ? stats.proficiency : 0);
+  return abilityMod(stats.abilities[ability]) + (stats.saveProficiencies.includes(ability) ? stats.proficiency : 0) + (stats.allSaves ?? 0);
 }
 
 /** Damage an action can deal (Magic Missile: one part per dart; healing and buffs: none). */

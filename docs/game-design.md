@@ -546,6 +546,37 @@ picker into a real sign-in without changing the data model.
     (the old one goes to the armoury), and everything else found goes to
     the armoury. The bandits' wagon has a longbow, the goblin camp
     scimitars.
+- **Phase H: treasure.** Magic items worth fighting for, and a town that
+  can make them.
+  - 💎 Magic items (SRD 5.2, those the engine runs): Weapon/Shield +1…+3,
+    Armor +1…+3, Flame Tongue, Frost Brand, Cloak and Ring of Protection,
+    Bracers of Defense, Stone of Good Luck, Amulet of Health, Periapt of
+    Wound Closure (half the time in the infirmary), Pearl of Power, Boots
+    of Speed, Wands of the War Mage, Rings of Resistance. Rarities:
+    uncommon, rare, very rare, legendary (coloured). Five one-of-a-kind
+    treasures with their own story (Emberbrand, the Crypt-Warden's Mantle,
+    Hearthstone, Staff of the Last Dawn, Wolfsong): each player finds each
+    at most once.
+  - A hero can be attuned to 3 items. A magic weapon works on the weapon
+    in hand (the drawn spare doesn't get it), magic armour needs armour, a
+    magic shield needs a shield, Bracers only work without either. Items
+    change hands in town only; the 💎 treasury keeps the rest.
+  - 🧰 Loot chests: won patrols and jobs (wooden), raids and taking the
+    town back (iron-bound), lairs and won adventures (silver); every two
+    hero levels above 1 make it one better, up to gilded. Opened on the
+    Heroes tab: gold, iron, herbs, dust and, by chance, a magic item
+    (gilded: always, sometimes two); silver and gilded chests may hold a
+    unique. Contents are fixed when the chest is found.
+  - Adventures can give magic items too (the editor's item list); what
+    the party carries home goes to the treasury, and a +1 weapon found on
+    the road becomes a real Weapon, +1.
+  - ⚒ The smithy forges +1 arms from level 2, +2 and Armor +1 from level
+    3, +3 and Armor +2 from level 5 (gold, iron, a little dust, hours).
+  - 🔮 Mage tower (new building, worked by a mage): gathers arcane dust,
+    crafts wondrous items (better ones at higher levels) and breaks
+    unwanted items down into dust. The market buys magic items for half
+    their value.
+  - All numbers under "Treasure" on the balance page.
 
 ## Future ideas
 

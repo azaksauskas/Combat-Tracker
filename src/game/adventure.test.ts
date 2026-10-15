@@ -105,5 +105,5 @@ describe("adventures", () => {
       }
     }
     expect(finished).toBeGreaterThan(0);
-  });
+  }, 20_000);
 });

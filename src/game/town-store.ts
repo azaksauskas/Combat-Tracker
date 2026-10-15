@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { create } from "zustand";
 import { newId } from "../domain/combat";
 import type { PlayerDoc } from "../domain/players";
-import { MAX_TOWN_LOG, type BuildingType, type Town } from "../domain/town";
+import { MAX_TOWN_LOG, levelOf, type BuildingType, type Town } from "../domain/town";
 import type { GameState } from "./state";
 import { BREWS, COMPONENTS, MODS, SLOTS, addComponents, cantAfford, fitMod, pay, salvage, type Component, type Cost } from "./crafting";
 import { onBeforeSignOut, useGame } from "../store/game";
@@ -15,7 +15,8 @@ import { findScenario, useCampaign } from "./campaign-store";
 import { setupFor } from "./scenarios";
 import { quitGame, startBattle, usePlay } from "./store";
 import { spellProblem } from "./spellbook";
-import { chosenParty, heroAsNow, recordAftermath, recoveryLeft } from "./party-store";
+import { carrying, chosenParty, heroAsNow, magicOn, recordAftermath, recoveryLeft } from "./party-store";
+import { MAGIC_ITEMS, RARITY, cantEquip, chestLook, chestTier, dustValue, openChest, recipes, sellValue, type Loot } from "./treasure";
 import { ARMORS, WEAPONS, gearName, loadoutProblem, startingKit, type Loadout } from "./arsenal";
 import { INJURIES, aftermath } from "./injuries";
 import { completeContract, notePatrol, patrolBounty, rewardText, tradeAtMarket, type Good } from "./economy";
@@ -25,6 +26,7 @@ import { BLOCKED_FROM, blockedBy, titheShare, townStage } from "./guilds";
 import { MAX_LEVEL, XP_BY_CR, XP_FOR_LEVEL, levelForXp } from "./party";
 import {
   onlineMsPerHour,
+  BUILDINGS,
   advance,
   awayReport,
   craftHours,
@@ -536,6 +538,111 @@ export function prepareSpells(heroKey: string, spellIds: string[]) {
   }));
 }
 
+// --- Treasure: chests, magic items, the smithy's and the mage tower's work ---------------
+
+/** Magic items the party carried home from an adventure go to the treasury. */
+export function stowTreasure(ids: string[]) {
+  const id = me();
+  const items = ids.filter((i) => MAGIC_ITEMS[i]);
+  if (!id || !items.length) return;
+  updatePlayer(id, (d) => ({ ...d, treasure: [...d.treasure, ...items.map((i) => ({ uid: newId(), id: i }))] }));
+  addChronicle(id, [{ kind: "loot", text: `Brought home for the treasury: ${items.map((i) => MAGIC_ITEMS[i]!.name).join(", ")}.` }]);
+}
+
+/** A loot chest to open later (the heroes' level makes it better). */
+export function grantChest(baseTier: number, from: string, level = partyLevel(chosenParty())) {
+  const id = me();
+  if (!id) return;
+  const tier = chestTier(baseTier, level);
+  const chest = { id: newId(), tier, from, seed: randomSeed() };
+  updatePlayer(id, (d) => ({ ...d, chests: [...d.chests, chest] }));
+  toast.success(`${chestLook(tier).icon} ${chestLook(tier).name} found! Open it on the Heroes tab.`);
+}
+
+/** Open a chest: gold and components go to the town, magic items to the treasury. */
+export function openChestNow(chestId: string): Loot | null {
+  const id = me();
+  const doc = docOf(id);
+  const chest = doc?.chests.find((c) => c.id === chestId);
+  if (!id || !doc || !chest) return null;
+  if (!doc.town) {
+    toast.error("Found a town first: the chest needs somewhere to go");
+    return null;
+  }
+  const loot = openChest(chest, doc.uniques);
+  updatePlayer(id, (d) => ({
+    ...d,
+    chests: d.chests.filter((c) => c.id !== chestId),
+    treasure: [...d.treasure, ...loot.items.map((item) => ({ uid: newId(), id: item }))],
+    uniques: [...d.uniques, ...loot.items.filter((i) => MAGIC_ITEMS[i]?.unique)],
+    town: d.town ? addComponents({ ...d.town, gold: d.town.gold + loot.gold }, { iron: loot.iron, herbs: loot.herbs, dust: loot.dust }) : d.town,
+  }));
+  const items = loot.items.map((i) => `${MAGIC_ITEMS[i]!.name} (${RARITY[MAGIC_ITEMS[i]!.rarity].name.toLowerCase()})`);
+  addChronicle(id, [{ kind: "loot", text: `Opened a ${chestLook(chest.tier).name.toLowerCase()} from ${chest.from}: ${[`${loot.gold} gold`, ...items].join(", ")}.` }]);
+  return loot;
+}
+
+/** Give a magic item to a hero, or take it back to the treasury (null). In town only. */
+export function equipTreasure(uid: string, heroKey: string | null) {
+  const id = me();
+  const doc = docOf(id);
+  const t = doc?.treasure.find((x) => x.uid === uid);
+  const def = t && MAGIC_ITEMS[t.id];
+  if (!id || !doc || !t || !def) return;
+  if (useCampaign.getState().state || usePlay.getState().game) return void toast.error("Magic items change hands in town, between adventures");
+  if (heroKey) {
+    const hero = heroAsNow(heroKey)?.build();
+    const worn = doc.treasure.filter((x) => x.on === heroKey && x.uid !== uid).flatMap((x) => (MAGIC_ITEMS[x.id] ? [MAGIC_ITEMS[x.id]!] : []));
+    const why = cantEquip(def, worn, carrying(hero?.stats?.className, doc.loadouts[heroKey]));
+    if (why) return void toast.error(why);
+  }
+  updatePlayer(id, (d) => ({ ...d, treasure: d.treasure.map((x) => (x.uid === uid ? (heroKey ? { ...x, on: heroKey } : { uid: x.uid, id: x.id }) : x)) }));
+}
+
+/** Sell a magic item from the treasury at the market. */
+export function sellTreasure(uid: string) {
+  const id = me();
+  const doc = docOf(id);
+  const t = doc?.treasure.find((x) => x.uid === uid && !x.on);
+  if (!id || !doc?.town || !t) return;
+  if (!working(doc.town, "market")) return void toast.error("Selling needs a staffed market");
+  if (!allowed("market")) return;
+  const gold = sellValue(t.id);
+  updatePlayer(id, (d) => ({ ...d, treasure: d.treasure.filter((x) => x.uid !== uid), town: d.town ? { ...d.town, gold: d.town.gold + gold } : d.town }));
+  toast.success(`Sold ${MAGIC_ITEMS[t.id]?.name}: ${gold} gold`);
+}
+
+/** Have the mage tower break an item down into arcane dust. */
+export function disenchant(uid: string) {
+  const id = me();
+  const doc = docOf(id);
+  const t = doc?.treasure.find((x) => x.uid === uid && !x.on);
+  if (!id || !doc?.town || !t) return;
+  if (!working(doc.town, "tower")) return void toast.error("Breaking items down needs a staffed mage tower");
+  const dust = dustValue(t.id);
+  if (!work("tower", { gold: 0 }, 2, `The mage broke ${MAGIC_ITEMS[t.id]?.name} down into dust`, (x) => addComponents(x, { dust }))) return;
+  updatePlayer(id, (d) => ({ ...d, treasure: d.treasure.filter((x) => x.uid !== uid) }));
+  toast.success(`+${dust} arcane dust`);
+}
+
+/** The smithy forges magic arms; the mage tower crafts wondrous items. Better ones need a higher building level. */
+export function craftTreasure(itemId: string) {
+  const id = me();
+  const t = docOf(id)?.town;
+  const r = recipes().find((x) => x.item === itemId);
+  if (!id || !t || !r) return;
+  const at = t.buildings.filter((b) => b.type === r.at && working(t, r.at));
+  if (!at.length) return void toast.error(`Needs a staffed ${BUILDINGS[r.at].name.toLowerCase()}`);
+  if (Math.max(...at.map((b) => levelOf(b))) < r.level) return void toast.error(`Needs a level ${r.level} ${BUILDINGS[r.at].name.toLowerCase()}`);
+  const name = MAGIC_ITEMS[itemId]!.name;
+  if (!work(r.at, { gold: r.gold, iron: r.iron, dust: r.dust }, r.hours, `${r.at === "smithy" ? "The smith forged" : "The mage crafted"} ${name}`, (x) => x)) return;
+  updatePlayer(id, (d) => ({ ...d, treasure: [...d.treasure, { uid: newId(), id: itemId }] }));
+  addChronicle(id, [{ kind: "loot", text: `${r.at === "smithy" ? "Forged" : "Crafted"}: ${name}.` }]);
+}
+
+/** Magic items a hero carries (for the sheet). */
+export const heroMagic = (heroKey: string) => magicOn(docOf(me()), heroKey);
+
 /** Start upgrading a building to its next level. */
 export function upgradeBuilding(buildingId: string) {
   if (!allowed("upgrade")) return;
@@ -680,7 +787,10 @@ export function finishTownBattle(retreat = false) {
   const keepStash = (t: Town): Town => ({ ...t, stash: { ...(game.stash ?? t.stash) } });
 
   if (context.kind === "reclaim") {
-    if (won) salvageBattle(game, battle);
+    if (won) {
+      salvageBattle(game, battle);
+      grantChest(num("loot.raidTier"), battle);
+    }
     reclaimHook?.(context.guild ?? "", won);
     updatePlayer(id, (d) => (d.town ? { ...d, town: keepStash(d.town) } : d));
     addChronicle(id, [{ kind: "fight", text: won ? `Won ${battle}.` : `Lost ${battle}.` }]);
@@ -707,6 +817,7 @@ export function finishTownBattle(retreat = false) {
     if (won) {
       salvageBattle(game, battle);
       awardXp(id, game, keys, undefined, num("xp.patrolMultiplier"));
+      grantChest(num(patrol ? "loot.patrolTier" : "loot.contractTier"), battle);
       toast.success(patrol ? `Bounty: ${bounty} gold` : `Job done: ${contract ? rewardText(contract.reward) : "paid"}`);
     }
     addChronicle(id, [{ kind: "fight", text: won ? (patrol ? `Patrolled: ${battle.replace(/^Patrol: /, "")}, for ${bounty} gold.` : `Finished a job: ${battle}.`) : fled ? `Fell back from ${battle}.` : `Lost ${battle}.` }]);
@@ -722,6 +833,7 @@ export function finishTownBattle(retreat = false) {
   if (won) {
     salvageBattle(game, battle);
     awardXp(id, game, keys, context.kind === "lair" ? f.milestone : undefined);
+    grantChest(num(context.kind === "lair" ? "loot.lairTier" : "loot.raidTier"), battle);
   }
   addChronicle(id, [
     {

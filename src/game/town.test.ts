@@ -92,7 +92,7 @@ describe("towns", () => {
     t = { ...t, buildings: [...t.buildings, { id: "f", type: "farm" }], settlers: [] };
     t = welcome(welcome(t, { name: "A", trade: "farmer", from: "x" }, "1"), { name: "B", trade: "", from: "x" }, "2");
     // Hall +1, farm +4, two mouths −2.
-    expect(dailyChange(t)).toEqual({ gold: 0, food: 3, materials: 1, herbs: 0 });
+    expect(dailyChange(t)).toEqual({ gold: 0, food: 3, materials: 1, herbs: 0, dust: 0 });
   });
 
   it("produces every hour: a day of hours makes a day's worth, and the work in progress shows", () => {

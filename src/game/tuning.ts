@@ -30,6 +30,7 @@ const BUILDING_DEFAULTS: [string, string, number, number, number][] = [
   ["watchtower", "Watchtower", 20, 20, 16],
   ["smithy", "Smithy", 50, 25, 24],
   ["shrine", "Shrine", 40, 20, 16],
+  ["tower", "Mage tower", 70, 30, 30],
 ];
 
 const MOD_DEFAULTS: [string, string, number, number, number, number, number][] = [
@@ -98,6 +99,7 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Production (per day)", "prod.marketSettlersPerGold", "Market: settlers per extra gold", 2, "2 = +1 gold for every two settlers."),
   f("Production (per day)", "prod.tavernGold", "Gold per staffed tavern", 2),
   f("Production (per day)", "prod.apothecaryHerbs", "Herbs per staffed apothecary", 1),
+  f("Production (per day)", "prod.towerDust", "Arcane dust per staffed mage tower", 1),
   f("Production (per day)", "prod.potionEveryDays", "Apothecary: free potion every … days", 3, undefined, { min: 1 }),
   f("Production (per day)", "prod.foodPerSettler", "Food eaten per settler", 1),
 
@@ -186,6 +188,29 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Spies & guilds", "guild.crackdownShare", "Crackdown removes this share of the owner's authority in influence", 0.3, undefined, { step: 0.05 }),
   f("Spies & guilds", "guild.crackdownHours", "Real hours between crackdowns", 12),
   f("Spies & guilds", "guild.reclaimShare", "Taking the town back removes this share of the guild's influence", 0.6, undefined, { step: 0.05, max: 1 }),
+
+  // Treasure
+  f("Treasure", "loot.itemChance1", "Wooden chest: chance of a magic item", 0.25, undefined, { step: 0.05, max: 1 }),
+  f("Treasure", "loot.itemChance2", "Iron-bound chest: chance of a magic item", 0.45, undefined, { step: 0.05, max: 1 }),
+  f("Treasure", "loot.itemChance3", "Silver chest: chance of a magic item", 0.7, undefined, { step: 0.05, max: 1 }),
+  f("Treasure", "loot.itemChance4", "Gilded chest: chance of a magic item", 1, "A gilded chest has an even chance of a second one.", { step: 0.05, max: 1 }),
+  f("Treasure", "loot.uniqueChance", "Chance of a unique treasure (silver chest; double in a gilded one)", 0.05, undefined, { step: 0.01, max: 1 }),
+  f("Treasure", "loot.goldMultiplier", "Gold in chests (multiplier)", 1, undefined, { step: 0.1 }),
+  f("Treasure", "loot.patrolTier", "Chest tier: patrol", 1, "1 wooden, 2 iron-bound, 3 silver, 4 gilded; every two hero levels above 1 add one.", { max: 4 }),
+  f("Treasure", "loot.contractTier", "Chest tier: job from the board", 1, undefined, { max: 4 }),
+  f("Treasure", "loot.raidTier", "Chest tier: raid driven off", 2, undefined, { max: 4 }),
+  f("Treasure", "loot.lairTier", "Chest tier: lair broken", 3, undefined, { max: 4 }),
+  f("Treasure", "loot.adventureTier", "Chest tier: adventure won", 3, undefined, { max: 4 }),
+  f("Treasure", "treasure.value.uncommon", "Value: uncommon item (gold)", 60),
+  f("Treasure", "treasure.value.rare", "Value: rare item (gold)", 200),
+  f("Treasure", "treasure.value.very-rare", "Value: very rare item (gold)", 600),
+  f("Treasure", "treasure.value.legendary", "Value: legendary item (gold)", 1500),
+  f("Treasure", "treasure.sellShare", "Selling a magic item pays this share of its value", 0.5, undefined, { step: 0.05, max: 1 }),
+  f("Treasure", "treasure.dust.uncommon", "Mage tower: dust from breaking down an uncommon item", 3),
+  f("Treasure", "treasure.dust.rare", "Mage tower: dust from a rare item", 8),
+  f("Treasure", "treasure.dust.very-rare", "Mage tower: dust from a very rare item", 18),
+  f("Treasure", "treasure.dust.legendary", "Mage tower: dust from a legendary item", 40),
+  f("Treasure", "treasure.craftMultiplier", "Smithy and mage tower: gold cost of magic items (×)", 1, undefined, { step: 0.1, min: 0.1 }),
 
   // Crafting
   f("Crafting", "gear.priceMultiplier", "Weapons and armour: price × this", 1, "SRD prices; martial weapons and medium/heavy armour are forged at the smithy (gold + iron + hours).", {
