@@ -1,9 +1,12 @@
 import type Konva from "konva";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Circle, Group, Layer, Line, Rect, Stage, Text } from "react-konva";
+import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from "react-konva";
+import { INK, PAPER, drawInkBoard } from "./inkBoard";
+
+const INK_RED = "#a8322a";
 import { initials } from "../domain/combat";
 import { useThemeColors } from "../store/ui";
-import { GRID_ALPHA, withAlpha, type ThemeColors } from "../theme/themes";
+import { withAlpha, type ThemeColors } from "../theme/themes";
 import { distanceFt, findPath, fromKey, key, type Cell } from "./board";
 import { areaCells, checkArea, checkTarget, currentUnit, reachable } from "./engine";
 import type { GameState, Unit } from "./state";
@@ -90,8 +93,7 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
   const picked = mode.kind === "target" ? (mode.picked ?? []) : [];
 
   const center = (c: Cell) => ({ x: c.x * cell + cell / 2, y: c.y * cell + cell / 2 });
-  const walls = useMemo(() => new Set(board.walls), [board]);
-  const difficult = useMemo(() => new Set(board.difficult), [board]);
+  const ink = useMemo(() => drawInkBoard(board, cell, game.rngSeed), [board, cell, game.rngSeed]);
 
   return (
     <div ref={ref} className="flex h-full w-full items-center justify-center overflow-hidden">
@@ -117,28 +119,9 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
           }}
           style={{ cursor: heroTurn ? (mode.kind === "move" ? "pointer" : "crosshair") : "wait" }}
         >
+          {/* The map, drawn once in pen and ink */}
           <Layer listening={false}>
-            <Rect width={width} height={height} fill={colors["map-bg"]} />
-            {Array.from({ length: board.height }, (_, y) =>
-              Array.from({ length: board.width }, (_, x) => {
-                const k = `${x},${y}`;
-                if (walls.has(k)) return <Rect key={k} x={x * cell} y={y * cell} width={cell} height={cell} fill={colors["surface-3"]} stroke={colors.line} strokeWidth={1} />;
-                if (difficult.has(k))
-                  return (
-                    <Group key={k}>
-                      <Rect x={x * cell} y={y * cell} width={cell} height={cell} fill={withAlpha(colors.heal, 0.18)} />
-                      <Text x={x * cell} y={y * cell} width={cell} height={cell} text="〃" align="center" verticalAlign="middle" fontSize={cell * 0.4} fill={withAlpha(colors.heal, 0.6)} />
-                    </Group>
-                  );
-                return null;
-              }),
-            )}
-            {Array.from({ length: board.width + 1 }, (_, x) => (
-              <Line key={`v${x}`} points={[x * cell, 0, x * cell, height]} stroke={withAlpha(colors["grid-line"], GRID_ALPHA)} strokeWidth={1} />
-            ))}
-            {Array.from({ length: board.height + 1 }, (_, y) => (
-              <Line key={`h${y}`} points={[0, y * cell, width, y * cell]} stroke={withAlpha(colors["grid-line"], GRID_ALPHA)} strokeWidth={1} />
-            ))}
+            <KonvaImage image={ink} width={width} height={height} />
           </Layer>
 
           {/* Movement range and path preview */}
@@ -332,8 +315,10 @@ function UnitToken({
       {inArea && <Circle radius={r + 7} stroke={colors.danger} strokeWidth={4} dash={[6, 3]} />}
       {active && <Circle radius={r + 4} stroke={colors.accent} strokeWidth={3} shadowColor={colors.accent} shadowBlur={12} />}
       <Group ref={body} rotation={down ? 80 : 0} scaleX={down ? 0.85 : 1} scaleY={down ? 0.85 : 1}>
-        <Circle radius={r} fill={u.side === "enemy" ? colors["token-monster"] : colors["token-player"]} stroke={u.side === "enemy" ? colors.danger : colors.temp} strokeWidth={2} shadowColor="black" shadowBlur={4} shadowOpacity={0.4} />
-        <Text text={initials(u.name)} width={r * 2} height={r * 2} x={-r} y={-r} align="center" verticalAlign="middle" fontStyle="bold" fontSize={r * 0.9} fill="white" listening={false} />
+        {/* Ink tokens: the company in black, foes in paper ringed red. */}
+        <Circle radius={r} fill={u.side === "enemy" ? PAPER : INK} stroke={u.side === "enemy" ? INK_RED : INK} strokeWidth={u.side === "enemy" ? Math.max(2, r * 0.16) : 2} shadowColor="black" shadowBlur={3} shadowOffset={{ x: 1.5, y: 1.5 }} shadowOpacity={0.35} />
+        {u.side !== "enemy" && <Circle radius={r - Math.max(2, r * 0.14)} stroke={PAPER} strokeWidth={1} listening={false} />}
+        <Text text={initials(u.name)} width={r * 2} height={r * 2} x={-r} y={-r} align="center" verticalAlign="middle" fontStyle="bold" fontFamily="'IM Fell English', serif" fontSize={r * 0.95} fill={u.side === "enemy" ? INK : PAPER} listening={false} />
         <Circle ref={flash} radius={r} fill="#ef4444" opacity={0} listening={false} />
       </Group>
       {down && <Text text={u.dead ? "✝" : "💤"} x={r * 0.3} y={-r * 1.2} fontSize={r * 0.8} listening={false} />}

@@ -12,6 +12,7 @@ import {
   type SaveAction,
   type StatAction,
 } from "../domain/statblock";
+import { num } from "./tuning";
 import { FEET_PER_CELL, coverBetween, distanceFt, findPath, lineOfSight, makeBoardIndex, reachableCells, sameCell, type Board, type Cell, type Cover } from "./board";
 import { mulberry32 } from "./rng";
 import { GameError, type Effect, type GameEvent, type GameState, type Objective, type Side, type Unit } from "./state";
@@ -111,11 +112,17 @@ export interface TargetCheck {
   reason?: string;
   advantage: Advantage;
   reasons: string[];
-  /** AC (or Dex save) bonus the target gets from cover. */
-  cover: 0 | 2 | 5;
+  /** AC (or Dex save) bonus the target gets from cover, less the attacker's high ground. */
+  cover: number;
 }
 
 /** Cover between two creatures on the board (other living creatures can be in the way). */
+/** Attacking from a higher level: a bonus to hit (tunable). */
+export function highGround(s: GameState, a: Unit, t: Unit): number {
+  const idx = makeBoardIndex(s.board);
+  return idx.height(a.pos) > idx.height(t.pos) ? num("battle.highGround") : 0;
+}
+
 export function coverOf(s: GameState, a: Unit, t: Unit): Cover {
   const others = s.units.filter((u) => u.id !== a.id && u.id !== t.id && !u.dead).map((u) => u.pos);
   return coverBetween(s.board, a.pos, t.pos, others);
@@ -152,7 +159,9 @@ export function checkTarget(s: GameState, attackerId: string, actionId: string, 
   if (raw === "total") return no(`${t.name} has total cover`);
   const cover = action.kind === "attack" || (action.kind === "save" && action.save === "dex") ? raw : 0;
   if (cover) reasons.push(`− ${COVER_NAME[cover]} (+${cover} ${action.kind === "attack" ? "AC" : "to the save"})`);
-  return { ok: true, advantage, reasons, cover };
+  const high = action.kind === "attack" ? highGround(s, a, t) : 0;
+  if (high) reasons.push(`+ high ground (+${high} to hit)`);
+  return { ok: true, advantage, reasons, cover: cover - high };
 }
 
 // --- Advantage ----------------------------------------------------------------------
@@ -365,8 +374,10 @@ function makeAttack(ctx: Ctx, a: Unit, t: Unit, action: AttackAction, opts: { op
   const cover = coverOf(ctx.s as GameState, a, t);
   const coverBonus = cover === "total" ? 5 : cover;
   if (coverBonus) reasons.push(`− ${COVER_NAME[coverBonus]} (+${coverBonus} AC)`);
+  const high = highGround(ctx.s as GameState, a, t);
+  if (high) reasons.push(`+ high ground (+${high} to hit)`);
   const warded = (kind: "shield" | "faith") => ctx.s.effects.some((e) => e.kind === kind && e.target === t.id);
-  let ac = t.ac + coverBonus + (warded("shield") ? 5 : 0) + (warded("faith") ? 2 : 0);
+  let ac = t.ac + coverBonus - high + (warded("shield") ? 5 : 0) + (warded("faith") ? 2 : 0);
   let hit = natural === 20 || (natural !== 1 && roll.total >= ac);
   // Shield (reaction): +5 AC until the caster's next turn, if that turns the hit into a miss.
   if (hit && natural !== 20 && roll.total < ac + 5 && castShield(ctx, t)) {
@@ -639,13 +650,21 @@ function pushAway(ctx: Ctx, from: Unit, t: Unit) {
   const idx = makeBoardIndex(ctx.s.board);
   const inside = dest.x >= 0 && dest.y >= 0 && dest.x < ctx.s.board.width && dest.y < ctx.s.board.height;
   const taken = ctx.s.units.some((x) => !x.dead && sameCell(x.pos, dest));
-  if (!inside || idx.isWall(dest) || taken) {
+  // A wall, someone in the way, or a cliff face going up: they stay put and go down instead.
+  if (!inside || idx.isWall(dest) || idx.isDeep(dest) || taken || (!idx.canStep(t.pos, dest) && idx.height(dest) > idx.height(t.pos))) {
     addCondition(ctx, t, "Prone");
     return;
   }
   ctx.events.push({ type: "move", unitId: t.id, path: [dest], cost: 0 });
+  const drop = idx.canStep(t.pos, dest) ? 0 : idx.height(t.pos) - idx.height(dest);
   t.pos = dest;
   releaseGrapple(ctx, t.id);
+  // Shoved off a ledge: 1d6 for each level they fall, and they land Prone.
+  if (drop > 0) {
+    const roll = rollTerms(parseDice(`${drop}d6`), ctx.rng);
+    takeDamage(ctx, t, roll.total, `${roll.total} bludgeoning (fell from the ledge)`, {});
+    if (!t.dead && t.hp > 0) addCondition(ctx, t, "Prone");
+  }
 }
 
 /** Lets go of a creature (it broke free, was shoved off, or its holder let go). */
@@ -1179,14 +1198,48 @@ export function createGame(board: Board, setups: UnitSetup[], seed: number, opts
 }
 
 /** Builds a board from ASCII rows: "#" wall, "~" difficult terrain, anything else open. */
-export function boardFromAscii(rows: string[]): Board {
+/**
+ * A board from text rows: "#" wall, "O" pillar or boulder, "T" tree, "~" brush
+ * and "," rubble (difficult), "w" shallow water (difficult), "W" deep water.
+ * Optional height rows: "0"–"3" levels, "a" stairs between 0 and 1, "b"
+ * between 1 and 2, "c" between 2 and 3.
+ */
+export function boardFromAscii(rows: string[], heightRows?: string[]): Board {
   const walls: string[] = [];
   const difficult: string[] = [];
+  const water: string[] = [];
+  const deep: string[] = [];
+  const props: Record<string, "pillar" | "tree" | "rock"> = {};
   rows.forEach((row, y) =>
     [...row].forEach((ch, x) => {
-      if (ch === "#") walls.push(`${x},${y}`);
-      if (ch === "~") difficult.push(`${x},${y}`);
+      const k = `${x},${y}`;
+      if (ch === "#" || ch === "O" || ch === "T") walls.push(k);
+      if (ch === "O") props[k] = "pillar";
+      if (ch === "T") props[k] = "tree";
+      if (ch === "~" || ch === "," || ch === "w") difficult.push(k);
+      if (ch === "w") water.push(k);
+      if (ch === "W") deep.push(k);
     }),
   );
-  return { width: Math.max(...rows.map((r) => r.length)), height: rows.length, walls, difficult };
+  const board: Board = { width: Math.max(...rows.map((r) => r.length)), height: rows.length, walls, difficult };
+  if (water.length) board.water = water;
+  if (deep.length) board.deep = deep;
+  if (Object.keys(props).length) board.props = props;
+  if (heightRows?.length) {
+    const heights: Record<string, number> = {};
+    const stairs: string[] = [];
+    heightRows.forEach((row, y) =>
+      [...row].forEach((ch, x) => {
+        const k = `${x},${y}`;
+        const stair = { a: 0.5, b: 1.5, c: 2.5 }[ch];
+        if (stair !== undefined) {
+          heights[k] = stair;
+          stairs.push(k);
+        } else if (/[1-3]/.test(ch)) heights[k] = Number(ch);
+      }),
+    );
+    board.heights = heights;
+    board.stairs = stairs;
+  }
+  return board;
 }

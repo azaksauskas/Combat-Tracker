@@ -533,3 +533,31 @@ describe("level 2–3 features, potions and surprise", () => {
     expect(surprised).toBeLessThan(normal);
   });
 });
+
+// --- levels ---------------------------------------------------------------------------
+
+describe("high ground and ledges", () => {
+  const raised = (s: GameState, cells: string[]) =>
+    produce(s, (d) => {
+      d.board.heights = Object.fromEntries(cells.map((k) => [k, 1]));
+      d.board.stairs = [];
+    });
+
+  it("shooting down from higher ground is easier to hit", () => {
+    const s = raised(game(OPEN, [setup("pip", "rogue", { x: 0, y: 0 }), setup("gob", "goblin-warrior", { x: 5, y: 0 })]), ["0,0"]);
+    const up = checkTarget(s, "pip", actionId(s, "pip", "Shortbow"), "gob");
+    expect(up.reasons.some((r) => /high ground/.test(r))).toBe(true);
+    expect(up.cover).toBe(-2);
+    const flat = game(OPEN, [setup("pip", "rogue", { x: 0, y: 0 }), setup("gob", "goblin-warrior", { x: 5, y: 0 })]);
+    expect(checkTarget(flat, "pip", actionId(flat, "pip", "Shortbow"), "gob").cover).toBe(0);
+  });
+
+  it("a shove off a ledge drops the target, hurts, and leaves them Prone", () => {
+    const s = raised(game(OPEN, [setup("brann", "fighter", { x: 1, y: 0 }), setup("gob", "goblin-warrior", { x: 2, y: 0 })]), ["1,0", "2,0"]);
+    const r = run(s, { type: "shove", unitId: "brann", targetId: "gob" }, dice([1, 20], [4, 6]));
+    const gob = unitOf(r.state, "gob");
+    expect(gob.pos).toEqual({ x: 3, y: 0 });
+    expect(gob.hp).toBe(unitOf(s, "gob").hp - 4);
+    expect(gob.conditions).toContain("Prone");
+  });
+});

@@ -41,7 +41,7 @@ describe("patrols", () => {
     expect(pickMonsters(FOES.bandits!, 1, 4, "low", rng).every((k) => k === "bandit")).toBe(true);
     const sc = foeBattle("goblins", 1, 4, "moderate", 42, "Goblins in the old mill");
     expect(sc.name).toBe("Goblins in the old mill");
-    expect(sc.map.join("").match(/P/g)).toHaveLength(4);
+    expect(sc.map.join("").match(/P/g)).toHaveLength(6);
     expect(sc.map.join("").match(/[1-9]/g)).toHaveLength(sc.monsters.length);
     expect(foeBattle("goblins", 1, 4, "moderate", 42)).toEqual({ ...sc, name: expect.any(String) });
   });

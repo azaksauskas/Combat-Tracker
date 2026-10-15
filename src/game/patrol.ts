@@ -3,6 +3,7 @@ import { XP_BY_CR } from "./party";
 import { mulberry32 } from "./rng";
 import type { Scenario } from "./scenarios";
 import { num } from "./tuning";
+import { MAP_FOR_FOE, generateBattlemap } from "./battlemaps";
 
 /**
  * Small fights around the town: patrols and contracts. Each is built from a
@@ -57,21 +58,6 @@ export function pickMonsters(foe: Foe, level: number, heroes: number, difficulty
   return out;
 }
 
-/** A patch of countryside: heroes on the left, foes on the right, some brush and rocks between. */
-function field(rng: () => number, monsters: number): string[] {
-  const w = 16;
-  const h = 9;
-  const rows = Array.from({ length: h }, () => Array.from({ length: w }, () => "."));
-  for (let n = 0; n < 14; n++) {
-    const x = 3 + Math.floor(rng() * (w - 7));
-    const y = Math.floor(rng() * h);
-    rows[y]![x] = rng() < 0.3 ? "#" : "~";
-  }
-  for (let i = 0; i < 4; i++) rows[2 + i]![0] = "P";
-  for (let i = 0; i < monsters; i++) rows[1 + (i % 7)]![w - 2 - Math.floor(i / 7)] = String(i + 1);
-  return rows.map((r) => r.join(""));
-}
-
 /** A fight against a kind of foe, the same every time for the same seed. */
 export function foeBattle(foeId: string, level: number, heroes: number, difficulty: "low" | "moderate", seed: number, name?: string): Scenario {
   const foe = FOES[foeId] ?? FOES.bandits!;
@@ -82,7 +68,7 @@ export function foeBattle(foeId: string, level: number, heroes: number, difficul
     id: `${difficulty === "low" ? "patrol" : "contract"}:${foeId}:${seed}`,
     name: name ?? `Patrol: ${foe.name.toLowerCase()} near ${place}`,
     blurb: `${monsters.length} foes near ${place}.`,
-    map: field(rng, monsters.length),
+    ...generateBattlemap(MAP_FOR_FOE[foeId] ?? "wilds", rng, heroes, monsters.length),
     monsters,
     difficulty: difficulty === "low" ? "Low" : "Moderate",
     sized: true,

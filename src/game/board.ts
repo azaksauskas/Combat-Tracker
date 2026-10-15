@@ -15,6 +15,16 @@ export interface Board {
   walls: string[];
   /** "x,y" keys of difficult terrain (each step into it costs +5 ft). */
   difficult: string[];
+  /** Raised ground: "x,y" → level (missing: 0). Levels meet at a cliff you can't climb; stairs and slopes join them. */
+  heights?: Record<string, number>;
+  /** "x,y" keys of stairs and slopes: a step to or from one may change level. */
+  stairs?: string[];
+  /** "x,y" keys of water (also difficult terrain), for drawing. */
+  water?: string[];
+  /** "x,y" keys of deep water: no wading through, but you see (and shoot) across it. */
+  deep?: string[];
+  /** How the walls look when drawn: pillars ("O"), trees ("T"), or plain wall. */
+  props?: Record<string, "pillar" | "tree" | "rock">;
 }
 
 export const FEET_PER_CELL = 5;
@@ -33,9 +43,19 @@ export const inBounds = (b: Board, c: Cell) => c.x >= 0 && c.y >= 0 && c.x < b.w
 export function makeBoardIndex(b: Board) {
   const walls = new Set(b.walls);
   const difficult = new Set(b.difficult);
+  const stairs = new Set(b.stairs ?? []);
+  const deep = new Set(b.deep ?? []);
+  const heights = b.heights ?? {};
+  const height = (c: Cell) => heights[key(c)] ?? 0;
+  const isStairs = (c: Cell) => stairs.has(key(c));
   return {
     isWall: (c: Cell) => walls.has(key(c)),
     isDifficult: (c: Cell) => difficult.has(key(c)),
+    isDeep: (c: Cell) => deep.has(key(c)),
+    height,
+    isStairs,
+    /** A step between two neighbours: on the same level, or by stairs; never up or down a cliff. */
+    canStep: (a: Cell, b: Cell) => height(a) === height(b) || isStairs(a) || isStairs(b),
   };
 }
 
@@ -79,7 +99,7 @@ export function explore(board: Board, start: Cell, budget: number, opts: PathOpt
     if (c > (cost.get(key(cell)) ?? Infinity)) continue;
     for (const s of STEPS) {
       const next = { x: cell.x + s.x, y: cell.y + s.y };
-      if (!inBounds(board, next) || idx.isWall(next) || opts.blocked(next)) continue;
+      if (!inBounds(board, next) || idx.isWall(next) || idx.isDeep(next) || opts.blocked(next) || !idx.canStep(cell, next)) continue;
       // No squeezing diagonally between two walls / past a wall corner.
       if (s.x && s.y && (idx.isWall({ x: cell.x + s.x, y: cell.y }) || idx.isWall({ x: cell.x, y: cell.y + s.y }))) continue;
       const step = (idx.isDifficult(next) ? 2 : 1) * FEET_PER_CELL * mult;
@@ -194,7 +214,7 @@ export function startCells(board: Board, base: Cell[], n: number, avoid: Cell[] 
   const taken = new Set(avoid.map(key));
   const out: Cell[] = [];
   const add = (c: Cell) => {
-    if (out.length >= n || !inBounds(board, c) || idx.isWall(c) || taken.has(key(c))) return;
+    if (out.length >= n || !inBounds(board, c) || idx.isWall(c) || idx.isDeep(c) || taken.has(key(c))) return;
     taken.add(key(c));
     out.push(c);
   };
@@ -206,7 +226,7 @@ export function startCells(board: Board, base: Cell[], n: number, avoid: Cell[] 
     const c = queue.shift()!;
     for (const [dx, dy] of [[0, 1], [0, -1], [-1, 0], [1, 0], [-1, 1], [-1, -1], [1, 1], [1, -1]] as const) {
       const next = { x: c.x + dx, y: c.y + dy };
-      if (!inBounds(board, next) || seen.has(key(next)) || idx.isWall(next)) continue;
+      if (!inBounds(board, next) || seen.has(key(next)) || idx.isWall(next) || idx.isDeep(next)) continue;
       seen.add(key(next));
       add(next);
       queue.push(next);

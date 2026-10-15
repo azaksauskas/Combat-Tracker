@@ -22,6 +22,8 @@ export interface Scenario {
   starts?: Cell[];
   /** Besides beating every foe: hold out some rounds, or reach the "X" squares of the map. */
   goal?: { kind: "survive"; rounds: number } | { kind: "escape" };
+  /** Raised ground, row by row ("0"–"3", stairs "a"/"b"/"c"); see boardFromAscii. */
+  heights?: string[];
   /** Already sized for the party (patrols, contracts, bands on the road): not scaled again. */
   sized?: boolean;
 }
@@ -236,7 +238,10 @@ function uniqueNames(units: UnitSetup[]) {
 }
 
 export function scenarioSetup(sc: Scenario, members: ContentEntry[] = PARTY) {
-  const board = boardFromAscii(sc.map.map((r) => r.replace(/[P1-9X]/g, ".")));
+  const board = boardFromAscii(
+    sc.map.map((r) => r.replace(/[P1-9X]/g, ".")),
+    sc.heights,
+  );
   const marked = sc.starts ?? starts(sc.map, (c) => c === "P");
   // More foes or heroes than the map has marked squares for: the rest stand close by.
   const monsterCells = startCells(board, starts(sc.map, (c) => /[1-9]/.test(c)), sc.monsters.length, marked);

@@ -367,7 +367,7 @@ function Battle({ game }: { game: GameState }) {
         )}
       </header>
 
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[15rem_1fr_20rem]">
+      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[11rem_1fr_18rem]">
         <TurnOrder game={game} hoverId={hoverId} />
 
         <section className="relative min-h-[50dvh] rounded-lg border border-line bg-surface p-2 shadow lg:min-h-0" aria-label="Battlefield">
@@ -422,7 +422,7 @@ function TurnOrder({ game, hoverId }: { game: GameState; hoverId: string | null 
           <li
             key={u.id}
             className={clsx(
-              "rounded-md border px-2 py-1.5 text-sm",
+              "rounded-md border px-1.5 py-1 text-xs",
               u.id === active?.id ? "border-accent bg-accent/10" : u.id === hoverId ? "border-line bg-surface-3/50" : "border-transparent",
               u.dead && "opacity-40",
             )}
@@ -433,7 +433,7 @@ function TurnOrder({ game, hoverId }: { game: GameState; hoverId: string | null 
                 {u.hp}/{u.hpMax}
               </span>
             </div>
-            <HpBar combatant={{ hpCurrent: u.hp, hpMax: u.hpMax, hpTemp: u.tempHp }} className="mt-1" />
+            <HpBar combatant={{ hpCurrent: u.hp, hpMax: u.hpMax, hpTemp: u.tempHp }} className="mt-0.5" />
             {(u.conditions.length > 0 || (u.hp <= 0 && !u.dead && u.side === "party")) && (
               <div className="mt-1 text-[10px] text-muted">
                 {u.conditions.join(", ")}

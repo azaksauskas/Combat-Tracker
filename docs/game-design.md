@@ -702,6 +702,29 @@ becomes the company's camp.
     injury. "death.final" on the balance page makes death final. The
     fallen's gear goes back to the armoury, their magic items to the
     treasury, and the building they looked after is free again.
+- **Battle maps like a D&D table's, drawn in ink.**
+  - Patrols, jobs and bands on the road fight on generated maps chosen by
+    the foe: dungeons (the undead, cultists, rats: rooms joined by
+    corridors that narrow and widen, a pillared hall, a raised dais with
+    steps), caves (goblins: winding tunnels of changing width, a second
+    way round, pools, a ledge reached by a slope) and the wilds (bandits,
+    wolves, gnolls: a river crossed by a bridge or a ford, a hill of two
+    levels with slopes, trees, brush and boulders). Every foe can be
+    reached; heroes start in a column on the left, foes in a loose group
+    on the right. Maps are trimmed to make the squares as big as possible.
+  - Levels: ground stands at levels 0–3. Levels meet at cliffs nobody can
+    climb; stairs and slopes join them. Attacking from higher ground gives
+    +2 to hit ("battle.highGround"); a shove off a ledge drops the target
+    1d6 per level and leaves them Prone. Deep water can't be waded but
+    can be seen and shot across.
+  - Every battle map is drawn in pen and ink, once per battle: paper with
+    a faint grid, walls as heavy outlines with hatching, stippling and
+    pebbles beyond, a shadow inside every wall, pillars, trees and
+    boulders, brush and rubble, water with ripples, cliffs with ticks on
+    the lower side, stairs as treads, darker ground the higher it stands.
+    The company's tokens are black, foes are paper ringed in red.
+  - Text maps take new marks: "O" pillar or boulder, "T" tree, "," rubble,
+    "w" shallow and "W" deep water, plus optional height rows.
 
 ## Future ideas
 
