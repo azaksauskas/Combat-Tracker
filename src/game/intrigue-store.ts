@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { intrigueOn } from "./guilds";
 import type { MissionKind, PlayerDoc } from "../domain/players";
 import { MAX_TOWN_LOG, type Town } from "../domain/town";
 import { addChronicle, updatePlayer, useActiveProfile, usePlayers } from "../store/players";
@@ -96,7 +97,7 @@ function enforceBan(id: string, d: PlayerDoc) {
 onTownTick(() => {
   const id = me();
   const d = id ? docs()[id] : undefined;
-  if (!id || !d || !usePlayers.getState().ready || usePlay.getState().game) return;
+  if (!id || !d || !usePlayers.getState().ready || usePlay.getState().game || !intrigueOn()) return;
   const now = Date.now();
   settleMine(id, d, now);
   applyTheirs(id, docs()[id] ?? d);

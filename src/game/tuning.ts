@@ -189,6 +189,9 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Spies & guilds", "guild.crackdownHours", "Real hours between crackdowns", 12),
   f("Spies & guilds", "guild.reclaimShare", "Taking the town back removes this share of the guild's influence", 0.6, undefined, { step: 0.05, max: 1 }),
 
+  // Features
+  f("Features", "features.intrigue", "Spies, guilds, town takeovers and moving into other heroes' towns (1 = on, 0 = hidden)", 0, "Hidden by default: the game is about the company on the road. Hiding turns their effects off too.", { max: 1 }),
+
   // The world
   f("World", "world.marchSpeed", "Company march speed (map units per game hour on open ground)", 16, "The map is 1000 × 640. Roads ×1.5, forest ×0.6, hills ×0.7, marsh ×0.5.", { min: 1 }),
   f("World", "world.realSecondsPerHour", "Real seconds per game hour while marching (at ×1)", 1, undefined, { min: 0.1, step: 0.1 }),

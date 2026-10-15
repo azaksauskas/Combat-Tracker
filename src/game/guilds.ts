@@ -93,7 +93,10 @@ export function holds(ownerId: string, docs: Record<string, PlayerDoc>, now: num
 }
 
 /** The strongest guild's stage in a town (0 when there's none). */
-export const townStage = (ownerId: string, docs: Record<string, PlayerDoc>, now: number): Stage => holds(ownerId, docs, now)[0]?.stage ?? 0;
+/** Spies, guilds and takeovers are switched on (the DM's balance page; hidden by default). */
+export const intrigueOn = () => num("features.intrigue") >= 1;
+
+export const townStage = (ownerId: string, docs: Record<string, PlayerDoc>, now: number): Stage => (intrigueOn() ? (holds(ownerId, docs, now)[0]?.stage ?? 0) : 0);
 
 /** Town actions, and the stage from which a guild stops them. */
 export const BLOCKED_FROM: Record<string, Stage> = {

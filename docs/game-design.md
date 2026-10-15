@@ -633,7 +633,9 @@ becomes the company's camp.
    harder to undo.
 4. **BB-4: the town becomes the camp.** No real-time clock, timers or build
    queues; the camp's tents (forge, infirmary, mage) serve the heroes.
-   Spies, guilds and takeovers are hidden or removed.
+   Spies, guilds, takeovers and moving into other heroes' towns are already
+   hidden (and switched off): "Features → features.intrigue" on the balance
+   page brings them back.
 5. **BB-5: Little Fighter 2 feel.** Signature moves, knockback into walls,
    things to throw on the battlefield, wave fights.
 

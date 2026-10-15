@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { emptyPlayerDoc, type PlayerDoc } from "../domain/players";
 import type { Town } from "../domain/town";
 import { applyIncoming, catchChance, due, incoming, newMission, resolveMission } from "./intrigue";
-import { authority, blockedBy, crackdown, guildsIn, holds, influence, reclaim, stageOf, titheShare } from "./guilds";
+import { authority, blockedBy, crackdown, guildsIn, holds, influence, reclaim, stageOf, titheShare, townStage } from "./guilds";
+import { setTuning } from "./tuning";
 import { dailyChange, foundTown, produceHour } from "./town";
 
 const DAY = 24 * 3_600_000;
@@ -59,6 +60,11 @@ describe("guilds and the takeover", () => {
     expect([stageOf(0.4), stageOf(0.5), stageOf(0.8), stageOf(1.2)]).toEqual([0, 1, 2, 3]);
     const docs: Record<string, PlayerDoc> = { owner, m1: member(12) };
     expect(holds("owner", docs, NOW)[0]).toMatchObject({ influence: 48, stage: 3 });
+    // Hidden (the default), guilds don't touch the town at all.
+    expect(townStage("owner", docs, NOW)).toBe(0);
+    setTuning({ "features.intrigue": 1 });
+    expect(townStage("owner", docs, NOW)).toBe(3);
+    setTuning({});
     expect(blockedBy(3, "build")).toMatch(/runs the town/);
     expect(blockedBy(2, "build")).toBeNull();
     expect(blockedBy(2, "market")).toMatch(/says no/);

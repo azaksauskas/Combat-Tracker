@@ -26,6 +26,7 @@ import { useActiveProfile, usePlayers } from "../store/players";
 import { militiaChances } from "./RaidAlerts";
 import { RegionMap } from "./RegionMap";
 import { IntrigueTab, ResidentGuild, Spies, TakeoverBanner } from "./IntrigueView";
+import { intrigueOn } from "../game/guilds";
 import { titheShare, townStage } from "../game/guilds";
 import { usePlay } from "../game/store";
 
@@ -77,7 +78,7 @@ function FoundTown({ renown }: { renown: number }) {
           Found it
         </button>
       </form>
-      <Waystone />
+      {intrigueOn() && <Waystone />}
     </section>
   );
 }
@@ -120,7 +121,7 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
     { id: "workshop", label: "⚒ Workshop" },
     { id: "jobs", label: "📜 Jobs", badge: t.contracts.length || undefined, tone: "info" as const },
     { id: "region", label: "🗺 Region", badge: urgent || undefined, tone: "danger" as const },
-    { id: "intrigue", label: "🕵 Intrigue", badge: guildStage || undefined, tone: "danger" as const },
+    ...(intrigueOn() ? [{ id: "intrigue" as const, label: "🕵 Intrigue", badge: guildStage || undefined, tone: "danger" as const }] : []),
     { id: "log", label: "📖 Events" },
   ];
   const current = tab;
@@ -129,7 +130,7 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
     <div className="space-y-3">
       <TownHeader town={t} hours={hours} renown={renown} ctx={ctx} tithe={titheShare(guildStage)} />
       <Alarms town={t} hours={hours} />
-      <TakeoverBanner ownerId={ownerId} onOpen={() => setTab("intrigue")} />
+      {intrigueOn() && <TakeoverBanner ownerId={ownerId} onOpen={() => setTab("intrigue")} />}
       <div className="flex flex-wrap gap-1 border-b border-line" role="tablist" aria-label="Town">
         {tabs.map((x) => (
           <button
@@ -169,15 +170,17 @@ function OwnTown({ town: t, ownerId, renown }: { town: Town; ownerId: string; re
       {current === "region" && (
         <div className="space-y-3">
           <Region town={t} renown={renown} />
-          <div className="grid gap-3 md:grid-cols-2">
-            <Waystone />
-            <label className="flex items-center gap-2 self-start rounded-lg border border-line bg-surface p-3 text-sm shadow">
-              <input type="checkbox" checked={t.open} onChange={(e) => setOpen(e.target.checked)} /> Other heroes may move in
-            </label>
-          </div>
+          {intrigueOn() && (
+            <div className="grid gap-3 md:grid-cols-2">
+              <Waystone />
+              <label className="flex items-center gap-2 self-start rounded-lg border border-line bg-surface p-3 text-sm shadow">
+                <input type="checkbox" checked={t.open} onChange={(e) => setOpen(e.target.checked)} /> Other heroes may move in
+              </label>
+            </div>
+          )}
         </div>
       )}
-      {current === "intrigue" && <IntrigueTab ownerId={ownerId} />}
+      {current === "intrigue" && intrigueOn() && <IntrigueTab ownerId={ownerId} />}
       {current === "log" && <TownLog town={t} />}
     </div>
   );

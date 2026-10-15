@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import type { Faction, Threat } from "../domain/faction";
 import type { Town } from "../domain/town";
 import { canStrike, STAGE_TEXT, threatOf } from "../game/region";
+import { intrigueOn } from "../game/guilds";
 import { allFactions, startTownBattle } from "../game/town-store";
 import { useGame } from "../store/game";
 import { useActiveProfile, usePlayers } from "../store/players";
@@ -41,7 +42,7 @@ export function RegionMap({ town: t, renown }: { town: Town; renown: number }) {
   const profiles = usePlayers((s) => s.profiles);
   const docs = usePlayers((s) => s.docs);
   const factions = allFactions();
-  const others = profiles.filter((p) => p.id !== me && docs[p.id]?.town && !docs[p.id]?.residence);
+  const others = intrigueOn() ? profiles.filter((p) => p.id !== me && docs[p.id]?.town && !docs[p.id]?.residence) : [];
 
   const lairs = useMemo(
     () =>
