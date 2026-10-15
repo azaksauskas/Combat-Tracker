@@ -209,12 +209,14 @@ export interface Band {
   goal: Pt;
   /** The lair it came from, if any. */
   from?: string;
+  /** The contract that set the company on it, if any. */
+  contract?: string;
 }
 
 /** Which foes a faction sends out. */
 export const FACTION_FOE: Record<string, string> = { "red-fang": "goblins", "river-road": "bandits", "restless-dead": "undead", "hollow-eye": "cultists", "gnoll-pack": "gnolls" };
 const WILD_FOES = ["wolves", "wolves", "bandits", "vermin"];
-const BAND_NAME: Record<string, string> = { wolves: "Wolf pack", bandits: "Bandits", goblins: "Goblin raiders", undead: "The restless dead", vermin: "Giant rats", cultists: "Cultists", gnolls: "Gnoll war party" };
+export const BAND_NAME: Record<string, string> = { wolves: "Wolf pack", bandits: "Bandits", goblins: "Goblin raiders", undead: "The restless dead", vermin: "Giant rats", cultists: "Cultists", gnolls: "Gnoll war party" };
 
 /** A new band: from a lair (the faction's foes) or from the wilds (wolves in the forest…). */
 export function spawnBand(w: World, rng: () => number, id: string, renown: number, factions: Faction[]): Band {
@@ -242,7 +244,8 @@ export function moveBands(w: World, bands: Band[], company: Pt, hours: number, r
   const sheltered = safe.some((p) => dist(p, company) < 28);
   return bands.map((b) => {
     const chasing = !sheltered && dist(b, company) < aggro;
-    const target = chasing ? company : b.goal;
+    // A band a contract is about stays in its camp until it sees the company.
+    const target = chasing ? company : b.contract ? { x: b.x, y: b.y } : b.goal;
     const step = march(w, b, target, hours * (speed / marchSpeed()));
     const goal = !chasing && step.arrived ? wanderGoal(step.pos, rng) : b.goal;
     // Bands keep clear of settlements.

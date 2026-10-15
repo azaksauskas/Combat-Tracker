@@ -335,6 +335,14 @@ export function InkBand({ band: b, chasing, pos }: { band: Band; chasing: boolea
       <g transform={`translate(${b.x} ${b.y})`} filter="url(#ink-wobble)">
         <circle r={9} fill={PAPER} stroke={RED} strokeWidth={1.6} />
         <path d="M -5 -5 L 5 5 M 5 -5 L -5 5 M -6 -2 L -2 -6 M 6 -2 L 2 -6" stroke={INK} strokeWidth={1.2} strokeLinecap="round" />
+        {b.contract && (
+          <g transform="translate(9 -12)">
+            <path d="M 0 0 L 0 -12 L 8 -9 L 0 -6" fill={RED} stroke={INK} strokeWidth={0.8} />
+            <text x={2.5} y={-7.5} fontSize={6} fontWeight={700} fill={PAPER}>
+              !
+            </text>
+          </g>
+        )}
         <text y={21} textAnchor="middle" fontFamily={FONT} fontStyle="italic" fontSize={11} fill={RED} stroke={PAPER} strokeWidth={3} paintOrder="stroke">
           {b.name}
         </text>

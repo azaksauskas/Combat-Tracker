@@ -10,6 +10,7 @@ import { applySpells } from "./spellbook";
 import { applyTraits, traitsOf } from "./roster";
 import { MAGIC_ITEMS, applyTreasure, type Carrying, type MagicItemDef } from "./treasure";
 import { working } from "./town";
+import { num } from "./tuning";
 import { characterEntry } from "./builder";
 import { withMods } from "./crafting";
 import { withProgress } from "./party";
@@ -53,7 +54,21 @@ export function recoveryLeft(doc: PlayerDoc | null | undefined, key: string): nu
 function asNow(e: ContentEntry, doc: PlayerDoc | null | undefined): ContentEntry {
   const k = e.key;
   const kitted = withSpells(withLoadout(withProgress(e, doc?.progress[k]), doc?.loadouts[k]), doc?.spells[k], doc?.loadouts[k]);
-  return withInjuries(withTraits(withTreasure(withMods(kitted, doc?.gear[k]), magicOn(doc, k), doc?.loadouts[k]), traitsOf(doc?.traits, k)), doc?.injuries[k]);
+  const hero = withInjuries(withTraits(withTreasure(withMods(kitted, doc?.gear[k]), magicOn(doc, k), doc?.loadouts[k]), traitsOf(doc?.traits, k)), doc?.injuries[k]);
+  return doc?.world?.hungry ? withHunger(hero) : hero;
+}
+
+/** Out of rations: every attack roll suffers. */
+function withHunger(e: ContentEntry): ContentEntry {
+  const n = num("company.hungryAttack");
+  return {
+    ...e,
+    build: () => {
+      const c = e.build();
+      if (!c.stats) return c;
+      return { ...c, stats: { ...c.stats, actions: c.stats.actions.map((a) => (a.kind === "attack" ? { ...a, toHit: a.toHit - n } : a)), traits: [...c.stats.traits, { name: "Hungry", text: `−${n} to attack rolls until the company eats.` }] } };
+    },
+  };
 }
 
 function withTraits(e: ContentEntry, traits: string[]): ContentEntry {

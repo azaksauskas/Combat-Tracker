@@ -3,14 +3,16 @@ import { create } from "zustand";
 import type { PlayerDoc } from "../domain/players";
 import { addChronicle, updatePlayer, useActiveProfile, usePlayers } from "../store/players";
 import { allAdventures, beginAdventure, useCampaign } from "./campaign-store";
-import { chosenParty } from "./party-store";
+import { availableMembers, chosenParty, myCharacters } from "./party-store";
+import { addRep, contractsAt, isSettlement, payday, priceOf, type ActiveContract, type Contract } from "./company";
+import { makeCandidates, type Candidate } from "./roster";
 import { foeBattle } from "./patrol";
 import { mulberry32, randomSeed } from "./rng";
 import { setupFor } from "./scenarios";
 import { startBattle, usePlay } from "./store";
-import { allFactions, grantChest, onRoadBattle, partyLevel, passTime, salvageBattle } from "./town-store";
+import { allFactions, enlist, grantChest, onRoadBattle, partyLevel, passTime, salvageBattle } from "./town-store";
 import { num } from "./tuning";
-import { bandAt, blankExplored, dist, explore, generateWorld, march, moveBands, spawnBand, type Band, type Place, type Pt, type World } from "./world";
+import { BAND_NAME, bandAt, blankExplored, dist, explore, generateWorld, march, moveBands, spawnBand, type Band, type Place, type Pt, type World } from "./world";
 
 /**
  * The company on the march: a clock that runs only while it moves (paused,
@@ -76,7 +78,10 @@ export function enterWorld() {
     const rng = mulberry32(seed ^ 0xb4d5).rng;
     const bands = Array.from({ length: 3 }, (_, i) => spawnBand(w, rng, `b-start-${i}`, doc.renown, allFactions())).filter((b) => dist(b, home) > num("world.bandSight"));
     const explored = explore(blankExplored(), home, num("world.sight"));
-    updatePlayer(id, (d) => ({ ...d, world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"], explored } }));
+    updatePlayer(id, (d) => ({
+      ...d,
+      world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"], explored, provisions: 12, paidDay: 0, unpaid: {}, hungry: false, rep: {}, contracts: [], taken: [] },
+    }));
   }
   const w = docOf()!.world!;
   const s = useWorld.getState();
@@ -143,7 +148,8 @@ function tick() {
   const w = worldOf(docOf());
   if (!s.running || !s.pos || !s.dest || !w) return stopClock();
   const hours = ((TICK_MS / 1000) * s.speed) / Math.max(0.05, num("world.realSecondsPerHour"));
-  const step = march(w, s.pos, s.dest, hours);
+  // A hungry company drags its feet.
+  const step = march(w, s.pos, s.dest, hours * (docOf()?.world?.hungry ? num("company.hungrySlow") : 1));
   const rng = mulberry32((w.seed ^ Math.floor(s.hours * 977)) >>> 0).rng;
   let bands = moveBands(w, s.bands, step.pos, hours, rng);
   let lastSpawn = s.lastSpawn;
@@ -159,6 +165,11 @@ function tick() {
   const trail = !last || dist(last, step.pos) > 5 ? [...s.trail, step.pos].slice(-140) : s.trail;
   const explored = explore(s.explored, step.pos, num("world.sight"));
   const next: Partial<WorldState> = { pos: step.pos, bands, hours: s.hours + hours, bank: s.bank + hours, lastSpawn, trail, explored };
+  // A new day on the road: wages, rations, deadlines.
+  if (Math.floor((s.hours + hours) / 24) > Math.floor(s.hours / 24)) {
+    useWorld.setState(next);
+    newDay();
+  }
   if (caught) {
     useWorld.setState({ ...next, running: false, encounter: caught });
     stopClock();
@@ -181,6 +192,7 @@ function tick() {
 function arrive(place: Place) {
   const id = me();
   if (!id) return;
+  settleContracts(place);
   updatePlayer(id, (d) => (d.world && !d.world.seen.includes(place.id) ? { ...d, world: { ...d.world, seen: [...d.world.seen, place.id] } } : d));
   if (place.kind !== "home" && !docOf()?.world?.seen.includes(place.id)) addChronicle(id, [{ kind: "story", text: `The company reached ${place.name}.` }]);
 }
@@ -228,6 +240,13 @@ onRoadBattle((bandId, won, game, battle) => {
     salvageBattle(game, battle);
     grantChest(num("loot.patrolTier"), battle);
     useWorld.setState({ bands: s.bands.filter((b) => b.id !== bandId) });
+    // A contract's band: the job is done; the pay waits at the settlement.
+    const contract = s.bands.find((b) => b.id === bandId)?.contract;
+    if (contract) {
+      updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, contracts: d.world.contracts.map((c) => (c.id === contract ? { ...c, state: "done" as const } : c)) } } : d));
+      const c = docOf()?.world?.contracts.find((x) => x.id === contract);
+      if (c) toast.success(`Job done: go back to ${w.places.find((p) => p.id === c.from)?.name} for the pay`);
+    }
   } else if (s.pos) {
     const home = w.places.find((p) => p.kind === "home")!;
     const d = Math.max(1, dist(home, s.pos));
@@ -241,4 +260,149 @@ onRoadBattle((bandId, won, game, battle) => {
 export function beginAt(place: Place) {
   const adv = allAdventures().find((a) => a.id === place.ref);
   if (adv) beginAdventure(adv);
+}
+
+// --- Running the company: wages, rations, work and recruits -----------------------------
+
+/** A new day on the road: pay everyone, feed the marchers, and let lapsed contracts go. */
+function newDay() {
+  const id = me();
+  const doc = docOf();
+  const w = worldOf(doc);
+  const hours = useWorld.getState().hours;
+  const day = Math.floor(hours / 24);
+  if (!id || !doc?.world || !doc.town || !w || day <= doc.world.paidDay) return;
+  const roster = availableMembers(myCharacters())
+    .filter((e) => !doc.fallen.includes(e.key))
+    .map((e) => ({ key: e.key, name: e.label, level: doc.progress[e.key]?.level ?? 1 }));
+  const pd = payday(doc.town.gold, roster, chosenParty().length, doc.world.provisions);
+  const unpaid: Record<string, number> = {};
+  for (const h of roster) unpaid[h.key] = pd.unpaid.includes(h.key) ? (doc.world.unpaid[h.key] ?? 0) + 1 : 0;
+  // Hired heroes walk out after too many days without pay; the founders stay, grumbling.
+  const deserters = roster.filter((h) => h.key.startsWith("custom-") && unpaid[h.key]! >= num("company.desertDays"));
+  const lapsed = doc.world.contracts.filter((c) => c.state === "open" && c.due < hours);
+  updatePlayer(id, (d) => {
+    if (!d.world || !d.town) return d;
+    let rep = d.world.rep;
+    for (const c of lapsed) rep = addRep(rep, c.from, -2);
+    return {
+      ...d,
+      town: { ...d.town, gold: d.town.gold - pd.paid },
+      characters: d.characters.filter((c) => !deserters.some((x) => x.key === `custom-${c.id}`)),
+      picks: d.picks.filter((k) => !deserters.some((x) => x.key === k)),
+      world: {
+        ...d.world,
+        paidDay: day,
+        provisions: d.world.provisions - pd.eaten,
+        hungry: pd.hungry,
+        unpaid,
+        rep,
+        contracts: d.world.contracts.filter((c) => !lapsed.includes(c)),
+      },
+    };
+  });
+  if (lapsed.length) useWorld.setState((s) => ({ bands: s.bands.filter((b) => !lapsed.some((c) => b.contract === c.id)) }));
+  const lines: string[] = [];
+  if (pd.paid) lines.push(`Paid ${pd.paid} gold in wages.`);
+  if (pd.unpaid.length) lines.push(`Couldn't pay ${pd.unpaid.length} of the company.`);
+  if (pd.hungry) lines.push("The rations ran out: the company is hungry.");
+  for (const x of deserters) lines.push(`${x.name} walked out: no pay for ${num("company.desertDays")} days.`);
+  for (const c of lapsed) lines.push(`Missed a deadline: ${c.title}.`);
+  if (lines.length) addChronicle(id, lines.map((text) => ({ kind: "story" as const, text: `Day ${day + 1} on the road. ${text}` })));
+  if (pd.hungry) toast.warning("Out of rations: the company is hungry (slower, and −" + num("company.hungryAttack") + " to attacks)");
+  if (pd.unpaid.length) toast.warning(`Not enough gold for wages: ${pd.unpaid.length} unpaid`);
+  for (const x of deserters) toast.error(`${x.name} has left the company`);
+  for (const c of lapsed) toast.error(`Contract failed: ${c.title}`);
+}
+
+/** Arriving at a settlement: deliver parcels, collect pay for finished hunts. */
+function settleContracts(place: Place) {
+  const id = me();
+  const doc = docOf();
+  if (!id || !doc?.world || !isSettlement(place)) return;
+  const paid = doc.world.contracts.filter((c) => (c.kind === "deliver" && c.to === place.id) || (c.kind === "hunt" && c.state === "done" && c.from === place.id));
+  if (!paid.length) return;
+  const gold = paid.reduce((n, c) => n + c.reward, 0);
+  updatePlayer(id, (d) => {
+    if (!d.world || !d.town) return d;
+    let rep = d.world.rep;
+    for (const c of paid) {
+      rep = addRep(rep, c.from, c.kind === "hunt" ? 2 : 1);
+      if (c.kind === "deliver") rep = addRep(rep, place.id, 1);
+    }
+    return { ...d, town: { ...d.town, gold: d.town.gold + gold }, world: { ...d.world, rep, contracts: d.world.contracts.filter((c) => !paid.includes(c)) } };
+  });
+  addChronicle(id, paid.map((c) => ({ kind: "loot" as const, text: `${c.title}: done, ${c.reward} gold.` })));
+  toast.success(`Paid ${gold} gold in ${place.name}`);
+}
+
+/** The work on a settlement's board (minus what the company already took). */
+export function boardAt(place: Place): Contract[] {
+  const doc = docOf();
+  const w = worldOf(doc);
+  if (!doc?.world || !w) return [];
+  return contractsAt(w, place, useWorld.getState().hours, Math.max(1, doc.renown), doc.world.rep[place.id] ?? 0).filter((c) => !doc.world!.taken.includes(c.id));
+}
+
+/** Take a contract: a hunt puts the band on the map. */
+export function takeContract(c: Contract) {
+  const id = me();
+  const doc = docOf();
+  if (!id || !doc?.world) return;
+  if (doc.world.contracts.length >= 3) return void toast.error("The company has its hands full: three contracts at a time");
+  const due = useWorld.getState().hours + c.days * 24;
+  const active: ActiveContract = { ...c, due, state: "open" };
+  updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, contracts: [...d.world.contracts, active], taken: [...d.world.taken, c.id].slice(-200) } } : d));
+  if (c.kind === "hunt" && c.at && c.foe) {
+    const band: Band = { id: `c-${c.id}`, foe: c.foe, name: BAND_NAME[c.foe] ?? "Raiders", x: c.at.x, y: c.at.y, goal: c.at, contract: c.id };
+    useWorld.setState((s) => ({ bands: [...s.bands, band] }));
+    saveMarch();
+  }
+  toast.success(`Taken: ${c.title}`);
+}
+
+/** Buy rations or potions at a settlement (with the camp's gold). */
+export function buyAt(place: Place, item: "ration" | "potion", count: number) {
+  const id = me();
+  const doc = docOf();
+  if (!id || !doc?.world || !doc.town || !isSettlement(place)) return;
+  const cost = priceOf(item, place, doc.world.rep[place.id] ?? 0) * count;
+  if (doc.town.gold < cost) return void toast.error(`Needs ${cost} gold`);
+  updatePlayer(id, (d) =>
+    d.world && d.town
+      ? {
+          ...d,
+          town: { ...d.town, gold: d.town.gold - cost, stash: item === "potion" ? { ...d.town.stash, "potion-healing": (d.town.stash["potion-healing"] ?? 0) + count } : d.town.stash },
+          world: { ...d.world, provisions: d.world.provisions + (item === "ration" ? count : 0), hungry: item === "ration" ? false : d.world.hungry },
+        }
+      : d,
+  );
+}
+
+/** Take rations from the camp's food (one food, one ration). */
+export function packRations(count: number) {
+  const id = me();
+  const doc = docOf();
+  if (!id || !doc?.world || !doc.town) return;
+  const n = Math.min(count, Math.floor(doc.town.food));
+  if (n <= 0) return void toast.error("The camp has no food to spare");
+  updatePlayer(id, (d) => (d.world && d.town ? { ...d, town: { ...d.town, food: d.town.food - n }, world: { ...d.world, provisions: d.world.provisions + n, hungry: false } } : d));
+}
+
+/** Sellswords looking for work in a town or a city (better with renown and reputation). */
+export function recruitsAt(place: Place): Candidate[] {
+  const doc = docOf();
+  const w = worldOf(doc);
+  if (!doc?.world || !w || (place.kind !== "town" && place.kind !== "city")) return [];
+  const batch = Math.floor(useWorld.getState().hours / 24 / Math.max(1, num("tavern.refreshDays")));
+  const rep = doc.world.rep[place.id] ?? 0;
+  const score = Math.max(0, doc.renown * 10 + rep * num("company.recruitScorePerRep"));
+  const seed = (w.seed ^ [...place.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 5) ^ (batch * 7907)) >>> 0;
+  return makeCandidates(seed, `rec-${place.id}-${batch}`, place.kind === "city" ? 3 : 2, Math.max(1, doc.renown), score).filter((c) => !doc.world!.taken.includes(c.id));
+}
+
+export function hireAt(place: Place, c: Candidate) {
+  const id = me();
+  if (!id || !enlist(c, place.name)) return;
+  updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, taken: [...d.world.taken, c.id].slice(-200) } } : d));
 }

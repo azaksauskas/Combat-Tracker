@@ -160,7 +160,39 @@ export const PlayerDocSchema = z.object({
       y: z.number(),
       /** Game hours marched so far. */
       hours: z.number().catch(0),
-      bands: z.array(z.object({ id: z.string(), foe: z.string(), name: z.string().catch("Raiders"), x: z.number(), y: z.number(), goal: z.object({ x: z.number(), y: z.number() }), from: z.string().optional() })).catch([]),
+      bands: z
+        .array(z.object({ id: z.string(), foe: z.string(), name: z.string().catch("Raiders"), x: z.number(), y: z.number(), goal: z.object({ x: z.number(), y: z.number() }), from: z.string().optional(), contract: z.string().optional() }))
+        .catch([]),
+      /** Rations the company carries. */
+      provisions: z.number().catch(0),
+      /** The last world day wages were paid for. */
+      paidDay: z.number().catch(0),
+      /** Days each hero has gone unpaid in a row. */
+      unpaid: z.record(z.string(), z.number()).catch({}),
+      /** Out of rations: slower, and weaker in a fight. */
+      hungry: z.boolean().catch(false),
+      /** Reputation in each settlement (−10 … +10). */
+      rep: z.record(z.string(), z.number()).catch({}),
+      /** Contracts the company has taken. */
+      contracts: z
+        .array(
+          z.object({
+            id: z.string(),
+            from: z.string(),
+            kind: z.enum(["hunt", "deliver"]),
+            title: z.string().catch(""),
+            foe: z.string().optional(),
+            to: z.string().optional(),
+            at: z.object({ x: z.number(), y: z.number() }).optional(),
+            reward: z.number().catch(0),
+            days: z.number().catch(1),
+            due: z.number(),
+            state: z.enum(["open", "done"]).catch("open"),
+          }),
+        )
+        .catch([]),
+      /** Contract and recruit ids already taken from each settlement's board. */
+      taken: z.array(z.string()).catch([]),
       /** Hour the last band appeared. */
       lastSpawn: z.number().catch(0),
       /** Places the company has seen. */

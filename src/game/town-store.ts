@@ -664,17 +664,30 @@ export function hireHero(candidateId: string) {
   if (!id || !doc || !t || !c) return;
   if (!working(t, "tavern")) return void toast.error("Hiring needs a staffed tavern");
   if (!allowed("hire")) return;
-  if (t.gold < c.fee) return void toast.error(`Needs ${c.fee} gold`);
+  if (!enlist(c, "the tavern")) return;
+  updatePlayer(id, (d) => (d.town ? { ...d, town: { ...d.town, tavernHired: [...d.town.tavernHired, c.id] } } : d));
+}
+
+/** Sign a hero on (paying their fee from the camp's gold): they join the roster at their level, with their traits. */
+export function enlist(c: Candidate, where: string): boolean {
+  const id = me();
+  const t = docOf(id)?.town;
+  if (!id || !t) return false;
+  if (t.gold < c.fee) {
+    toast.error(`Needs ${c.fee} gold`);
+    return false;
+  }
   const key = characterKey(c.spec);
   updatePlayer(id, (d) => ({
     ...d,
     characters: [...d.characters, c.spec],
     progress: c.level > 1 ? { ...d.progress, [key]: { level: c.level, xp: XP_FOR_LEVEL[c.level] ?? 0 } } : d.progress,
     traits: { ...d.traits, [key]: c.traits },
-    town: d.town ? { ...d.town, gold: d.town.gold - c.fee, tavernHired: [...d.town.tavernHired, c.id] } : d.town,
+    town: d.town ? { ...d.town, gold: d.town.gold - c.fee } : d.town,
   }));
-  addChronicle(id, [{ kind: "story", text: `${c.spec.name}, a level ${c.level} ${c.spec.species.toLowerCase()} ${c.spec.className.toLowerCase()}, signed on at the tavern for ${c.fee} gold.` }]);
-  toast.success(`${c.spec.name} joins your heroes`);
+  addChronicle(id, [{ kind: "story", text: `${c.spec.name}, a level ${c.level} ${c.spec.species.toLowerCase()} ${c.spec.className.toLowerCase()}, signed on in ${where} for ${c.fee} gold.` }]);
+  toast.success(`${c.spec.name} joins the company`);
+  return true;
 }
 
 /** Put a hero in charge of a building while they're at home (null: nobody). */

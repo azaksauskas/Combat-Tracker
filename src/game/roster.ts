@@ -192,17 +192,22 @@ export const tavernBatch = (hours: number) => Math.floor(hours / 24 / Math.max(1
 export function candidates(t: Town, renown: number, partyLevel: number, patrons: number): Candidate[] {
   if (!t.buildings.some((b) => b.type === "tavern")) return [];
   const batch = tavernBatch(t.hours);
-  const rng = mulberry32((t.seed ^ (batch * 7919 + 13)) >>> 0).rng;
-  const pick = <T,>(xs: readonly T[]) => xs[Math.floor(rng() * xs.length)]!;
   const { score } = attraction(t, renown, patrons);
   const count = Math.min(4, 1 + Math.floor(score / Math.max(1, num("tavern.attractionPerHero"))));
+  return makeCandidates((t.seed ^ (batch * 7919 + 13)) >>> 0, `tavern-${batch}`, count, partyLevel, score).filter((c) => !(t.tavernHired ?? []).includes(c.id));
+}
+
+/** Heroes looking for work (fixed by the seed): the better the score, the higher their level and the more traits. */
+export function makeCandidates(seed: number, idPrefix: string, count: number, partyLevel: number, score: number): Candidate[] {
+  const rng = mulberry32(seed).rng;
+  const pick = <T,>(xs: readonly T[]) => xs[Math.floor(rng() * xs.length)]!;
   const out: Candidate[] = [];
   for (let i = 0; i < count; i++) {
     const className = pick(CLASS_NAMES);
     const species = pick(SPECIES_NAMES);
     const name = `${pick(NAMES[species])} ${pick(SURNAMES)}`;
-    const id = `tavern-${batch}-${i}`;
-    // Stronger towns draw stronger heroes.
+    const id = `${idPrefix}-${i}`;
+    // Stronger draws, stronger heroes.
     const level = Math.max(1, Math.min(partyLevel, partyLevel - 1 + (rng() < score / 100 ? 1 : 0)));
     const traitIds = Object.keys(TRAITS);
     const traits = [pick(traitIds)];
@@ -214,5 +219,5 @@ export function candidates(t: Town, renown: number, partyLevel: number, patrons:
     const fee = Math.round(num("tavern.feeBase") + num("tavern.feePerLevel") * (level - 1) + 15 * (traits.length - 1));
     out.push({ id, spec, level, traits, fee, pitch: pick(PITCHES) });
   }
-  return out.filter((c) => !(t.tavernHired ?? []).includes(c.id));
+  return out;
 }

@@ -666,6 +666,28 @@ becomes the company's camp.
   - The map draws itself as the company explores: unseen land is blank
     paper; footprints trail behind the banner. The view follows the
     company; drag to look around, scroll or +/− to zoom.
+- **BB-2: wages, rations and work.**
+  - 💰 Every day on the road the company pays wages to everyone on the
+    roster (the fallen excepted): 3 gold at level 1, +2 per level, from the
+    camp's gold. Whoever the purse can't cover goes unpaid; a hired hero
+    walks out after 3 unpaid days in a row (the four founders stay,
+    grumbling).
+  - 🍖 Each marching hero eats a ration a day. Rations come from the camp's
+    food (one food, one ration) or a settlement's market. Out of rations
+    the company is hungry: it marches ×0.7 and takes −2 to attack rolls
+    until it eats.
+  - 🏘 Settlements: a reputation each (−10 hated … +10 beloved).
+    - 📜 Work: a board of 1 (village), 2 (town) or 3 (city) jobs, new every
+      3 days of marching, no two alike. A hunt puts a band (flagged !) near
+      the settlement: beat it and come back for the pay (+2 reputation). A
+      delivery pays on arrival at the other settlement (+1 with both). A
+      missed deadline costs 2 reputation. At most three jobs at a time; pay
+      +5% per point of reputation.
+    - ⚖ Market: rations everywhere, Potions of Healing in towns and cities;
+      bigger places cost more, −3% per point of reputation.
+    - 🍺 Sellswords in towns (2) and cities (3), better with renown and
+      reputation; they join at their level with their traits.
+  - Numbers under "Company" on the balance page.
 
 ## Future ideas
 

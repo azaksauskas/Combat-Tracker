@@ -203,6 +203,21 @@ export const TUNING_FIELDS: TuningField[] = [
   f("World", "world.slipDc", "Slipping away from a band: Stealth DC", 12, undefined, { min: 1 }),
   f("World", "world.spawnHours", "A new band appears every … game hours (while below the cap)", 18, undefined, { min: 1 }),
 
+  // The company
+  f("Company", "company.wageBase", "Daily wage, level 1 hero (gold)", 3, "Paid each day on the road to everyone on the roster (the fallen excepted).", { min: 0 }),
+  f("Company", "company.wagePerLevel", "Daily wage per level above 1 (gold)", 2, undefined, { min: 0 }),
+  f("Company", "company.desertDays", "Days unpaid before a hired hero walks out", 3, "The four heroes you started with stay, grumbling.", { min: 1 }),
+  f("Company", "company.rationPrice", "A ration in a village (gold; towns ×1.15, cities ×1.4; −3% per reputation)", 1, undefined, { min: 0, step: 0.5 }),
+  f("Company", "company.potionPrice", "A Potion of Healing in a town (gold)", 12, undefined, { min: 1 }),
+  f("Company", "company.hungrySlow", "Hungry: march speed ×", 0.7, undefined, { min: 0.1, max: 1, step: 0.05 }),
+  f("Company", "company.hungryAttack", "Hungry: penalty to attack rolls", 2, undefined, { min: 0 }),
+  f("Company", "company.boardDays", "Days of marching before a settlement posts new work", 3, undefined, { min: 1 }),
+  f("Company", "company.huntPay", "Hunting contract: base pay (gold)", 25, undefined, { min: 0 }),
+  f("Company", "company.huntPayPerLevel", "Hunting contract: pay per hero level (gold)", 15, undefined, { min: 0 }),
+  f("Company", "company.deliverPay", "Delivery: base pay (gold)", 10, undefined, { min: 0 }),
+  f("Company", "company.deliverPayPerUnit", "Delivery: pay per map unit of distance (gold)", 0.08, undefined, { min: 0, step: 0.01 }),
+  f("Company", "company.recruitScorePerRep", "Recruits in a settlement: attraction per point of reputation", 5, undefined, { min: 0 }),
+
   // Roster
   f("Roster", "tavern.refreshDays", "Tavern: days before new heroes come looking for work", 3, undefined, { min: 1 }),
   f("Roster", "tavern.attractionPerHero", "Tavern: attraction for each extra hero looking for work (up to 4)", 25, "Attraction = renown × 10 + spirit + tavern level × 10 + 5 per patron + settlers ÷ 2.", { min: 1 }),

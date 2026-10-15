@@ -5,8 +5,10 @@ import { canStrike, threatOf } from "../game/region";
 import { allFactions, liveHours, startTownBattle } from "../game/town-store";
 import { num } from "../game/tuning";
 import { TERRAIN, WORLD_H, WORLD_W, dist, inSight, isExplored, terrainAt, travelHours, type Place, type Pt } from "../game/world";
-import { beginAt, enterWorld, fightBand, marchTo, pauseMarch, resumeMarch, saveMarch, setSpeed, slipAway, useWorld, worldOf } from "../game/world-store";
-import { chosenParty } from "../game/party-store";
+import { beginAt, boardAt, buyAt, enterWorld, fightBand, hireAt, marchTo, packRations, pauseMarch, recruitsAt, resumeMarch, saveMarch, setSpeed, slipAway, takeContract, useWorld, worldOf } from "../game/world-store";
+import { availableMembers, chosenParty, myCharacters } from "../game/party-store";
+import { isSettlement, priceOf, repText, sells, wageOf } from "../game/company";
+import { TRAITS } from "../game/roster";
 import { useActiveProfile, usePlayers } from "../store/players";
 import { Compass, ExploredMask, INK, InkBand, InkCompany, InkDefs, InkLand, InkPlace, InkRoads, PAPER, RED } from "./InkMap";
 
@@ -131,7 +133,7 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
             <InkPlace key={p.id} place={p} known={known(p)} here={p.id === s.at} />
           ))}
           {s.bands
-            .filter((b) => inSight(b, pos))
+            .filter((b) => inSight(b, pos) || b.contract)
             .map((b) => (
               <InkBand key={b.id} band={b} chasing={dist(b, pos) < num("world.bandSight")} pos={pos} />
             ))}
@@ -195,6 +197,7 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
           )}
           <p className="text-[11px] text-faint">Roads are fast; forests, hills and marsh are slow. Bands that spot you give chase; settlements are safe ground.</p>
         </section>
+        <CompanyPurse />
         {here && <PlacePanel place={here} onGoTown={onGoTown} onAdventure={onAdventure} />}
         <Legend />
       </aside>
@@ -233,13 +236,17 @@ function PlacePanel({ place, onGoTown, onAdventure }: { place: Place; onGoTown: 
           <button className="btn" onClick={onGoTown}>
             ⛺ Into the camp
           </button>
+          <div className="flex flex-wrap items-center gap-1 text-xs">
+            <span className="text-muted">Pack rations from the camp's food ({Math.floor(doc?.town?.food ?? 0)}):</span>
+            {[5, 10, 20].map((n) => (
+              <button key={n} className="btn px-2 py-0 text-xs" disabled={(doc?.town?.food ?? 0) < 1} onClick={() => packRations(n)}>
+                +{n}
+              </button>
+            ))}
+          </div>
         </>
       )}
-      {(place.kind === "village" || place.kind === "town" || place.kind === "city") && (
-        <p className="text-sm text-muted">
-          A {place.kind} known for {place.known}. Its people eye the company warily: work and trade here come with the next step of the road.
-        </p>
-      )}
+      {isSettlement(place) && <Settlement place={place} />}
       {place.kind === "site" && (
         <>
           <p className="text-sm text-muted">Something waits here.</p>
@@ -281,5 +288,146 @@ function Legend() {
         <li>Drag to look around, scroll or +/− to zoom, ⌖ back to the company.</li>
       </ul>
     </section>
+  );
+}
+
+function CompanyPurse() {
+  const id = useActiveProfile((s) => s.id)!;
+  const doc = usePlayers((s) => s.docs[id]);
+  const hours = useWorld((s) => s.hours);
+  const world = worldOf(doc);
+  if (!doc?.world || !doc.town || !world) return null;
+  const roster = availableMembers(myCharacters()).filter((e) => !doc.fallen.includes(e.key));
+  const wages = roster.reduce((n, e) => n + wageOf(doc.progress[e.key]?.level ?? 1), 0);
+  const marching = chosenParty().length;
+  const days = marching ? Math.floor(doc.world.provisions / marching) : 0;
+  const unpaid = Object.values(doc.world.unpaid).filter((n) => n > 0).length;
+  return (
+    <section className="space-y-2 rounded-lg border border-line bg-surface p-3 shadow" aria-label="The company's purse">
+      <h3 className="text-xs font-bold tracking-wider text-faint uppercase">💰 Purse and rations</h3>
+      <dl className="grid grid-cols-3 gap-1 text-center text-xs">
+        <div className="rounded border border-line bg-surface-2 p-1">
+          <dt className="text-faint">Gold</dt>
+          <dd className="font-bold text-strong">🪙 {doc.town.gold}</dd>
+        </div>
+        <div className="rounded border border-line bg-surface-2 p-1" title={`${roster.length} on the roster, paid every day on the road`}>
+          <dt className="text-faint">Wages / day</dt>
+          <dd className="font-bold text-strong">−{wages}</dd>
+        </div>
+        <div className={clsx("rounded border p-1", doc.world.hungry ? "border-danger bg-danger/10" : "border-line bg-surface-2")} title={`${marching} marching eat one ration each a day`}>
+          <dt className="text-faint">Rations</dt>
+          <dd className="font-bold text-strong">
+            🍖 {doc.world.provisions} <span className="font-normal text-muted">({days} d)</span>
+          </dd>
+        </div>
+      </dl>
+      {doc.world.hungry && <p className="text-xs text-danger">Hungry: the company marches slower and fights worse until it eats.</p>}
+      {unpaid > 0 && <p className="text-xs text-warn">{unpaid} unpaid: hired heroes leave after {num("company.desertDays")} days without pay.</p>}
+      {doc.world.contracts.length > 0 && (
+        <ul className="space-y-1 text-xs" aria-label="Contracts">
+          {doc.world.contracts.map((c) => {
+            const left = Math.max(0, Math.round(c.due - hours));
+            const from = world.places.find((p) => p.id === c.from)?.name;
+            const to = world.places.find((p) => p.id === c.to)?.name;
+            return (
+              <li key={c.id} className="rounded border border-line bg-surface-2/60 px-2 py-1">
+                <span className="font-semibold text-strong">{c.kind === "hunt" ? "⚔" : "📦"} {c.title}</span>
+                <span className="block text-muted">
+                  {c.state === "done" ? `Done: collect ${c.reward} gold in ${from}.` : c.kind === "deliver" ? `To ${to} · ${c.reward} gold · ${left} h left` : `${c.reward} gold · ${left} h left · marked on the map`}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function Settlement({ place }: { place: Place }) {
+  const id = useActiveProfile((s) => s.id)!;
+  const doc = usePlayers((s) => s.docs[id]);
+  useWorld((s) => s.hours);
+  const [tab, setTab] = useState<"market" | "work" | "recruits">("work");
+  if (!doc?.world || !doc.town) return null;
+  const rep = doc.world.rep[place.id] ?? 0;
+  const board = boardAt(place);
+  const recruits = recruitsAt(place);
+  const tabs = (["work", "market", ...(place.kind === "village" ? [] : ["recruits"])] as const).filter(Boolean) as ("market" | "work" | "recruits")[];
+  return (
+    <div className="space-y-2 text-sm">
+      <p className="text-muted">
+        A {place.kind} known for {place.known}. The company is <strong className="text-strong">{repText(rep)}</strong> here ({rep >= 0 ? "+" : ""}
+        {rep}).
+      </p>
+      <div className="flex gap-1" role="tablist">
+        {tabs.map((k) => (
+          <button key={k} role="tab" aria-selected={tab === k} className={clsx("btn px-2 py-0 text-xs", tab === k && "border-accent text-accent")} onClick={() => setTab(k)}>
+            {k === "work" ? `📜 Work (${board.length})` : k === "market" ? "⚖ Market" : `🍺 Sellswords (${recruits.length})`}
+          </button>
+        ))}
+      </div>
+      {tab === "work" && (
+        <ul className="space-y-1">
+          {board.map((c) => (
+            <li key={c.id} className="rounded border border-line bg-surface-2/60 p-2 text-xs">
+              <span className="font-semibold text-strong">{c.kind === "hunt" ? "⚔" : "📦"} {c.title}</span>
+              <span className="mt-0.5 flex items-center justify-between gap-2 text-muted">
+                🪙 {c.reward} · {c.days} day{c.days === 1 ? "" : "s"}
+                <button className="btn px-2 py-0 text-xs" onClick={() => takeContract(c)}>
+                  Take it
+                </button>
+              </span>
+            </li>
+          ))}
+          {board.length === 0 && <li className="text-xs text-muted italic">Nothing posted. New work comes every few days.</li>}
+        </ul>
+      )}
+      {tab === "market" && (
+        <ul className="space-y-1 text-xs">
+          {sells(place).map((item) => {
+            const price = priceOf(item, place, rep);
+            return (
+              <li key={item} className="flex items-center gap-2 rounded border border-line bg-surface-2/60 px-2 py-1">
+                <span className="flex-1">
+                  {item === "ration" ? "🍖 Rations" : "🧪 Potion of Healing"} · 🪙 {price} each
+                </span>
+                {(item === "ration" ? [5, 10] : [1]).map((n) => (
+                  <button key={n} className="btn px-2 py-0 text-xs" disabled={doc.town!.gold < price * n} onClick={() => buyAt(place, item, n)}>
+                    +{n}
+                  </button>
+                ))}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {tab === "recruits" && (
+        <ul className="space-y-1">
+          {recruits.map((c) => (
+            <li key={c.id} className="rounded border border-line bg-surface-2/60 p-2 text-xs">
+              <span className="flex items-baseline justify-between gap-2">
+                <strong className="text-strong">{c.spec.name}</strong>
+                <span className="text-faint">
+                  Level {c.level} {c.spec.species} {c.spec.className}
+                </span>
+              </span>
+              <span className="block text-muted italic">{c.pitch}</span>
+              <span className="mt-1 flex flex-wrap items-center gap-1">
+                {c.traits.map((t) => (
+                  <span key={t} className="rounded-full border border-line px-1.5" title={TRAITS[t]?.text}>
+                    {TRAITS[t]?.icon} {TRAITS[t]?.name}
+                  </span>
+                ))}
+                <button className="btn ml-auto px-2 py-0 text-xs" disabled={doc.town!.gold < c.fee} onClick={() => hireAt(place, c)}>
+                  Hire · 🪙 {c.fee}
+                </button>
+              </span>
+            </li>
+          ))}
+          {recruits.length === 0 && <li className="text-xs text-muted italic">Nobody looking for work. More come with renown and a good name here.</li>}
+        </ul>
+      )}
+    </div>
   );
 }
