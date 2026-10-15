@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { patronBoost } from "../game/roster";
 import { levelOf, type Building, type Town } from "../domain/town";
 import { BUILDINGS, TRADE_FOR, assignments, cantUpgrade, durationText, isBuilt, isNew, maxLevel, pace, plots, progressOf, upgradeCost, yields } from "../game/town";
 import { assignSettler, upgradeBuilding } from "../game/town-store";
@@ -96,6 +97,11 @@ export function TownScene({ town: t, hours, renown, selected, onSelect, onBuild 
                     {roman(levelOf(b))}
                   </span>
                 )}
+                {t.patrons[b.id] && !upgrading && (
+                  <span className="absolute top-1 right-1 max-w-[70%] truncate rounded-full bg-highlight/80 px-1 text-[10px] font-bold text-strong" title={`${t.patrons[b.id]!.name} looks after it: +${Math.round(patronBoost(b, t.patrons[b.id]) * 100)}%`}>
+                    ⭐ {t.patrons[b.id]!.name}
+                  </span>
+                )}
                 {upgrading && (
                   <span className="absolute top-1 right-1 rounded bg-accent px-1 text-[10px] font-bold text-accent-fg" title={`Upgrading to level ${b.upTo}: ${durationText(Math.ceil(left))} left`}>
                     ⬆ {roman(b.upTo!)}
@@ -176,6 +182,11 @@ export function BuildingPanel({ town: t, buildingId, renown, onClose }: { town: 
           </button>
         </div>
         <p className="text-muted">{def.description}</p>
+        {t.patrons[b.id] && (
+          <p className="text-xs text-strong">
+            ⭐ {t.patrons[b.id]!.name} looks after it: +{Math.round(patronBoost(b, t.patrons[b.id]) * 100)}% (set on the Heroes tab).
+          </p>
+        )}
         {isBuilt(b) && <p className={clsx("font-semibold", def.staffed && !p ? "text-danger" : "text-strong")}>{buildingYield(t, b)}</p>}
         {isBuilt(b) && def.staffed && (
           <label className="flex flex-wrap items-center gap-2">

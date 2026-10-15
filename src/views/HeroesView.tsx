@@ -9,7 +9,9 @@ import { num } from "../game/tuning";
 import { usePlay } from "../game/store";
 import { working } from "../game/town";
 import { SPELLS, isCaster, spellLimits, spellsFor } from "../game/spellbook";
-import { craftTreasure, disenchant, equipGear, equipTreasure, gearSource, getGear, hastenRecovery, openChestNow, prepareSpells, sellTreasure } from "../game/town-store";
+import { craftTreasure, disenchant, equipGear, equipTreasure, gearSource, getGear, hastenRecovery, heroesForHire, hireHero, openChestNow, prepareSpells, sellTreasure, setPatron } from "../game/town-store";
+import { AFFINITY, NO_DEEDS, TRAITS, attraction, questOf, questStage, tavernBatch, traitsOf } from "../game/roster";
+import { num as tuned } from "../game/tuning";
 import { MAGIC_ITEMS, MAX_ATTUNED, RARITY, chestLook, dustValue, recipes, sellValue, type Chest, type Loot, type Treasure } from "../game/treasure";
 import { BUILDINGS } from "../game/town";
 import { levelOf } from "../domain/town";
@@ -51,6 +53,7 @@ export function HeroesView() {
         </ul>
       </div>
       <aside className="space-y-3">
+        <Tavern />
         <Chests />
         <Treasury />
         <Forge />
@@ -96,6 +99,7 @@ function HeroCard({ heroKey, locked }: { heroKey: string; locked: boolean }) {
           </span>
         </div>
       </div>
+      <Roster heroKey={heroKey} className={st.className} locked={locked} />
       {resting > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-warn/50 bg-warn/10 px-2 py-1 text-xs text-warn" aria-label={`${built.name} in the infirmary`}>
           <span className="flex-1">
@@ -515,6 +519,134 @@ function Forge() {
           );
         })}
       </ul>
+    </section>
+  );
+}
+
+// --- The roster ------------------------------------------------------------------------------
+
+function TraitChip({ id }: { id: string }) {
+  const t = TRAITS[id];
+  if (!t) return null;
+  return (
+    <span className="rounded-full border border-line bg-surface px-1.5 text-[11px]" title={t.text}>
+      {t.icon} {t.name}
+    </span>
+  );
+}
+
+/** Traits, the personal quest and the building the hero looks after. */
+function Roster({ heroKey, className, locked }: { heroKey: string; className: string | null; locked: boolean }) {
+  const id = useActiveProfile((s) => s.id)!;
+  const doc = usePlayers((s) => s.docs[id])!;
+  const traits = traitsOf(doc.traits, heroKey);
+  const quest = questOf(className);
+  const deeds = doc.deeds[heroKey] ?? NO_DEEDS;
+  const stage = questStage(quest, deeds);
+  const next = quest.stages[Math.min(2, stage)]!;
+  const value = deeds[quest.stat];
+  const t = doc.town;
+  const patronOf = t ? Object.entries(t.patrons).find(([, p]) => p.key === heroKey)?.[0] : undefined;
+  const likes = AFFINITY[(className ?? "Fighter") as keyof typeof AFFINITY] ?? [];
+  return (
+    <div className="space-y-1.5 text-xs">
+      <div className="flex flex-wrap gap-1" aria-label="Traits">
+        {traits.map((tr) => (
+          <TraitChip key={tr} id={tr} />
+        ))}
+      </div>
+      <div className="rounded-md border border-line bg-surface-2/60 p-1.5" aria-label="Personal quest" title={quest.text}>
+        <div className="flex justify-between gap-2">
+          <span>
+            📜 <strong className="text-strong">{quest.name}</strong>
+          </span>
+          <span className="text-faint">{"★".repeat(stage) + "☆".repeat(3 - stage)}</span>
+        </div>
+        {stage < 3 ? (
+          <>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-3">
+              <div className="h-full bg-highlight" style={{ width: `${Math.min(100, (value / next) * 100)}%` }} />
+            </div>
+            <div className="mt-0.5 text-[11px] text-muted">
+              {value}/{next} {quest.unit} · next: {stage === 0 ? "a silver chest" : stage === 1 ? `the ${TRAITS[quest.trait]?.name} trait` : "a treasure like no other"}
+            </div>
+          </>
+        ) : (
+          <div className="mt-0.5 text-[11px] text-heal">Complete: a legend in the making.</div>
+        )}
+      </div>
+      {t && (
+        <label className="flex items-center gap-1.5" title="A hero looking after a building stays home and the building makes more (more again if it suits their class)">
+          <span className="text-faint">🏛 Looks after</span>
+          <select className="field flex-1 py-0.5 text-xs" value={patronOf ?? ""} disabled={locked} onChange={(e) => (e.target.value ? setPatron(e.target.value, heroKey) : patronOf && setPatron(patronOf, null))} aria-label="Looks after">
+            <option value="">— nothing: free to adventure —</option>
+            {t.buildings
+              .filter((b) => b.type !== "house" && b.type !== "hall")
+              .map((b) => (
+                <option key={b.id} value={b.id}>
+                  {BUILDINGS[b.type].icon} {BUILDINGS[b.type].name}
+                  {likes.includes(b.type) ? " ★" : ""}
+                  {t.patrons[b.id] && t.patrons[b.id]!.key !== heroKey ? ` (now ${t.patrons[b.id]!.name})` : ""}
+                </option>
+              ))}
+          </select>
+        </label>
+      )}
+      {patronOf && <p className="text-[11px] text-warn">Stays home while looking after the {BUILDINGS[t!.buildings.find((b) => b.id === patronOf)?.type ?? "hall"].name.toLowerCase()}.</p>}
+    </div>
+  );
+}
+
+function Tavern() {
+  const id = useActiveProfile((s) => s.id)!;
+  const doc = usePlayers((s) => s.docs[id]);
+  const t = doc?.town;
+  if (!doc || !t) return null;
+  const tavern = t.buildings.find((b) => b.type === "tavern");
+  const staffed = working(t, "tavern") > 0;
+  const draw = attraction(t, doc.renown, Object.keys(t.patrons).length);
+  const list = heroesForHire();
+  const days = Math.max(1, Math.round(tuned("tavern.refreshDays")));
+  const nextIn = Math.ceil(((tavernBatch(t.hours) + 1) * days * 24 - t.hours) / 24);
+  return (
+    <section className="space-y-2 rounded-lg border border-line bg-surface p-3 shadow" aria-label="Tavern">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-xs font-bold tracking-wider text-faint uppercase">🍺 Heroes for hire</h3>
+        <span className="text-xs text-muted" title={draw.lines.map(([k, v]) => `${k}: ${v >= 0 ? "+" : ""}${v}`).join("\n")}>
+          ⭐ Attraction {draw.score}
+        </span>
+      </div>
+      {!tavern ? (
+        <p className="text-sm text-muted italic">Build a tavern: heroes looking for work stop where there's ale and a story.</p>
+      ) : (
+        <>
+          {list.length === 0 && <p className="text-sm text-muted italic">Nobody looking for work right now.</p>}
+          <ul className="space-y-1.5">
+            {list.map((c) => (
+              <li key={c.id} className="rounded-md border border-line bg-surface-2/60 p-2 text-sm" aria-label={`For hire: ${c.spec.name}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <strong className="text-strong">{c.spec.name}</strong>
+                  <span className="text-xs text-faint">
+                    Level {c.level} {c.spec.species} {c.spec.className}
+                  </span>
+                </div>
+                <p className="text-xs text-muted italic">{c.pitch}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-1">
+                  {c.traits.map((tr) => (
+                    <TraitChip key={tr} id={tr} />
+                  ))}
+                  <button className="btn ml-auto px-2 py-0.5 text-xs" disabled={!staffed || t.gold < c.fee} onClick={() => hireHero(c.id)} title={staffed ? "Hire" : "Needs a staffed tavern"}>
+                    Hire · 🪙 {c.fee}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] text-faint">
+            New faces in {nextIn} day{nextIn === 1 ? "" : "s"}. The more the town draws heroes (renown, spirit, the tavern, heroes looking after the town), the more come, and the better.{staffed ? "" : " Hiring needs a staffed tavern."}
+          </p>
+        </>
+      )}
     </section>
   );
 }

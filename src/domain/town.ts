@@ -133,6 +133,10 @@ export const TownSchema = z.object({
   acc: z.record(z.string(), z.number()).catch({}),
   /** Meals missed since dawn (no food left). */
   missed: z.number().catch(0),
+  /** Heroes at home looking after a building: building id → the hero. */
+  patrons: z.record(z.string(), z.object({ key: z.string(), name: z.string().catch("Hero"), className: z.string().catch("Fighter"), traits: z.array(z.string()).catch([]) })).catch({}),
+  /** Tavern candidates already hired (they don't come back). */
+  tavernHired: z.array(z.string()).catch([]),
   /** Lifetime counts, for goals. */
   stats: z.record(z.string(), z.number()).catch({}),
   /** Goals already rewarded (see game/goals.ts). */

@@ -15,7 +15,9 @@ import { findScenario, useCampaign } from "./campaign-store";
 import { setupFor } from "./scenarios";
 import { quitGame, startBattle, usePlay } from "./store";
 import { spellProblem } from "./spellbook";
-import { carrying, chosenParty, heroAsNow, magicOn, recordAftermath, recoveryLeft } from "./party-store";
+import { carrying, chosenParty, heroAsNow, magicOn, patronKeys, recordAftermath, recoveryLeft } from "./party-store";
+import { TRAITS, addDeeds, candidates, questOf, questStage, traitsOf, type Candidate, type QuestDef } from "./roster";
+import { characterKey } from "./builder";
 import { MAGIC_ITEMS, RARITY, cantEquip, chestLook, chestTier, dustValue, openChest, recipes, sellValue, type Loot } from "./treasure";
 import { ARMORS, WEAPONS, gearName, loadoutProblem, startingKit, type Loadout } from "./arsenal";
 import { INJURIES, aftermath } from "./injuries";
@@ -643,6 +645,108 @@ export function craftTreasure(itemId: string) {
 /** Magic items a hero carries (for the sheet). */
 export const heroMagic = (heroKey: string) => magicOn(docOf(me()), heroKey);
 
+// --- The roster: hiring at the tavern, patrons, personal quests -------------------------
+
+/** Heroes for hire at the tavern right now. */
+export function heroesForHire(): Candidate[] {
+  const doc = docOf(me());
+  if (!doc?.town) return [];
+  // Renown is the best hero's level: newcomers come at about that level.
+  return candidates(doc.town, doc.renown, doc.renown, patronKeys(doc).length);
+}
+
+/** Hire a hero from the tavern: they join the roster at their level, with their traits. */
+export function hireHero(candidateId: string) {
+  const id = me();
+  const doc = docOf(id);
+  const t = doc?.town;
+  const c = heroesForHire().find((x) => x.id === candidateId);
+  if (!id || !doc || !t || !c) return;
+  if (!working(t, "tavern")) return void toast.error("Hiring needs a staffed tavern");
+  if (!allowed("hire")) return;
+  if (t.gold < c.fee) return void toast.error(`Needs ${c.fee} gold`);
+  const key = characterKey(c.spec);
+  updatePlayer(id, (d) => ({
+    ...d,
+    characters: [...d.characters, c.spec],
+    progress: c.level > 1 ? { ...d.progress, [key]: { level: c.level, xp: XP_FOR_LEVEL[c.level] ?? 0 } } : d.progress,
+    traits: { ...d.traits, [key]: c.traits },
+    town: d.town ? { ...d.town, gold: d.town.gold - c.fee, tavernHired: [...d.town.tavernHired, c.id] } : d.town,
+  }));
+  addChronicle(id, [{ kind: "story", text: `${c.spec.name}, a level ${c.level} ${c.spec.species.toLowerCase()} ${c.spec.className.toLowerCase()}, signed on at the tavern for ${c.fee} gold.` }]);
+  toast.success(`${c.spec.name} joins your heroes`);
+}
+
+/** Put a hero in charge of a building while they're at home (null: nobody). */
+export function setPatron(buildingId: string, heroKey: string | null) {
+  const id = me();
+  const doc = docOf(id);
+  if (!id || !doc?.town) return;
+  if (useCampaign.getState().state || usePlay.getState().game) return void toast.error("The heroes are out");
+  const hero = heroKey ? heroAsNow(heroKey)?.build() : undefined;
+  if (heroKey && (!hero || doc.fallen.includes(heroKey))) return;
+  updatePlayer(id, (d) => {
+    if (!d.town) return d;
+    const patrons = Object.fromEntries(Object.entries(d.town.patrons).filter(([bid, p]) => bid !== buildingId && p.key !== heroKey));
+    if (heroKey && hero) patrons[buildingId] = { key: heroKey, name: hero.name, className: hero.stats?.className ?? "Fighter", traits: traitsOf(d.traits, heroKey) };
+    return { ...d, town: { ...d.town, patrons } };
+  });
+}
+
+/** After a battle: add what each hero did to their deeds, and reward personal quest stages. */
+export function recordDeeds(keyOf: (unitId: string) => string | undefined, won: boolean) {
+  const id = me();
+  const tally = usePlay.getState().tally;
+  const game = usePlay.getState().game;
+  if (!id || !game) return;
+  const heroes = game.units.filter((u) => u.side === "party").flatMap((u) => {
+    const key = keyOf(u.id);
+    return key ? [{ key, name: u.name, className: u.stats.className, t: tally[u.id] ?? { dealt: 0, taken: 0, healed: 0, downed: 0 } }] : [];
+  });
+  if (!heroes.length) return;
+  const doc = docOf(id)!;
+  const deeds = { ...doc.deeds };
+  for (const h of heroes) deeds[h.key] = addDeeds(deeds[h.key], h.t, won);
+  const rewards: { key: string; name: string; stage: number; quest: QuestDef }[] = [];
+  for (const h of heroes) {
+    const quest = questOf(h.className);
+    const reached = questStage(quest, deeds[h.key]);
+    for (let stage = (doc.questRewards[h.key] ?? 0) + 1; stage <= reached; stage++) rewards.push({ key: h.key, name: h.name, stage, quest });
+  }
+  updatePlayer(id, (d) => {
+    const traits = { ...d.traits };
+    const questRewards = { ...d.questRewards };
+    let treasure = d.treasure;
+    let uniques = d.uniques;
+    for (const r of rewards) {
+      questRewards[r.key] = Math.max(questRewards[r.key] ?? 0, r.stage);
+      if (r.stage === 2) {
+        const now = traitsOf(d.traits, r.key);
+        if (!now.includes(r.quest.trait)) traits[r.key] = [...now, r.quest.trait];
+      }
+      if (r.stage === 3 && !uniques.includes(r.quest.unique)) {
+        treasure = [...treasure, { uid: newId(), id: r.quest.unique, on: undefined }];
+        uniques = [...uniques, r.quest.unique];
+      }
+    }
+    return { ...d, deeds, traits, questRewards, treasure, uniques };
+  });
+  for (const r of rewards) {
+    const what =
+      r.stage === 1
+        ? "a silver chest"
+        : r.stage === 2
+          ? `a new trait: ${TRAITS[r.quest.trait]?.name}`
+          : doc.uniques.includes(r.quest.unique)
+            ? "a gilded chest"
+            : `${MAGIC_ITEMS[r.quest.unique]?.name}, a treasure like no other`;
+    if (r.stage === 1) grantChest(3, `${r.name}'s quest`, 1);
+    if (r.stage === 3 && doc.uniques.includes(r.quest.unique)) grantChest(4, `${r.name}'s quest`, 1);
+    addChronicle(id, [{ kind: "story", text: `${r.name}: ${r.quest.name}, stage ${r.stage} of 3. Reward: ${what}.` }]);
+    toast.success(`📜 ${r.name} — ${r.quest.name} ${["", "I", "II", "III"][r.stage]}: ${what}`);
+  }
+}
+
 /** Start upgrading a building to its next level. */
 export function upgradeBuilding(buildingId: string) {
   if (!allowed("upgrade")) return;
@@ -782,7 +886,9 @@ export function finishTownBattle(retreat = false) {
   const fled = retreat || !!game.fled;
   const won = !fled && game.outcome === "victory";
   const keys = context.heroes ?? [];
-  recordAftermath(aftermath(game, (uid) => (/^p\d+$/.test(uid) ? keys[Number(uid.slice(1))] : undefined)));
+  const heroKey = (uid: string) => (/^p\d+$/.test(uid) ? keys[Number(uid.slice(1))] : undefined);
+  recordAftermath(aftermath(game, heroKey));
+  recordDeeds(heroKey, !fled && game.outcome === "victory");
   const battle = scenario?.name ?? "a fight";
   const keepStash = (t: Town): Town => ({ ...t, stash: { ...(game.stash ?? t.stash) } });
 

@@ -189,6 +189,14 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Spies & guilds", "guild.crackdownHours", "Real hours between crackdowns", 12),
   f("Spies & guilds", "guild.reclaimShare", "Taking the town back removes this share of the guild's influence", 0.6, undefined, { step: 0.05, max: 1 }),
 
+  // Roster
+  f("Roster", "tavern.refreshDays", "Tavern: days before new heroes come looking for work", 3, undefined, { min: 1 }),
+  f("Roster", "tavern.attractionPerHero", "Tavern: attraction for each extra hero looking for work (up to 4)", 25, "Attraction = renown × 10 + spirit + tavern level × 10 + 5 per patron + settlers ÷ 2.", { min: 1 }),
+  f("Roster", "tavern.feeBase", "Tavern: hiring fee, level 1 hero (gold)", 40),
+  f("Roster", "tavern.feePerLevel", "Tavern: hiring fee per level above 1 (gold)", 50),
+  f("Roster", "patron.bonus", "Patron: extra output of the building they look after", 0.25, undefined, { step: 0.05 }),
+  f("Roster", "patron.affinityBonus", "Patron: more again if it suits their class", 0.25, undefined, { step: 0.05 }),
+
   // Treasure
   f("Treasure", "loot.itemChance1", "Wooden chest: chance of a magic item", 0.25, undefined, { step: 0.05, max: 1 }),
   f("Treasure", "loot.itemChance2", "Iron-bound chest: chance of a magic item", 0.45, undefined, { step: 0.05, max: 1 }),

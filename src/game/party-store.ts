@@ -7,6 +7,7 @@ import type { PlayerDoc } from "../domain/players";
 import { applyLoadout, startingKit, type Loadout } from "./arsenal";
 import { INJURIES, applyInjuries, recoveryHours, type Aftermath } from "./injuries";
 import { applySpells } from "./spellbook";
+import { applyTraits, traitsOf } from "./roster";
 import { MAGIC_ITEMS, applyTreasure, type Carrying, type MagicItemDef } from "./treasure";
 import { working } from "./town";
 import { characterEntry } from "./builder";
@@ -37,7 +38,7 @@ export const myCharacters = (): CharacterSpec[] => [...useGame.getState().librar
 /** The party for the next fight or adventure: at the level they've reached, with their gear, spells, mods and injuries. The fallen and the recovering stay home. */
 export const chosenParty = () => {
   const doc = activeDoc();
-  const home = [...(doc?.fallen ?? []), ...Object.keys(doc?.recovery ?? {}).filter((k) => recoveryLeft(doc, k) > 0)];
+  const home = [...(doc?.fallen ?? []), ...patronKeys(doc), ...Object.keys(doc?.recovery ?? {}).filter((k) => recoveryLeft(doc, k) > 0)];
   return resolveParty(doc?.picks ?? [], myCharacters(), home).map((e) => asNow(e, doc));
 };
 
@@ -52,8 +53,16 @@ export function recoveryLeft(doc: PlayerDoc | null | undefined, key: string): nu
 function asNow(e: ContentEntry, doc: PlayerDoc | null | undefined): ContentEntry {
   const k = e.key;
   const kitted = withSpells(withLoadout(withProgress(e, doc?.progress[k]), doc?.loadouts[k]), doc?.spells[k], doc?.loadouts[k]);
-  return withInjuries(withTreasure(withMods(kitted, doc?.gear[k]), magicOn(doc, k), doc?.loadouts[k]), doc?.injuries[k]);
+  return withInjuries(withTraits(withTreasure(withMods(kitted, doc?.gear[k]), magicOn(doc, k), doc?.loadouts[k]), traitsOf(doc?.traits, k)), doc?.injuries[k]);
 }
+
+function withTraits(e: ContentEntry, traits: string[]): ContentEntry {
+  if (!traits.length) return e;
+  return { ...e, build: () => applyTraits(e.build(), traits) };
+}
+
+/** Heroes looking after a building in town (they stay home). */
+export const patronKeys = (doc: PlayerDoc | null | undefined) => Object.values(doc?.town?.patrons ?? {}).map((p) => p.key);
 
 /** The magic items a hero carries. */
 export const magicOn = (doc: PlayerDoc | null | undefined, key: string): MagicItemDef[] =>
@@ -115,7 +124,7 @@ export function recordAftermath(results: Aftermath[]) {
   const shrine = !!town && working(town, "shrine") > 0;
   const doc = activeDoc();
   // A Periapt of Wound Closure (or the like) halves the stay.
-  const mends = (key: string) => (magicOn(doc, key).some((i) => i.effect.mending) ? 0.5 : 1);
+  const mends = (key: string) => (magicOn(doc, key).some((i) => i.effect.mending) || traitsOf(doc?.traits, key).includes("quick-healer") ? 0.5 : 1);
   const rest = new Map(town ? results.map((r) => [r.key, Math.ceil(recoveryHours(r, shrine) * mends(r.key))] as const).filter(([, h]) => h > 0) : []);
   updatePlayer(id, (d) => {
     const injuries = { ...d.injuries };

@@ -4,6 +4,7 @@ import { mulberry32 } from "./rng";
 import type { Faction } from "../domain/faction";
 import { regionDay, regionHour } from "./region";
 import { num } from "./tuning";
+import { patronBoost } from "./roster";
 import { contractsDay } from "./economy";
 
 /**
@@ -348,6 +349,8 @@ export function foundTown(name: string, now: number, seed: number, gold = num("t
     missed: 0,
     stats: {},
     goals: [],
+    patrons: {},
+    tavernHired: [],
     crackdowns: {},
     lastCrackdown: 0,
     banned: [],
@@ -630,7 +633,8 @@ const STORES = ["food", "materials", "gold", "herbs", "dust"] as const;
 export function yields(t: Town, b: Building, who = assignments(t)): Yield {
   const out: Yield = { food: 0, materials: 0, gold: 0, herbs: 0, dust: 0 };
   if (!isBuilt(b)) return out;
-  const k = levelBoost(b) * (BUILDINGS[b.type].staffed ? pace(t, b.id, who) : 1);
+  const patron = t.patrons?.[b.id];
+  const k = levelBoost(b) * (BUILDINGS[b.type].staffed ? pace(t, b.id, who) : 1) * (1 + patronBoost(b, patron));
   switch (b.type) {
     case "hall":
       out.food = num("prod.hallFood") * k;
@@ -655,6 +659,8 @@ export function yields(t: Town, b: Building, who = assignments(t)): Yield {
       out.dust = num("prod.towerDust") * k;
       break;
   }
+  // A patron with a merchant's eye brings in a little gold wherever they are.
+  if (patron?.traits.includes("merchant")) out.gold += 2;
   return out;
 }
 

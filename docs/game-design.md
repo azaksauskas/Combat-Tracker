@@ -577,6 +577,31 @@ picker into a real sign-in without changing the data model.
     unwanted items down into dust. The market buys magic items for half
     their value.
   - All numbers under "Treasure" on the balance page.
+- **Phase I: the roster.** The heroes are people with a past and a
+  future; the town is where heroes want to be.
+  - 🍺 Heroes for hire: a tavern draws heroes looking for work, a new
+    batch every few days. How many (1–4) and how good (level, a second
+    trait) depends on the town's ⭐ attraction: renown × 10 + spirit +
+    tavern level × 10 + 5 per hero looking after the town + settlers ÷ 2.
+    Hiring takes a staffed tavern and a fee by level; the hero joins at
+    their level with their traits. The roster only grows this way: players
+    no longer build heroes (the DM still can).
+  - ✨ Traits: Tough, Brawler, Keen-eyed, Quick, Stalwart, Studious,
+    Scarred veteran, Quick healer (half the infirmary), Homebody and
+    Merchant's eye (for patrons). Brann is Tough, Pip Quick, Maren
+    Stalwart, Ezra Studious.
+  - 📜 Personal quests by class, counted from every battle's tally:
+    Fighter "The Champion's Road" (foes felled 5/15/30), Rogue "A Name in
+    the Shadows" and Wizard "The Arcane Ladder" (damage 80/250/600),
+    Cleric "The Path of Mercy" (healing 30/100/250). Stage I: a silver
+    chest; II: a new trait; III: the class's unique treasure (Emberbrand,
+    Wolfsong, the Crypt-Warden's Mantle, Staff of the Last Dawn), or a
+    gilded chest if already found.
+  - 🏛 Patrons: a hero at home can look after a building: +25% output,
+    +25% more if it suits their class (★), more again for a Homebody. A
+    patron stays home (not in the party) and adds to the town's
+    attraction. Shown on the building's tile.
+  - Numbers under "Roster" on the balance page.
 
 ## Future ideas
 

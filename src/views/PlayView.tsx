@@ -23,9 +23,9 @@ import { CharacterBuilder } from "../components/CharacterBuilder";
 import type { CharacterSpec } from "../domain/character";
 import { newId } from "../domain/combat";
 import { characterKey, suggestedSpec } from "../game/builder";
-import { MAX_PARTY, availableMembers, deleteCharacter, recoveryLeft, togglePick } from "../game/party-store";
+import { MAX_PARTY, availableMembers, deleteCharacter, patronKeys, recoveryLeft, togglePick } from "../game/party-store";
 import { bindSaves } from "../game/save-bind";
-import { claimSave, legacySaves, useActiveProfile, usePlayers } from "../store/players";
+import { claimSave, legacySaves, useActiveProfile, useIsDm, usePlayers } from "../store/players";
 import { XP_BY_CR, withProgress } from "../game/party";
 import { INJURIES } from "../game/injuries";
 import { num } from "../game/tuning";
@@ -202,6 +202,7 @@ function PartyPicker() {
   const fallenKeys = usePlayers((s) => (activeId ? s.docs[activeId]?.fallen : undefined)) ?? [];
   const injuries = usePlayers((s) => (activeId ? s.docs[activeId]?.injuries : undefined));
   const doc = usePlayers((s) => (activeId ? s.docs[activeId] : undefined));
+  const dm = useIsDm();
   const members = availableMembers(characters).map((e) => withProgress(e, progress?.[e.key]));
   const custom = new Map(characters.map((c) => [characterKey(c), c]));
   return (
@@ -210,9 +211,13 @@ function PartyPicker() {
         <h3 className="text-xs font-bold tracking-wider text-faint uppercase">
           Your party · {picks.length}/{MAX_PARTY}
         </h3>
-        <button className="btn px-2 text-xs" onClick={() => setEditing(suggestedSpec("Fighter", newId(), ""))}>
-          + Build a character
-        </button>
+        {dm ? (
+          <button className="btn px-2 text-xs" onClick={() => setEditing(suggestedSpec("Fighter", newId(), ""))}>
+            + Build a character
+          </button>
+        ) : (
+          <span className="text-xs text-faint">New heroes are hired at the tavern (Heroes tab).</span>
+        )}
       </div>
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {members.map((p) => {
@@ -232,6 +237,7 @@ function PartyPicker() {
                   <span className="block text-xs text-faint">{p.subtitle}</span>
                   {isFallen && <span className="block text-xs text-danger">Fallen: raise them at a shrine</span>}
                   {hurt.length > 0 && <span className="block text-xs text-warn">🩹 {hurt.map((x) => INJURIES[x]?.name).join(", ")}</span>}
+                  {patronKeys(doc).includes(p.key) && <span className="block text-xs text-warn">🏛 Looking after the town (stays home)</span>}
                   {recoveryLeft(doc, p.key) > 0 && <span className="block text-xs text-warn">🛏 In the infirmary: {recoveryLeft(doc, p.key)} h more (stays home)</span>}
                 </span>
               </label>

@@ -152,6 +152,14 @@ export const PlayerDocSchema = z.object({
   chests: z.array(z.object({ id: z.string(), tier: z.number(), from: z.string().catch(""), seed: z.number() })).catch([]),
   /** Unique treasures this player has found (each can be found once). */
   uniques: z.array(z.string()).catch([]),
+  /** Each hero's traits (absent: the ready-made heroes' own). */
+  traits: z.record(z.string(), z.array(z.string()).catch([])).catch({}),
+  /** What each hero has done in battle (for their personal quest). */
+  deeds: z
+    .record(z.string(), z.object({ battles: z.number().catch(0), wins: z.number().catch(0), dealt: z.number().catch(0), taken: z.number().catch(0), healed: z.number().catch(0), felled: z.number().catch(0) }))
+    .catch({}),
+  /** Personal quest stages already rewarded, per hero. */
+  questRewards: z.record(z.string(), z.number()).catch({}),
   /** Heroes in the infirmary: content key → the town hour they're back on their feet. */
   recovery: z.record(z.string(), z.number()).catch({}),
   /** Each caster's prepared cantrips and spells (content key → spell ids); absent: their built-in list. */
