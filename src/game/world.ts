@@ -259,3 +259,34 @@ export const bandAt = (bands: Band[], company: Pt) => bands.find((b) => dist(b, 
 export const inSight = (p: Pt, company: Pt) => dist(p, company) < num("world.sight");
 
 export { dist };
+
+// --- The map draws itself as the company explores ---------------------------------------
+
+export const EXPLORE_CELL = 20;
+export const EXPLORE_COLS = Math.ceil(WORLD_W / EXPLORE_CELL);
+export const EXPLORE_ROWS = Math.ceil(WORLD_H / EXPLORE_CELL);
+
+/** Which cells of the map have been seen: one character per cell ("1" seen), row by row. */
+export const blankExplored = () => "0".repeat(EXPLORE_COLS * EXPLORE_ROWS);
+
+/** Mark the cells within sight of a point as seen. */
+export function explore(explored: string, p: Pt, radius: number): string {
+  const cells = (explored.length === EXPLORE_COLS * EXPLORE_ROWS ? explored : blankExplored()).split("");
+  const r = Math.ceil(radius / EXPLORE_CELL);
+  const cx = Math.floor(p.x / EXPLORE_CELL);
+  const cy = Math.floor(p.y / EXPLORE_CELL);
+  let changed = false;
+  for (let y = Math.max(0, cy - r); y <= Math.min(EXPLORE_ROWS - 1, cy + r); y++) {
+    for (let x = Math.max(0, cx - r); x <= Math.min(EXPLORE_COLS - 1, cx + r); x++) {
+      const centre = { x: (x + 0.5) * EXPLORE_CELL, y: (y + 0.5) * EXPLORE_CELL };
+      const i = y * EXPLORE_COLS + x;
+      if (cells[i] !== "1" && dist(centre, p) <= radius) {
+        cells[i] = "1";
+        changed = true;
+      }
+    }
+  }
+  return changed ? cells.join("") : explored;
+}
+
+export const isExplored = (explored: string, p: Pt) => explored[Math.floor(p.y / EXPLORE_CELL) * EXPLORE_COLS + Math.floor(p.x / EXPLORE_CELL)] === "1";

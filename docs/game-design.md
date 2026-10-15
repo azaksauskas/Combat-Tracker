@@ -656,6 +656,14 @@ becomes the company's camp.
   - Arriving: the camp (into the town), an adventure site (begin it), a
     lair (attack it when renown allows). Settlements wait for BB-2.
   - Numbers under "World" on the balance page.
+  - Drawn in pen and ink: paper with a dot grid, scalloped forests full of
+    little trees, hatched mountains, marsh tufts, a stippled lake shore,
+    dotted roads, settlements as tiny drawn houses in hexagon frames, a
+    compass rose and an old-map typeface. Colour only for water, the
+    company's red banner and bands on the move.
+  - The map draws itself as the company explores: unseen land is blank
+    paper; footprints trail behind the banner. The view follows the
+    company; drag to look around, scroll or +/− to zoom.
 
 ## Future ideas
 

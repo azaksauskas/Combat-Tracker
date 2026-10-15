@@ -1,42 +1,28 @@
 import clsx from "clsx";
-import { useEffect, useMemo, useRef, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent, type WheelEvent } from "react";
 import { Dialog } from "../components/Dialog";
 import { canStrike, threatOf } from "../game/region";
 import { allFactions, liveHours, startTownBattle } from "../game/town-store";
 import { num } from "../game/tuning";
-import { TERRAIN, WORLD_H, WORLD_W, dist, inSight, terrainAt, travelHours, type Band, type Patch, type Place } from "../game/world";
+import { TERRAIN, WORLD_H, WORLD_W, dist, inSight, isExplored, terrainAt, travelHours, type Place, type Pt } from "../game/world";
 import { beginAt, enterWorld, fightBand, marchTo, pauseMarch, resumeMarch, saveMarch, setSpeed, slipAway, useWorld, worldOf } from "../game/world-store";
 import { chosenParty } from "../game/party-store";
 import { useActiveProfile, usePlayers } from "../store/players";
+import { Compass, ExploredMask, INK, InkBand, InkCompany, InkDefs, InkLand, InkPlace, InkRoads, PAPER, RED } from "./InkMap";
 
 /**
- * The world map: the company marches across the land (click anywhere, or on a
- * place), the clock runs only while it moves, bands roam and give chase, and
- * arriving somewhere opens what can be done there.
+ * The world map, drawn in pen and ink: the company marches across the land
+ * (click anywhere, or on a place), the clock runs only while it moves, the
+ * map fills in as they explore, bands roam and give chase, and arriving
+ * somewhere opens what can be done there. The view follows the company;
+ * drag to look around, scroll or use +/− to zoom.
  */
 
 const PLACE_ICON: Record<Place["kind"], string> = { home: "⛺", village: "🛖", town: "🏘️", city: "🏰", lair: "💀", site: "🏚️" };
 const FOE_ICON: Record<string, string> = { wolves: "🐺", bandits: "🗡️", goblins: "👺", undead: "💀", vermin: "🐀", cultists: "🕯️", gnolls: "🐗" };
-const PATCH_ICON: Partial<Record<Patch["terrain"], string>> = { forest: "🌲", hills: "⛰️", marsh: "🌾" };
 
 const clock = (hours: number) => `Day ${Math.floor(hours / 24) + 1}, ${String(Math.floor(hours % 24)).padStart(2, "0")}:00`;
-
-function patchPath(p: Patch): string {
-  const n = p.bumps.length;
-  const pts = p.bumps.map((b, i) => {
-    const a = (i / n) * Math.PI * 2;
-    return [p.x + Math.cos(a) * p.r * b, p.y + Math.sin(a) * p.r * b] as const;
-  });
-  // A smooth closed curve through the points.
-  const mid = (i: number) => {
-    const [x1, y1] = pts[i % n]!;
-    const [x2, y2] = pts[(i + 1) % n]!;
-    return [(x1 + x2) / 2, (y1 + y2) / 2] as const;
-  };
-  let d = `M ${mid(0)[0]} ${mid(0)[1]}`;
-  for (let i = 1; i <= n; i++) d += ` Q ${pts[i % n]![0]} ${pts[i % n]![1]} ${mid(i)[0]} ${mid(i)[1]}`;
-  return d + " Z";
-}
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onAdventure: () => void }) {
   const id = useActiveProfile((s) => s.id)!;
@@ -44,6 +30,9 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
   const s = useWorld();
   const world = worldOf(doc);
   const svg = useRef<SVGSVGElement>(null);
+  const [zoom, setZoom] = useState(1.8);
+  const [look, setLook] = useState<Pt | null>(null);
+  const drag = useRef<{ x: number; y: number; moved: boolean; start: Pt } | null>(null);
 
   useEffect(() => {
     enterWorld();
@@ -53,123 +42,128 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
       else saveMarch();
     };
   }, []);
-
-  const scatter = useMemo(
-    () =>
-      (world?.patches ?? []).flatMap((p) => {
-        const icon = PATCH_ICON[p.terrain];
-        if (!icon) return [];
-        const n = Math.round((p.r * p.r) / 500);
-        return Array.from({ length: n }, (_, i) => {
-          const a = (i * 2.399) % (Math.PI * 2);
-          const r = Math.sqrt((i + 0.5) / n) * p.r * 0.85;
-          return { key: `${p.id}-${i}`, icon, x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r };
-        });
-      }),
-    [world],
-  );
+  // Marching brings the view back to the company.
+  useEffect(() => {
+    if (s.running) setLook(null);
+  }, [s.running]);
 
   if (!doc?.world || !world || !s.pos) {
     return <p className="text-sm text-muted italic">{doc?.town ? "Unrolling the map…" : "Found your town first: the company needs a camp to set out from."}</p>;
   }
   const pos = s.pos;
   const seen = new Set(doc.world.seen);
-  const visible = (p: Place) => p.kind === "home" || p.kind === "village" || p.kind === "town" || p.kind === "city" || seen.has(p.id) || inSight(p, pos);
+  const known = (p: Place) => p.kind === "home" || p.kind === "village" || p.kind === "town" || p.kind === "city" || seen.has(p.id) || inSight(p, pos) || isExplored(s.explored, p);
   const here = s.at ? world.places.find((p) => p.id === s.at) : undefined;
   const dest = s.dest;
   const eta = dest ? travelHours(world, pos, dest) : 0;
   const ground = TERRAIN[terrainAt(world, pos)];
   const party = chosenParty();
 
-  const click = (e: MouseEvent<SVGSVGElement>) => {
-    const el = svg.current;
-    if (!el) return;
+  // The camera: centred on the company (or wherever the player dragged), kept on the map.
+  const vw = WORLD_W / zoom;
+  const vh = WORLD_H / zoom;
+  const centre = look ?? pos;
+  const vx = clamp(centre.x - vw / 2, 0, WORLD_W - vw);
+  const vy = clamp(centre.y - vh / 2, 0, WORLD_H - vh);
+
+  const toWorld = (clientX: number, clientY: number): Pt => {
+    const el = svg.current!;
     const pt = el.createSVGPoint();
-    pt.x = e.clientX;
-    pt.y = e.clientY;
+    pt.x = clientX;
+    pt.y = clientY;
     const p = pt.matrixTransform(el.getScreenCTM()!.inverse());
-    const place = world.places.find((q) => visible(q) && dist(q, p) < 16);
-    marchTo(place ? { x: place.x, y: place.y } : { x: p.x, y: p.y }, place?.id ?? null);
+    return { x: p.x, y: p.y };
+  };
+  const down = (e: PointerEvent<SVGSVGElement>) => {
+    drag.current = { x: e.clientX, y: e.clientY, moved: false, start: { x: vx + vw / 2, y: vy + vh / 2 } };
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+  };
+  const move = (e: PointerEvent<SVGSVGElement>) => {
+    const d = drag.current;
+    if (!d || !svg.current) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    if (Math.hypot(dx, dy) > 5) d.moved = true;
+    if (!d.moved) return;
+    const k = vw / svg.current.getBoundingClientRect().width;
+    setLook({ x: d.start.x - dx * k, y: d.start.y - dy * k });
+  };
+  const up = (e: PointerEvent<SVGSVGElement>) => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d || d.moved) return;
+    const p = toWorld(e.clientX, e.clientY);
+    const place = world.places.find((q) => known(q) && dist(q, p) < 18);
+    marchTo(place ? { x: place.x, y: place.y } : p, place?.id ?? null);
+  };
+  const wheel = (e: WheelEvent<SVGSVGElement>) => {
+    e.preventDefault();
+    setZoom((z) => clamp(z * (e.deltaY < 0 ? 1.15 : 1 / 1.15), 1, 4));
   };
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_20rem]">
-      <div className="relative overflow-hidden rounded-xl border border-line shadow-inner">
-        <svg ref={svg} viewBox={`0 0 ${WORLD_W} ${WORLD_H}`} className="block w-full cursor-crosshair select-none" onClick={click} role="img" aria-label="World map">
-          <defs>
-            <radialGradient id="fog">
-              <stop offset="0.7" stopColor="black" stopOpacity="0" />
-              <stop offset="1" stopColor="black" stopOpacity="0.28" />
-            </radialGradient>
-            <mask id="sight">
-              <rect width={WORLD_W} height={WORLD_H} fill="white" />
-              <circle cx={pos.x} cy={pos.y} r={num("world.sight")} fill="black" />
-            </mask>
-          </defs>
-          <rect width={WORLD_W} height={WORLD_H} fill={TERRAIN.plains.color} />
-          {world.patches.map((p) => (
-            <path key={p.id} d={patchPath(p)} fill={TERRAIN[p.terrain].color} stroke="rgba(0,0,0,0.12)" strokeWidth={2} />
-          ))}
-          {scatter.map((t) => (
-            <text key={t.key} x={t.x} y={t.y} fontSize={14} textAnchor="middle" dominantBaseline="middle" opacity={0.8}>
-              {t.icon}
-            </text>
-          ))}
-          {world.roads.map((r, i) => {
-            const d = `M ${r[0]!.x} ${r[0]!.y} Q ${r[1]!.x} ${r[1]!.y} ${r[2]!.x} ${r[2]!.y}`;
-            return (
-              <g key={i}>
-                <path d={d} fill="none" stroke={TERRAIN.road.color} strokeWidth={9} strokeLinecap="round" opacity={0.85} />
-                <path d={d} fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeDasharray="6 8" />
-              </g>
-            );
-          })}
+      <div className="relative overflow-hidden rounded-xl border-2 shadow-inner" style={{ borderColor: INK, background: PAPER }}>
+        <svg
+          ref={svg}
+          viewBox={`${vx} ${vy} ${vw} ${vh}`}
+          className="block aspect-[1000/640] w-full cursor-crosshair touch-none select-none"
+          onPointerDown={down}
+          onPointerMove={move}
+          onPointerUp={up}
+          onWheel={wheel}
+          role="img"
+          aria-label="World map"
+        >
+          <InkDefs />
+          <ExploredMask explored={s.explored} sight={num("world.sight")} pos={pos} />
+          <rect width={WORLD_W} height={WORLD_H} fill={PAPER} />
+          <rect width={WORLD_W} height={WORLD_H} fill="url(#ink-dots)" />
+          <g mask="url(#ink-explored)">
+            <rect width={WORLD_W} height={WORLD_H} fill={PAPER} />
+            <InkLand world={world} />
+            <InkRoads world={world} />
+          </g>
           {/* The company's route */}
-          {dest && <line x1={pos.x} y1={pos.y} x2={dest.x} y2={dest.y} stroke="var(--accent)" strokeWidth={2.5} strokeDasharray="7 6" opacity={0.85} />}
-          {dest && (
-            <text x={dest.x} y={dest.y} fontSize={16} textAnchor="middle" dominantBaseline="middle" fill="var(--accent)">
-              ✖
-            </text>
-          )}
-          {world.places.map((p) => {
-            const show = visible(p);
-            return (
-              <g key={p.id} opacity={show ? 1 : 0.55}>
-                <circle cx={p.x} cy={p.y} r={p.kind === "city" ? 17 : 14} fill="rgba(255,250,235,0.75)" stroke={p.kind === "lair" ? "var(--danger)" : p.kind === "home" ? "var(--accent)" : "rgba(0,0,0,0.25)"} strokeWidth={2} />
-                <text x={p.x} y={p.y + 1} fontSize={p.kind === "city" ? 20 : 17} textAnchor="middle" dominantBaseline="middle">
-                  {show ? PLACE_ICON[p.kind] : "❔"}
-                </text>
-                {show && (
-                  <text x={p.x} y={p.y + 27} fontSize={12} textAnchor="middle" fontWeight={600} fill="#2d2416" stroke="rgba(255,250,235,0.85)" strokeWidth={3} paintOrder="stroke">
-                    {p.name}
-                  </text>
-                )}
-              </g>
-            );
-          })}
-          {/* Fog beyond the company's sight */}
-          <rect width={WORLD_W} height={WORLD_H} fill="rgba(30,30,45,0.22)" mask="url(#sight)" pointerEvents="none" />
+          {dest && <line x1={pos.x} y1={pos.y} x2={dest.x} y2={dest.y} stroke={RED} strokeWidth={1.4} strokeDasharray="1 4" strokeLinecap="round" />}
+          {dest && <path d={`M ${dest.x - 5} ${dest.y - 5} L ${dest.x + 5} ${dest.y + 5} M ${dest.x + 5} ${dest.y - 5} L ${dest.x - 5} ${dest.y + 5}`} stroke={RED} strokeWidth={2} strokeLinecap="round" />}
+          {world.places.map((p) => (
+            <InkPlace key={p.id} place={p} known={known(p)} here={p.id === s.at} />
+          ))}
           {s.bands
             .filter((b) => inSight(b, pos))
             .map((b) => (
-              <BandToken key={b.id} band={b} chasing={dist(b, pos) < num("world.bandSight")} pos={pos} />
+              <InkBand key={b.id} band={b} chasing={dist(b, pos) < num("world.bandSight")} pos={pos} />
             ))}
-          {/* The company */}
-          <g style={{ transition: "transform 100ms linear" }} transform={`translate(${pos.x} ${pos.y})`}>
-            <circle r={13} fill="var(--accent)" stroke="white" strokeWidth={2.5} />
-            <text fontSize={15} textAnchor="middle" dominantBaseline="middle" y={1}>
-              🚩
-            </text>
-            <text y={-19} fontSize={11} textAnchor="middle" fontWeight={700} fill="white" stroke="var(--accent)" strokeWidth={3} paintOrder="stroke">
-              {party.length} ⚔
-            </text>
-          </g>
+          <InkCompany pos={pos} trail={s.trail} marching={s.running} count={party.length} />
+          {/* The edge of sight */}
+          <circle cx={pos.x} cy={pos.y} r={num("world.sight")} fill="none" stroke={INK} strokeWidth={0.6} strokeDasharray="1 5" opacity={0.5} pointerEvents="none" />
         </svg>
-        <div className="pointer-events-none absolute top-2 left-2 rounded-md bg-surface/85 px-2 py-1 text-xs shadow">
-          🕰 {clock((doc.town ? liveHours(doc.town) : 0) + s.bank)} · {ground.name}
+        <div className="pointer-events-none absolute top-2 left-2 rounded-sm border px-2 py-0.5 text-sm" style={{ borderColor: INK, background: PAPER, color: INK, fontFamily: "'IM Fell English', serif" }}>
+          {clock((doc.town ? liveHours(doc.town) : 0) + s.bank)} · {ground.name}
+        </div>
+        <div className="pointer-events-none absolute right-2 bottom-2">
+          <Compass />
+        </div>
+        <div className="absolute top-2 right-2 flex flex-col gap-1">
+          {[
+            ["+", () => setZoom((z) => clamp(z * 1.3, 1, 4)), "Zoom in"],
+            ["−", () => setZoom((z) => clamp(z / 1.3, 1, 4)), "Zoom out"],
+            ["⌖", () => setLook(null), "Back to the company"],
+          ].map(([label, onClick, title]) => (
+            <button
+              key={label as string}
+              className="grid h-7 w-7 place-items-center rounded-sm border text-base leading-none"
+              style={{ borderColor: INK, background: PAPER, color: INK }}
+              onClick={onClick as () => void}
+              title={title as string}
+              aria-label={title as string}
+            >
+              {label as string}
+            </button>
+          ))}
         </div>
       </div>
-
       <aside className="space-y-3">
         <section className="space-y-2 rounded-lg border border-line bg-surface p-3 shadow" aria-label="The march">
           <h3 className="text-xs font-bold tracking-wider text-faint uppercase">🚩 The company</h3>
@@ -221,23 +215,6 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
         )}
       </Dialog>
     </div>
-  );
-}
-
-function BandToken({ band: b, chasing, pos }: { band: Band; chasing: boolean; pos: { x: number; y: number } }) {
-  return (
-    <g>
-      {chasing && <line x1={b.x} y1={b.y} x2={pos.x} y2={pos.y} stroke="var(--danger)" strokeWidth={1.5} strokeDasharray="3 5" opacity={0.7} />}
-      <g transform={`translate(${b.x} ${b.y})`} style={{ transition: "transform 100ms linear" }}>
-        <circle r={11} fill="rgba(140,30,30,0.85)" stroke="white" strokeWidth={1.5} />
-        <text fontSize={13} textAnchor="middle" dominantBaseline="middle" y={1}>
-          {FOE_ICON[b.foe] ?? "⚔"}
-        </text>
-        <text y={22} fontSize={10} textAnchor="middle" fontWeight={700} fill="#7a1c1c" stroke="rgba(255,250,235,0.85)" strokeWidth={3} paintOrder="stroke">
-          {b.name}
-        </text>
-      </g>
-    </g>
   );
 }
 
@@ -296,14 +273,12 @@ function PlacePanel({ place, onGoTown, onAdventure }: { place: Place; onGoTown: 
 function Legend() {
   return (
     <section className="rounded-lg border border-line bg-surface p-3 text-xs text-muted shadow" aria-label="Legend">
-      <h3 className="mb-1 text-xs font-bold tracking-wider text-faint uppercase">Legend</h3>
-      <ul className="grid grid-cols-2 gap-1">
-        <li>⛺ Your camp</li>
-        <li>🛖 🏘️ 🏰 Settlements</li>
-        <li>🏚️ Adventure</li>
-        <li>💀 Lair</li>
-        <li>🌲 Forest (slow)</li>
-        <li>⛰️ Hills (slow)</li>
+      <h3 className="mb-1 text-xs font-bold tracking-wider text-faint uppercase">How to read the map</h3>
+      <ul className="space-y-0.5">
+        <li>Blank paper: land the company hasn't seen yet. It fills in as they march.</li>
+        <li>Dotted lines are roads (quick). Forests, mountains and marsh are slow.</li>
+        <li>Hexagons are settlements, ? is a place not yet found, red rings are bands on the move.</li>
+        <li>Drag to look around, scroll or +/− to zoom, ⌖ back to the company.</li>
       </ul>
     </section>
   );

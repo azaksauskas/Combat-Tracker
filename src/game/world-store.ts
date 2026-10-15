@@ -10,7 +10,7 @@ import { setupFor } from "./scenarios";
 import { startBattle, usePlay } from "./store";
 import { allFactions, grantChest, onRoadBattle, partyLevel, passTime, salvageBattle } from "./town-store";
 import { num } from "./tuning";
-import { bandAt, dist, generateWorld, march, moveBands, spawnBand, type Band, type Place, type Pt, type World } from "./world";
+import { bandAt, blankExplored, dist, explore, generateWorld, march, moveBands, spawnBand, type Band, type Place, type Pt, type World } from "./world";
 
 /**
  * The company on the march: a clock that runs only while it moves (paused,
@@ -38,9 +38,13 @@ interface WorldState {
   at: string | null;
   /** A band that caught the company: fight or slip away. */
   encounter: Band | null;
+  /** The map cells seen so far (see world.ts). */
+  explored: string;
+  /** Footprints behind the company (newest last). */
+  trail: Pt[];
 }
 
-export const useWorld = create<WorldState>(() => ({ pos: null, dest: null, destPlace: null, bands: [], running: false, speed: 1, bank: 0, hours: 0, lastSpawn: 0, at: null, encounter: null }));
+export const useWorld = create<WorldState>(() => ({ pos: null, dest: null, destPlace: null, bands: [], running: false, speed: 1, bank: 0, hours: 0, lastSpawn: 0, at: null, encounter: null, explored: "", trail: [] }));
 
 const me = () => useActiveProfile.getState().id;
 const docOf = () => {
@@ -71,11 +75,21 @@ export function enterWorld() {
     // A few bands are already out there.
     const rng = mulberry32(seed ^ 0xb4d5).rng;
     const bands = Array.from({ length: 3 }, (_, i) => spawnBand(w, rng, `b-start-${i}`, doc.renown, allFactions())).filter((b) => dist(b, home) > num("world.bandSight"));
-    updatePlayer(id, (d) => ({ ...d, world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"] } }));
+    const explored = explore(blankExplored(), home, num("world.sight"));
+    updatePlayer(id, (d) => ({ ...d, world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"], explored } }));
   }
   const w = docOf()!.world!;
   const s = useWorld.getState();
-  if (!s.pos) useWorld.setState({ pos: { x: w.x, y: w.y }, bands: w.bands, hours: w.hours, lastSpawn: w.lastSpawn, at: placeAt(worldOf(docOf()), { x: w.x, y: w.y })?.id ?? null });
+  if (!s.pos)
+    useWorld.setState({
+      pos: { x: w.x, y: w.y },
+      bands: w.bands,
+      hours: w.hours,
+      lastSpawn: w.lastSpawn,
+      explored: explore(w.explored, { x: w.x, y: w.y }, num("world.sight")),
+      trail: [],
+      at: placeAt(worldOf(docOf()), { x: w.x, y: w.y })?.id ?? null,
+    });
 }
 
 const placeAt = (w: World | null, p: Pt): Place | undefined => w?.places.find((q) => dist(q, p) < 14);
@@ -87,7 +101,7 @@ export function saveMarch() {
   if (!id || !s.pos || !docOf()?.world) return;
   const bank = s.bank;
   useWorld.setState({ bank: 0 });
-  updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, x: s.pos!.x, y: s.pos!.y, hours: s.hours, bands: s.bands, lastSpawn: s.lastSpawn } } : d));
+  updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, x: s.pos!.x, y: s.pos!.y, hours: s.hours, bands: s.bands, lastSpawn: s.lastSpawn, explored: s.explored } } : d));
   if (bank >= 0.05) passTime(bank);
 }
 
@@ -140,7 +154,11 @@ function tick() {
     lastSpawn = s.hours + hours;
   }
   const caught = bandAt(bands, step.pos);
-  const next: Partial<WorldState> = { pos: step.pos, bands, hours: s.hours + hours, bank: s.bank + hours, lastSpawn };
+  // Footprints every few map units; the map fills in as the company sees more of it.
+  const last = s.trail[s.trail.length - 1];
+  const trail = !last || dist(last, step.pos) > 5 ? [...s.trail, step.pos].slice(-140) : s.trail;
+  const explored = explore(s.explored, step.pos, num("world.sight"));
+  const next: Partial<WorldState> = { pos: step.pos, bands, hours: s.hours + hours, bank: s.bank + hours, lastSpawn, trail, explored };
   if (caught) {
     useWorld.setState({ ...next, running: false, encounter: caught });
     stopClock();

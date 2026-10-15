@@ -165,6 +165,8 @@ export const PlayerDocSchema = z.object({
       lastSpawn: z.number().catch(0),
       /** Places the company has seen. */
       seen: z.array(z.string()).catch([]),
+      /** Map cells the company has seen ("1"), row by row: the map draws itself as they explore. */
+      explored: z.string().catch(""),
     })
     .nullable()
     .catch(null),
