@@ -20,7 +20,8 @@ import { withProgress } from "./party";
  * Stored in the active player's document, so the choice follows the player.
  */
 
-export const MAX_PARTY = 4;
+/** Heroes in one battle (the rest of the roster waits in reserve). */
+export const MAX_PARTY = 6;
 export const DEFAULT_PICKS = PARTY.map((p) => p.key);
 
 /** Ready-made heroes plus characters built by the DM (shared) and by this player. */
@@ -146,13 +147,25 @@ export function recordAftermath(results: Aftermath[]) {
     const fallen = [...d.fallen];
     const recovery = { ...d.recovery };
     const now = Math.floor(d.town?.hours ?? 0);
+    let { loadouts, armory, treasure, town: t } = d;
     for (const r of results) {
-      if (r.fallen && !fallen.includes(r.key)) fallen.push(r.key);
+      if (r.fallen && !fallen.includes(r.key)) {
+        fallen.push(r.key);
+        // What the fallen carried comes home with the others: gear to the armoury, magic to the treasury.
+        const kit = loadouts[r.key];
+        if (kit) {
+          armory = { ...armory };
+          for (const item of [kit.main, kit.off, kit.spare, kit.armor]) if (item) armory[item] = (armory[item] ?? 0) + 1;
+          loadouts = Object.fromEntries(Object.entries(loadouts).filter(([k]) => k !== r.key));
+        }
+        treasure = treasure.map((x) => (x.on === r.key ? { uid: x.uid, id: x.id } : x));
+        if (t) t = { ...t, patrons: Object.fromEntries(Object.entries(t.patrons).filter(([, p]) => p.key !== r.key)) };
+      }
       if (r.injury) injuries[r.key] = [...(injuries[r.key] ?? []), r.injury];
       const h = rest.get(r.key);
       if (h) recovery[r.key] = Math.max(recovery[r.key] ?? 0, now + h);
     }
-    return { ...d, injuries, fallen, recovery };
+    return { ...d, injuries, fallen, recovery, loadouts, armory, treasure, town: t };
   });
   const lines = results.flatMap((r) => {
     if (r.fallen) return [{ kind: "death" as const, text: `${r.name} died. Only a shrine can bring them back.` }];
@@ -194,7 +207,8 @@ export function togglePick(key: string) {
   const id = useActiveProfile.getState().id;
   if (!id) return;
   updatePlayer(id, (d) => {
-    const picks = d.picks;
+    // Nothing picked yet means the ready-made four: start from them.
+    const picks = d.picks.length ? d.picks : DEFAULT_PICKS.filter((k) => !d.fallen.includes(k));
     if (picks.includes(key)) return { ...d, picks: picks.filter((k) => k !== key) };
     if (picks.length < MAX_PARTY) return { ...d, picks: [...picks, key] };
     return d;

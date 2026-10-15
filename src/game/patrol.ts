@@ -85,5 +85,6 @@ export function foeBattle(foeId: string, level: number, heroes: number, difficul
     map: field(rng, monsters.length),
     monsters,
     difficulty: difficulty === "low" ? "Low" : "Moderate",
+    sized: true,
   };
 }

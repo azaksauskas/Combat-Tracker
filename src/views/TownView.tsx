@@ -9,7 +9,7 @@ import { claimTownGoal } from "../game/town-store";
 import { BuildingPanel, TownScene, face, tradeIcon } from "./TownScene";
 import { BUILDINGS, hireCost, beds, built, cantBuild, clockText, durationText, helpsLeft, opinion, power, renownOf, sleepHours, staffing, type SimContext } from "../game/town";
 import { reputationText } from "../domain/alignment";
-import { raiseCost, raiseHero, treatCost, treatInjury } from "../game/town-store";
+import { cantRaise, raiseCost, raiseHero, treatCost, treatInjury } from "../game/town-store";
 import { INJURIES } from "../game/injuries";
 import { allFactions, payTributeTo, refuseTributeTo, startTownBattle } from "../game/town-store";
 import { STAGE_TEXT, canStrike, threatOf } from "../game/region";
@@ -834,7 +834,8 @@ function Shrine({ town: t }: { town: Town }) {
   const names = new Map(availableMembers(myCharacters()).map((e) => [e.key, e.label]));
   const hurt = Object.entries(injuries).filter(([, list]) => list.length);
   const treat = treatCost();
-  const raise = raiseCost();
+  const progress = usePlayers((s) => s.docs[id]?.progress) ?? {};
+  const noRaise = cantRaise(t);
   return (
     <div>
       <h3 className="mb-1 text-xs font-bold tracking-wider text-faint uppercase">🕯 Shrine</h3>
@@ -845,9 +846,18 @@ function Shrine({ town: t }: { town: Town }) {
             <span>
               ✝ <strong className="text-strong">{names.get(key) ?? key}</strong> <span className="text-danger">has fallen</span>
             </span>
-            <button className="btn px-2 py-0.5 text-xs" disabled={!!cantAfford(t, raise)} title={cantAfford(t, raise) ?? ""} onClick={() => raiseHero(key, names.get(key) ?? key)}>
-              Raise from the dead ({costText(raise)} · {num("shrine.raiseHours")} h)
-            </button>
+            {noRaise ? (
+              <span className="text-xs text-muted italic">{noRaise}</span>
+            ) : (
+              <button
+                className="btn px-2 py-0.5 text-xs"
+                disabled={!!cantAfford(t, raiseCost(progress[key]?.level))}
+                title={`${cantAfford(t, raiseCost(progress[key]?.level)) ?? ""} They come back with a lasting injury.`}
+                onClick={() => raiseHero(key, names.get(key) ?? key)}
+              >
+                Raise from the dead ({costText(raiseCost(progress[key]?.level))} · {num("shrine.raiseHours")} h)
+              </button>
+            )}
           </li>
         ))}
         {hurt.flatMap(([key, list]) =>

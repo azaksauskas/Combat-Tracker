@@ -4,7 +4,7 @@ import { describeAction } from "../domain/statblock";
 import { ARMORS, WEAPONS, canUseArmor, gearIcon, gearName, startingKit, trainedWith, type Loadout } from "../game/arsenal";
 import { useCampaign } from "../game/campaign-store";
 import { INJURIES } from "../game/injuries";
-import { availableMembers, heroAsNow, myCharacters, recoveryLeft } from "../game/party-store";
+import { DEFAULT_PICKS, MAX_PARTY, availableMembers, heroAsNow, myCharacters, recoveryLeft, togglePick } from "../game/party-store";
 import { num } from "../game/tuning";
 import { usePlay } from "../game/store";
 import { working } from "../game/town";
@@ -46,6 +46,7 @@ export function HeroesView() {
     <div className="grid gap-4 xl:grid-cols-[1fr_22rem]">
       <div className="space-y-3">
         {away && <p className="rounded-md border border-warn/60 bg-warn/10 px-3 py-2 text-sm text-warn">The heroes are out: gear is changed in town, between adventures.</p>}
+        <BattleLine />
         <ul className="grid gap-3 lg:grid-cols-2">
           {heroes.map((e) => (
             <HeroCard key={e.key} heroKey={e.key} locked={away} />
@@ -100,6 +101,7 @@ function HeroCard({ heroKey, locked }: { heroKey: string; locked: boolean }) {
           <span className="rounded-md border border-line bg-surface-2 px-2 py-1" title="Hit points">
             ❤ <strong className="text-strong">{built.hpMax}</strong>
           </span>
+          <LineToggle heroKey={heroKey} locked={locked || fallen} />
         </div>
       </div>
       <Roster heroKey={heroKey} className={st.className} locked={locked} />
@@ -675,5 +677,58 @@ function Crest({ className, level }: { className: string | null; level: number }
         {level}
       </span>
     </span>
+  );
+}
+
+// --- The battle line and the reserve -------------------------------------------------------
+
+/** Who fights: the picked heroes (or the ready-made four while nothing is picked). */
+const lineOf = (picks: string[], fallen: string[]) => (picks.length ? picks : DEFAULT_PICKS).filter((k) => !fallen.includes(k));
+
+function LineToggle({ heroKey, locked }: { heroKey: string; locked: boolean }) {
+  const id = useActiveProfile((s) => s.id)!;
+  const doc = usePlayers((s) => s.docs[id])!;
+  const line = lineOf(doc.picks, doc.fallen);
+  const on = line.includes(heroKey);
+  const full = !on && line.length >= MAX_PARTY;
+  return (
+    <button
+      className={clsx("rounded-md border px-2 py-1 text-xs font-semibold", on ? "border-accent bg-accent/10 text-accent" : "border-line bg-surface-2 text-muted")}
+      disabled={locked || full}
+      onClick={() => togglePick(heroKey)}
+      title={on ? "In the battle line: marches and fights. Click to send to the reserve." : full ? `The line is full (${MAX_PARTY})` : "In reserve: stays at the camp (still paid). Click to bring into the line."}
+      aria-pressed={on}
+    >
+      {on ? "⚔ Line" : "💤 Reserve"}
+    </button>
+  );
+}
+
+function BattleLine() {
+  const id = useActiveProfile((s) => s.id)!;
+  const doc = usePlayers((s) => s.docs[id]);
+  useGame((s) => s.library.characters);
+  if (!doc) return null;
+  const names = new Map(availableMembers(myCharacters()).map((e) => [e.key, e.label]));
+  const line = lineOf(doc.picks, doc.fallen);
+  const roster = availableMembers(myCharacters()).filter((e) => !doc.fallen.includes(e.key));
+  const reserve = roster.filter((e) => !line.includes(e.key));
+  return (
+    <section className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-3 text-sm shadow" aria-label="Battle line">
+      <span className="text-xs font-bold tracking-wider text-faint uppercase">
+        ⚔ Battle line {line.length}/{MAX_PARTY}
+      </span>
+      {line.map((k) => (
+        <span key={k} className="rounded-full border border-accent/60 bg-accent/10 px-2 text-xs text-accent">
+          {names.get(k) ?? k}
+        </span>
+      ))}
+      {reserve.length > 0 && (
+        <span className="text-xs text-muted">
+          · 💤 Reserve: {reserve.map((e) => e.label).join(", ")}
+        </span>
+      )}
+      {doc.fallen.length > 0 && <span className="text-xs text-danger">· ✝ {doc.fallen.length} fallen</span>}
+    </section>
   );
 }

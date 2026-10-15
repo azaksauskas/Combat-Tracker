@@ -280,6 +280,8 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Heroes", "shrine.treatHours", "Shrine: treat an injury, hours", 8),
   f("Heroes", "shrine.raiseGold", "Shrine: raise the fallen, gold", 100),
   f("Heroes", "shrine.raiseDust", "Shrine: raise the fallen, arcane dust", 5),
+  f("Heroes", "shrine.raiseLevel", "Shrine level needed to raise the fallen", 2, undefined, { min: 1 }),
+  f("Heroes", "death.final", "Death is final: the fallen can't be raised (1 = yes, 0 = no)", 0, "Raising costs gold and dust × the hero's level, and the hero comes back with a lasting injury.", { max: 1 }),
   f("Heroes", "shrine.raiseHours", "Shrine: raise the fallen, hours", 24),
   f("Heroes", "infirmary.downedHours", "Infirmary: hours for a hero who went down", 24),
   f("Heroes", "infirmary.injuryHours", "Infirmary: extra hours with a lasting injury", 12),

@@ -1,6 +1,6 @@
+import { startCells, type Cell } from "./board";
 import { PARTY, SRD_MONSTERS, type ContentEntry } from "../content/srd";
 import type { Combatant } from "../domain/types";
-import type { Cell } from "./board";
 import { boardFromAscii, type UnitSetup } from "./engine";
 import type { Objective } from "./state";
 
@@ -22,6 +22,15 @@ export interface Scenario {
   starts?: Cell[];
   /** Besides beating every foe: hold out some rounds, or reach the "X" squares of the map. */
   goal?: { kind: "survive"; rounds: number } | { kind: "escape" };
+  /** Already sized for the party (patrols, contracts, bands on the road): not scaled again. */
+  sized?: boolean;
+}
+
+/** A fight written for four heroes, scaled for a bigger company: more of the same foes (6 heroes: half as many again). */
+export function scaleForParty(sc: Scenario, heroes: number): Scenario {
+  if (sc.sized || heroes <= 4 || !sc.monsters.length) return sc;
+  const extra = Math.round((sc.monsters.length * (heroes - 4)) / 4);
+  return { ...sc, monsters: [...sc.monsters, ...Array.from({ length: extra }, (_, i) => sc.monsters[i % sc.monsters.length]!)] };
 }
 
 /** The battle's objective, from the scenario's goal and map. */
@@ -228,8 +237,10 @@ function uniqueNames(units: UnitSetup[]) {
 
 export function scenarioSetup(sc: Scenario, members: ContentEntry[] = PARTY) {
   const board = boardFromAscii(sc.map.map((r) => r.replace(/[P1-9X]/g, ".")));
-  const partyCells = sc.starts ?? starts(sc.map, (c) => c === "P");
-  const monsterCells = starts(sc.map, (c) => /[1-9]/.test(c));
+  const marked = sc.starts ?? starts(sc.map, (c) => c === "P");
+  // More foes or heroes than the map has marked squares for: the rest stand close by.
+  const monsterCells = startCells(board, starts(sc.map, (c) => /[1-9]/.test(c)), sc.monsters.length, marked);
+  const partyCells = startCells(board, marked, Math.max(members.length, 6), monsterCells);
   const party = members.map((p, i) => unitFrom(`p${i}`, p, "party", partyCells[i] ?? { x: 0, y: i }));
   const monsters = sc.monsters.map((m, i) => unitFrom(`m${i}`, m, "enemy", monsterCells[i] ?? { x: board.width - 1, y: i }));
   return { board, units: uniqueNames([...party, ...monsters]), partyCells };
@@ -259,8 +270,8 @@ export function encounterScenario(name: string, combatants: Combatant[]): Scenar
   return { id: `encounter:${name}`, name, blurb: `${custom.length} monsters from your saved encounter.`, map, monsters: [], custom };
 }
 
-export function setupFor(sc: Scenario & { custom?: UnitSetup[] }, members: ContentEntry[] = PARTY) {
-  if (!sc.custom) return scenarioSetup(sc, members);
+export function setupFor(sc: Scenario & { custom?: UnitSetup[] }, members: ContentEntry[] = PARTY, heroes = members.length) {
+  if (!sc.custom) return scenarioSetup(scaleForParty(sc, heroes), members);
   const base = scenarioSetup({ ...sc, monsters: [] }, members);
   return { board: base.board, units: [...base.units, ...sc.custom], partyCells: base.partyCells };
 }

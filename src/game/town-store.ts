@@ -1014,7 +1014,16 @@ function awardXp(id: string, game: GameState, keys: string[], milestone: number 
 // --- The shrine: injuries and the fallen ----------------------------------------------
 
 export const treatCost = (): Cost => ({ gold: num("shrine.treatGold"), herbs: num("shrine.treatHerbs") });
-export const raiseCost = (): Cost => ({ gold: num("shrine.raiseGold"), dust: num("shrine.raiseDust") });
+/** Raising costs more the further the hero had come. */
+export const raiseCost = (level = 1): Cost => ({ gold: num("shrine.raiseGold") * Math.max(1, level), dust: num("shrine.raiseDust") * Math.max(1, level) });
+
+/** Why the shrine can't raise anyone, or null. */
+export function cantRaise(t: Town): string | null {
+  if (num("death.final") >= 1) return "Death is final in this company";
+  const level = Math.max(0, ...t.buildings.filter((b) => b.type === "shrine" && working(t, "shrine") > 0).map((b) => levelOf(b)));
+  if (level < num("shrine.raiseLevel")) return `Only a level ${num("shrine.raiseLevel")} shrine can call the dead back`;
+  return null;
+}
 
 /** Heal one of a hero's lasting injuries. */
 export function treatInjury(heroKey: string, heroName: string, injury: string) {
@@ -1057,8 +1066,16 @@ export function hastenRecovery(heroKey: string, heroName: string, potion = "poti
 /** Bring a fallen hero back. */
 export function raiseHero(heroKey: string, heroName: string) {
   const id = me();
-  if (!id) return;
-  if (!work("shrine", raiseCost(), num("shrine.raiseHours"), `The shrine's priests raised ${heroName} from the dead`, (t) => t)) return;
-  updatePlayer(id, (d) => ({ ...d, fallen: d.fallen.filter((k) => k !== heroKey) }));
-  addChronicle(id, [{ kind: "story", text: `${heroName} was raised from the dead at the shrine.` }]);
+  const doc = docOf(id);
+  if (!id || !doc?.town) return;
+  const why = cantRaise(doc.town);
+  if (why) return void toast.error(why);
+  const level = doc.progress[heroKey]?.level ?? 1;
+  if (!work("shrine", raiseCost(level), num("shrine.raiseHours"), `The shrine's priests raised ${heroName} from the dead`, (t) => t)) return;
+  // Nobody comes back from death unchanged.
+  const ids = Object.keys(INJURIES);
+  const mark = ids[Math.floor(Math.random() * ids.length)]!;
+  updatePlayer(id, (d) => ({ ...d, fallen: d.fallen.filter((k) => k !== heroKey), injuries: { ...d.injuries, [heroKey]: [...(d.injuries[heroKey] ?? []), mark] } }));
+  addChronicle(id, [{ kind: "story", text: `${heroName} was raised from the dead at the shrine, and came back marked: ${INJURIES[mark]?.name.toLowerCase()}.` }]);
+  toast.warning(`${heroName} lives again, marked by death: ${INJURIES[mark]?.name}`);
 }

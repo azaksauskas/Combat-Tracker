@@ -688,6 +688,20 @@ becomes the company's camp.
     - 🍺 Sellswords in towns (2) and cities (3), better with renown and
       reputation; they join at their level with their traits.
   - Numbers under "Company" on the balance page.
+- **BB-3: a bigger company.**
+  - ⚔ Up to six heroes in the battle line; the rest of the roster waits in
+    reserve at the camp (still paid). The Heroes tab shows the line and
+    each sheet has a Line / Reserve switch.
+  - Battle maps make room: heroes and foes beyond the marked squares stand
+    on the nearest free squares (never a wall or a taken square).
+  - Fights written for four (adventure and story battles) bring half as
+    many foes again for six (more of the same foes); fights already sized
+    for the party (patrols, jobs, bands on the road) are left alone.
+  - ✝ Death is harder to undo: raising needs a level 2 shrine, costs gold
+    and dust × the hero's level, and the hero comes back with a lasting
+    injury. "death.final" on the balance page makes death final. The
+    fallen's gear goes back to the armoury, their magic items to the
+    treasury, and the building they looked after is free again.
 
 ## Future ideas
 

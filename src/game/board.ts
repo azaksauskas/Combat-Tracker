@@ -183,3 +183,34 @@ export function coverBetween(board: Board, a: Cell, t: Cell, creatures: Cell[] =
   }
   return cover;
 }
+
+/**
+ * Starting squares for a side: the map's own, then (when there are more
+ * creatures than marked squares) the nearest free squares around them, never
+ * a wall or a square someone else stands on.
+ */
+export function startCells(board: Board, base: Cell[], n: number, avoid: Cell[] = []): Cell[] {
+  const idx = makeBoardIndex(board);
+  const taken = new Set(avoid.map(key));
+  const out: Cell[] = [];
+  const add = (c: Cell) => {
+    if (out.length >= n || !inBounds(board, c) || idx.isWall(c) || taken.has(key(c))) return;
+    taken.add(key(c));
+    out.push(c);
+  };
+  base.forEach(add);
+  // Spread out from the marked squares, ring by ring.
+  const queue = base.length ? [...base] : [{ x: 0, y: Math.floor(board.height / 2) }];
+  const seen = new Set(queue.map(key));
+  while (out.length < n && queue.length) {
+    const c = queue.shift()!;
+    for (const [dx, dy] of [[0, 1], [0, -1], [-1, 0], [1, 0], [-1, 1], [-1, -1], [1, 1], [1, -1]] as const) {
+      const next = { x: c.x + dx, y: c.y + dy };
+      if (!inBounds(board, next) || seen.has(key(next)) || idx.isWall(next)) continue;
+      seen.add(key(next));
+      add(next);
+      queue.push(next);
+    }
+  }
+  return out;
+}

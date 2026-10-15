@@ -146,7 +146,7 @@ export function goToBattle() {
   if (!s || fight?.kind !== "fight") return;
   const sc = findScenario(fight.scenarioId);
   if (!sc) return toast.error(`This adventure's fight "${fight.scenarioId}" no longer exists`);
-  const base = setupFor(sc, []);
+  const base = setupFor(sc, [], s.party.heroes.filter((h) => !h.dead).length);
   const starts = base.partyCells;
   const units = [...heroSetups(s.party, starts), ...base.units.filter((u) => u.side === "enemy")];
   startBattle(sc, base.board, units, { surprised: fight.surprised, stash: potionStash(s.party) }, "campaign");
