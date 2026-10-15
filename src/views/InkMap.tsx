@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { mulberry32 } from "../game/rng";
-import { EXPLORE_CELL, EXPLORE_COLS, WORLD_H, WORLD_W, dist, inPatch, onRoad, type Band, type Patch, type Place, type Pt, type World } from "../game/world";
+import { EXPLORE_CELL, EXPLORE_COLS, EXPLORE_ROWS, WORLD_H, WORLD_W, dist, inPatch, onRoad, type Band, type Patch, type Place, type Pt, type World } from "../game/world";
 
 /**
  * The world drawn in pen and ink: paper with a dot grid, scalloped forests,
@@ -189,20 +189,107 @@ export function InkRoads({ world: w }: { world: World }) {
   );
 }
 
-/** The explored land as a soft-edged mask (plus what the company sees right now). */
-export function ExploredMask({ explored, sight, pos }: { explored: string; sight: number; pos: Pt }) {
-  const cells: Pt[] = [];
-  for (let i = 0; i < explored.length; i++) if (explored[i] === "1") cells.push({ x: (i % EXPLORE_COLS) * EXPLORE_CELL, y: Math.floor(i / EXPLORE_COLS) * EXPLORE_CELL });
+/** The explored cells as a small blurred picture (made only when a new cell is seen): scaled up, it gives the fog soft edges for free. */
+export function useFogImage(explored: string): string {
+  return useMemo(() => {
+    const k = 4;
+    const cells = document.createElement("canvas");
+    cells.width = EXPLORE_COLS * k;
+    cells.height = EXPLORE_ROWS * k;
+    const c = cells.getContext("2d")!;
+    c.fillStyle = "black";
+    c.fillRect(0, 0, cells.width, cells.height);
+    c.fillStyle = "white";
+    for (let i = 0; i < explored.length; i++) if (explored[i] === "1") c.fillRect((i % EXPLORE_COLS) * k - 1, Math.floor(i / EXPLORE_COLS) * k - 1, k + 2, k + 2);
+    const soft = document.createElement("canvas");
+    soft.width = cells.width;
+    soft.height = cells.height;
+    const s = soft.getContext("2d")!;
+    s.filter = "blur(3px)";
+    s.drawImage(cells, 0, 0);
+    return soft.toDataURL();
+  }, [explored]);
+}
+
+/** The explored land as a mask: the fog picture, plus a soft circle for what the company sees right now. */
+export function ExploredMask({ fog, sight, pos }: { fog: string; sight: number; pos: Pt }) {
   return (
-    <mask id="ink-explored" maskUnits="userSpaceOnUse" x={0} y={0} width={WORLD_W} height={WORLD_H}>
-      <rect width={WORLD_W} height={WORLD_H} fill="black" />
-      <g filter="url(#ink-soft)">
-        {cells.map((c, i) => (
-          <rect key={i} x={c.x - 4} y={c.y - 4} width={EXPLORE_CELL + 8} height={EXPLORE_CELL + 8} fill="white" />
-        ))}
-        <circle cx={pos.x} cy={pos.y} r={sight} fill="white" />
-      </g>
-    </mask>
+    <>
+      <radialGradient id="ink-sight">
+        <stop offset="0.75" stopColor="white" />
+        <stop offset="1" stopColor="white" stopOpacity={0} />
+      </radialGradient>
+      <mask id="ink-explored" maskUnits="userSpaceOnUse" x={0} y={0} width={WORLD_W} height={WORLD_H}>
+        <rect width={WORLD_W} height={WORLD_H} fill="black" />
+        <image href={fog} x={0} y={0} width={WORLD_W} height={WORLD_H} preserveAspectRatio="none" />
+        <circle cx={pos.x} cy={pos.y} r={sight * 1.1} fill="url(#ink-sight)" />
+      </mask>
+    </>
+  );
+}
+
+/** How many pixels per map unit the land is baked at (sharp up to the closest zoom). */
+const BAKE = 3;
+
+/**
+ * The land (terrain and roads, with their hand-drawn wobble) drawn once into a
+ * picture: the map then shows one image instead of thousands of filtered
+ * shapes, so marching and panning stay smooth. The baker draws the land into
+ * a hidden SVG, turns it into a picture and goes away.
+ */
+export function useBakedLand(world: World | null): { url: string | null; baker: ReactNode } {
+  const [url, setUrl] = useState<string | null>(null);
+  const [bakedFor, setBakedFor] = useState<World | null>(null);
+  useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url]);
+  const baker =
+    world && bakedFor !== world ? (
+      <LandBaker
+        key={world.seed}
+        world={world}
+        onBaked={(u) => {
+          setUrl(u);
+          setBakedFor(world);
+        }}
+      />
+    ) : null;
+  return { url: bakedFor === world ? url : null, baker };
+}
+
+function LandBaker({ world, onBaked }: { world: World; onBaked: (url: string) => void }) {
+  const ref = useRef<SVGSVGElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let alive = true;
+    // The copy for the picture must not carry the "hidden" style of the baker itself.
+    const copy = el.cloneNode(true) as SVGSVGElement;
+    copy.removeAttribute("style");
+    copy.removeAttribute("aria-hidden");
+    const markup = new XMLSerializer().serializeToString(copy);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = WORLD_W * BAKE;
+      canvas.height = WORLD_H * BAKE;
+      canvas.getContext("2d")!.drawImage(img, 0, 0);
+      canvas.toBlob((blob) => {
+        if (blob && alive) onBaked(URL.createObjectURL(blob));
+      });
+    };
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
+    return () => {
+      alive = false;
+    };
+    // Baked once per world.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [world]);
+  return (
+    <svg ref={ref} xmlns="http://www.w3.org/2000/svg" width={WORLD_W * BAKE} height={WORLD_H * BAKE} viewBox={`0 0 ${WORLD_W} ${WORLD_H}`} style={{ position: "absolute", width: 0, height: 0, overflow: "hidden", visibility: "hidden" }} aria-hidden>
+      <InkDefs />
+      <rect width={WORLD_W} height={WORLD_H} fill={PAPER} />
+      <InkLand world={world} />
+      <InkRoads world={world} />
+    </svg>
   );
 }
 
@@ -236,11 +323,11 @@ const hexagon = (r: number) =>
   }).join(" ");
 
 /** A place drawn in ink, framed; unknown places are a question mark. */
-export function InkPlace({ place: p, known, here }: { place: Place; known: boolean; here: boolean }) {
+export const InkPlace = memo(function InkPlace({ place: p, known, here }: { place: Place; known: boolean; here: boolean }) {
   const settlement = p.kind === "village" || p.kind === "town" || p.kind === "city";
   const r = p.kind === "city" ? 20 : settlement ? 17 : 14;
   return (
-    <g transform={`translate(${p.x} ${p.y})`} filter="url(#ink-wobble)">
+    <g transform={`translate(${p.x} ${p.y})`}>
       {settlement || p.kind === "home" ? (
         <polygon points={hexagon(r)} fill={PAPER} stroke={INK} strokeWidth={here ? 2.6 : 1.6} />
       ) : (
@@ -300,7 +387,7 @@ export function InkPlace({ place: p, known, here }: { place: Place; known: boole
       )}
     </g>
   );
-}
+});
 
 /** The company: a banner on a pole, swaying while it marches, and its footprints. */
 export function InkCompany({ pos, trail, marching, count }: { pos: Pt; trail: Pt[]; marching: boolean; count: number }) {
@@ -332,7 +419,7 @@ export function InkBand({ band: b, chasing, pos }: { band: Band; chasing: boolea
   return (
     <g>
       {chasing && <line x1={b.x} y1={b.y} x2={pos.x} y2={pos.y} stroke={RED} strokeWidth={1.2} strokeDasharray="2 4" />}
-      <g transform={`translate(${b.x} ${b.y})`} filter="url(#ink-wobble)">
+      <g transform={`translate(${b.x} ${b.y})`}>
         <circle r={9} fill={PAPER} stroke={RED} strokeWidth={1.6} />
         <path d="M -5 -5 L 5 5 M 5 -5 L -5 5 M -6 -2 L -2 -6 M 6 -2 L 2 -6" stroke={INK} strokeWidth={1.2} strokeLinecap="round" />
         {b.contract && (

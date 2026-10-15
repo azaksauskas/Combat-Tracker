@@ -10,7 +10,7 @@ import { availableMembers, chosenParty, myCharacters } from "../game/party-store
 import { isSettlement, priceOf, repText, sells, wageOf } from "../game/company";
 import { TRAITS } from "../game/roster";
 import { useActiveProfile, usePlayers } from "../store/players";
-import { Compass, ExploredMask, INK, InkBand, InkCompany, InkDefs, InkLand, InkPlace, InkRoads, PAPER, RED } from "./InkMap";
+import { Compass, ExploredMask, INK, InkBand, InkCompany, InkDefs, InkPlace, PAPER, RED, useBakedLand, useFogImage } from "./InkMap";
 
 /**
  * The world map, drawn in pen and ink: the company marches across the land
@@ -35,6 +35,9 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
   const [zoom, setZoom] = useState(1.8);
   const [look, setLook] = useState<Pt | null>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean; start: Pt } | null>(null);
+  // The land is drawn once into a picture; the fog only changes when new ground is seen.
+  const { url: land, baker } = useBakedLand(world);
+  const fog = useFogImage(s.explored);
 
   useEffect(() => {
     enterWorld();
@@ -118,13 +121,12 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
           aria-label="World map"
         >
           <InkDefs />
-          <ExploredMask explored={s.explored} sight={num("world.sight")} pos={pos} />
+          <ExploredMask fog={fog} sight={num("world.sight")} pos={pos} />
           <rect width={WORLD_W} height={WORLD_H} fill={PAPER} />
           <rect width={WORLD_W} height={WORLD_H} fill="url(#ink-dots)" />
           <g mask="url(#ink-explored)">
             <rect width={WORLD_W} height={WORLD_H} fill={PAPER} />
-            <InkLand world={world} />
-            <InkRoads world={world} />
+            {land && <image href={land} x={0} y={0} width={WORLD_W} height={WORLD_H} preserveAspectRatio="none" />}
           </g>
           {/* The company's route */}
           {dest && <line x1={pos.x} y1={pos.y} x2={dest.x} y2={dest.y} stroke={RED} strokeWidth={1.4} strokeDasharray="1 4" strokeLinecap="round" />}
@@ -147,6 +149,7 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
         <div className="pointer-events-none absolute right-2 bottom-2">
           <Compass />
         </div>
+        {baker}
         <div className="absolute top-2 right-2 flex flex-col gap-1">
           {[
             ["+", () => setZoom((z) => clamp(z * 1.3, 1, 4)), "Zoom in"],
