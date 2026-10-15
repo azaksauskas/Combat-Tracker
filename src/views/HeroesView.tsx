@@ -84,10 +84,13 @@ function HeroCard({ heroKey, locked }: { heroKey: string; locked: boolean }) {
   return (
     <li className={clsx("space-y-2 rounded-lg border bg-surface p-3 shadow", fallen ? "border-danger/50 opacity-70" : "border-line")} aria-label={`${built.name}'s sheet`}>
       <div className="flex items-baseline justify-between gap-2">
-        <div>
-          <strong className="font-display text-lg text-accent">{built.name}</strong>
-          <div className="text-xs text-muted">
-            Level {st.level} {st.className}
+        <div className="flex items-center gap-2">
+          <Crest className={st.className} level={st.level ?? 1} />
+          <div>
+            <strong className="font-display text-lg text-accent">{built.name}</strong>
+            <div className="text-xs text-muted">
+              Level {st.level} {st.className}
+            </div>
           </div>
         </div>
         <div className="flex gap-1 text-center text-xs">
@@ -648,5 +651,29 @@ function Tavern() {
         </>
       )}
     </section>
+  );
+}
+
+const CREST: Record<string, { icon: string; color: string }> = {
+  Fighter: { icon: "🛡️", color: "#b5483a" },
+  Rogue: { icon: "🗡️", color: "#4f6b4a" },
+  Cleric: { icon: "☀️", color: "#c9a227" },
+  Wizard: { icon: "🔮", color: "#5b5bb5" },
+};
+
+/** The class's crest, ringed in its colour, with the level on it. */
+function Crest({ className, level }: { className: string | null; level: number }) {
+  const c = CREST[className ?? ""] ?? { icon: "⭐", color: "#888" };
+  return (
+    <span
+      className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full text-2xl shadow-inner"
+      style={{ background: `radial-gradient(circle at 35% 30%, color-mix(in srgb, ${c.color} 30%, var(--surface)), color-mix(in srgb, ${c.color} 55%, var(--surface-3)))`, boxShadow: `0 0 0 2px ${c.color}` }}
+      aria-hidden
+    >
+      {c.icon}
+      <span className="absolute -right-1 -bottom-1 grid h-4 min-w-4 place-items-center rounded-full px-0.5 text-[10px] font-bold text-white" style={{ background: c.color }}>
+        {level}
+      </span>
+    </span>
   );
 }

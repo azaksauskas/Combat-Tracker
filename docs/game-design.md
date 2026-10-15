@@ -602,6 +602,20 @@ picker into a real sign-in without changing the data model.
     patron stays home (not in the party) and adds to the town's
     attraction. Shown on the building's tile.
   - Numbers under "Roster" on the balance page.
+- **Visual polish: a living village.**
+  - A sky over the town turns with its clock: sunrise, a sun crossing the
+    sky, a red dusk, a moon and stars; the village darkens at night and
+    houses, the hall, the tavern, the shrine and the tower light up.
+  - Settlers walk the streets below the buildings: to work in the
+    morning, to the tavern in the evening (🍺), home to bed at night (💤),
+    shifting about a little as they go. Patrons stand by their building
+    with their class's sign.
+  - Chimneys smoke, the forge throws sparks, the farm sways, the lumber
+    camp chops, the mage tower glows; a building that finishes a unit
+    shows "+1" with what it made.
+  - Hero sheets carry a crest in the class's colour with the level on it.
+  - Everything is decoration over the same tiles (they stay clickable)
+    and stops for players who ask for reduced motion.
 
 ## Future ideas
 

@@ -1,4 +1,7 @@
 import clsx from "clsx";
+import { useEffect, useRef, useState } from "react";
+import { skyAt } from "../game/village";
+import { BuildingLife, SkyStrip, VillageLife, iconMotion } from "./VillageLife";
 import { patronBoost } from "../game/roster";
 import { levelOf, type Building, type Town } from "../domain/town";
 import { BUILDINGS, TRADE_FOR, assignments, cantUpgrade, durationText, isBuilt, isNew, maxLevel, pace, plots, progressOf, upgradeCost, yields } from "../game/town";
@@ -62,101 +65,134 @@ export function TownScene({ town: t, hours, renown, selected, onSelect, onBuild 
   const who = assignments(t);
   const max = plots(t, renown);
   const free = Math.max(0, max - t.buildings.length);
+  const grid = useRef<HTMLUListElement>(null);
+  const tint = skyAt(hours).tint;
   return (
     <div
       className="rounded-xl border border-line p-3 shadow-inner"
       style={{ background: "radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--heal) 22%, var(--surface)) 0%, color-mix(in srgb, var(--heal) 10%, var(--surface-2)) 70%)" }}
       aria-label="Village"
     >
-      <ul className="grid grid-cols-3 gap-3 sm:grid-cols-4 xl:grid-cols-5">
-        {t.buildings.map((b) => {
-          const def = BUILDINGS[b.type];
-          const worker = t.settlers.find((s) => s.id === who.get(b.id));
-          const p = pace(t, b.id);
-          const building = isNew(b);
-          const upgrading = b.upTo !== undefined;
-          const prog = !building ? progressOf(t, b, Math.max(0, hours - t.simulated)) : null;
-          const left = b.readyAt !== undefined ? Math.max(0, b.readyAt - hours) : 0;
-          const ring = building ? "border-line" : !def.staffed ? "border-line" : !worker ? "border-danger" : p < 1 ? "border-warn" : "border-heal";
-          return (
-            <li key={b.id}>
-              <button
-                className={clsx(
-                  "relative flex aspect-square w-full flex-col items-center justify-center rounded-xl border-2 bg-surface/90 p-1 shadow transition hover:-translate-y-0.5 hover:shadow-lg",
-                  ring,
-                  selected === b.id && "ring-2 ring-accent ring-offset-2 ring-offset-surface",
-                )}
-                onClick={() => onSelect(selected === b.id ? null : b.id)}
-                title={`${def.name}${building ? `: building, ${durationText(Math.ceil(left))} left` : ""}`}
-                aria-pressed={selected === b.id}
-              >
-                <span className={clsx("text-4xl leading-none sm:text-5xl", building && "opacity-40 grayscale")}>{def.icon}</span>
-                {building && <span className="absolute top-1 right-1 text-lg" aria-hidden>🏗</span>}
-                {!building && (
-                  <span className="absolute top-1 left-1 rounded bg-surface-3 px-1 font-display text-[10px] font-bold text-strong" title={`Level ${levelOf(b)}`}>
-                    {roman(levelOf(b))}
-                  </span>
-                )}
-                {t.patrons[b.id] && !upgrading && (
-                  <span className="absolute top-1 right-1 max-w-[70%] truncate rounded-full bg-highlight/80 px-1 text-[10px] font-bold text-strong" title={`${t.patrons[b.id]!.name} looks after it: +${Math.round(patronBoost(b, t.patrons[b.id]) * 100)}%`}>
-                    ⭐ {t.patrons[b.id]!.name}
-                  </span>
-                )}
-                {upgrading && (
-                  <span className="absolute top-1 right-1 rounded bg-accent px-1 text-[10px] font-bold text-accent-fg" title={`Upgrading to level ${b.upTo}: ${durationText(Math.ceil(left))} left`}>
-                    ⬆ {roman(b.upTo!)}
-                  </span>
-                )}
-                <span className="mt-1 truncate text-center text-xs font-semibold text-strong">{def.name}</span>
-                {prog && (
-                  <span className="mb-0.5 flex w-4/5 items-center gap-1" title={`Next ${STORE_ICON[prog.store]}: ${Math.round(prog.fraction * 100)}% · ${fmt(prog.perDay)} a day`}>
-                    <span className="text-[10px]">{STORE_ICON[prog.store]}</span>
-                    <span className="block h-1 flex-1 rounded bg-surface-3">
-                      <span className="block h-1 rounded bg-heal transition-[width] duration-1000" style={{ width: `${prog.fraction * 100}%` }} />
+      <SkyStrip hours={hours} />
+      <div className="relative">
+        <ul ref={grid} className="grid grid-cols-3 gap-3 sm:grid-cols-4 xl:grid-cols-5">
+          {t.buildings.map((b) => {
+            const def = BUILDINGS[b.type];
+            const worker = t.settlers.find((s) => s.id === who.get(b.id));
+            const p = pace(t, b.id);
+            const building = isNew(b);
+            const upgrading = b.upTo !== undefined;
+            const prog = !building ? progressOf(t, b, Math.max(0, hours - t.simulated)) : null;
+            const left = b.readyAt !== undefined ? Math.max(0, b.readyAt - hours) : 0;
+            const ring = building ? "border-line" : !def.staffed ? "border-line" : !worker ? "border-danger" : p < 1 ? "border-warn" : "border-heal";
+            return (
+              <li key={b.id} data-bid={b.id}>
+                <button
+                  className={clsx(
+                    "relative flex aspect-square w-full flex-col items-center justify-center rounded-xl border-2 bg-surface/90 p-1 shadow transition hover:-translate-y-0.5 hover:shadow-lg",
+                    ring,
+                    selected === b.id && "ring-2 ring-accent ring-offset-2 ring-offset-surface",
+                  )}
+                  onClick={() => onSelect(selected === b.id ? null : b.id)}
+                  title={`${def.name}${building ? `: building, ${durationText(Math.ceil(left))} left` : ""}`}
+                  aria-pressed={selected === b.id}
+                >
+                  {!building && <BuildingLife type={b.type} working={!def.staffed || !!worker} hours={hours} />}
+                  <span className={clsx("inline-block text-4xl leading-none sm:text-5xl", building && "opacity-40 grayscale", !building && iconMotion(b.type, !def.staffed || !!worker, hours))}>{def.icon}</span>
+                  {building && <span className="absolute top-1 right-1 text-lg" aria-hidden>🏗</span>}
+                  {!building && (
+                    <span className="absolute top-1 left-1 rounded bg-surface-3 px-1 font-display text-[10px] font-bold text-strong" title={`Level ${levelOf(b)}`}>
+                      {roman(levelOf(b))}
                     </span>
-                  </span>
-                )}
-                {building ? (
-                  <span className="mt-1 w-4/5">
-                    <span className="block h-1.5 rounded bg-surface-3">
-                      <span className="block h-1.5 rounded bg-accent" style={{ width: `${100 - (left / Math.max(1, def.hours)) * 100}%` }} />
+                  )}
+                  {t.patrons[b.id] && !upgrading && (
+                    <span className="absolute top-1 right-1 max-w-[70%] truncate rounded-full bg-highlight/80 px-1 text-[10px] font-bold text-strong" title={`${t.patrons[b.id]!.name} looks after it: +${Math.round(patronBoost(b, t.patrons[b.id]) * 100)}%`}>
+                      ⭐ {t.patrons[b.id]!.name}
                     </span>
-                    <span className="block text-center text-[10px] text-muted">{durationText(Math.ceil(left))}</span>
-                  </span>
-                ) : def.staffed ? (
-                  worker ? (
-                    <span className={clsx("mt-0.5 max-w-full truncate rounded-full px-1.5 text-[10px]", p < 1 ? "bg-warn/20 text-warn" : "bg-heal/20 text-heal")}>
-                      {face(worker.mood)} {worker.name}
-                      {p < 1 ? " · ½" : ""}
+                  )}
+                  {upgrading && (
+                    <span className="absolute top-1 right-1 rounded bg-accent px-1 text-[10px] font-bold text-accent-fg" title={`Upgrading to level ${b.upTo}: ${durationText(Math.ceil(left))} left`}>
+                      ⬆ {roman(b.upTo!)}
                     </span>
+                  )}
+                  <span className="mt-1 truncate text-center text-xs font-semibold text-strong">{def.name}</span>
+                  {prog && <ProducePop fraction={prog.fraction} icon={STORE_ICON[prog.store]} />}
+                  {prog && (
+                    <span className="mb-0.5 flex w-4/5 items-center gap-1" title={`Next ${STORE_ICON[prog.store]}: ${Math.round(prog.fraction * 100)}% · ${fmt(prog.perDay)} a day`}>
+                      <span className="text-[10px]">{STORE_ICON[prog.store]}</span>
+                      <span className="block h-1 flex-1 rounded bg-surface-3">
+                        <span className="block h-1 rounded bg-heal transition-[width] duration-1000" style={{ width: `${prog.fraction * 100}%` }} />
+                      </span>
+                    </span>
+                  )}
+                  {building ? (
+                    <span className="mt-1 w-4/5">
+                      <span className="block h-1.5 rounded bg-surface-3">
+                        <span className="block h-1.5 rounded bg-accent" style={{ width: `${100 - (left / Math.max(1, def.hours)) * 100}%` }} />
+                      </span>
+                      <span className="block text-center text-[10px] text-muted">{durationText(Math.ceil(left))}</span>
+                    </span>
+                  ) : def.staffed ? (
+                    worker ? (
+                      <span className={clsx("mt-0.5 max-w-full truncate rounded-full px-1.5 text-[10px]", p < 1 ? "bg-warn/20 text-warn" : "bg-heal/20 text-heal")}>
+                        {face(worker.mood)} {worker.name}
+                        {p < 1 ? " · ½" : ""}
+                      </span>
+                    ) : (
+                      <span className="mt-0.5 rounded-full bg-danger/15 px-1.5 text-[10px] text-danger">needs {tradeIcon(TRADE_FOR[b.type] ?? "")}</span>
+                    )
                   ) : (
-                    <span className="mt-0.5 rounded-full bg-danger/15 px-1.5 text-[10px] text-danger">needs {tradeIcon(TRADE_FOR[b.type] ?? "")}</span>
-                  )
-                ) : (
-                  b.type === "house" && <span className="text-[10px] text-muted">🛏 {num("town.houseBeds")}</span>
-                )}
+                    b.type === "house" && <span className="text-[10px] text-muted">🛏 {num("town.houseBeds")}</span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+          {Array.from({ length: Math.min(free, 6) }, (_, i) => (
+            <li key={`plot-${i}`}>
+              <button
+                className="flex aspect-square w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-line/80 text-faint transition hover:border-accent hover:text-accent"
+                onClick={onBuild}
+                title="An empty plot: build something"
+              >
+                <span className="text-3xl">＋</span>
+                <span className="text-xs">Empty plot</span>
               </button>
             </li>
-          );
-        })}
-        {Array.from({ length: Math.min(free, 6) }, (_, i) => (
-          <li key={`plot-${i}`}>
-            <button
-              className="flex aspect-square w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-line/80 text-faint transition hover:border-accent hover:text-accent"
-              onClick={onBuild}
-              title="An empty plot: build something"
-            >
-              <span className="text-3xl">＋</span>
-              <span className="text-xs">Empty plot</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+          ))}
+        </ul>
+        <div className="pointer-events-none absolute -inset-1 rounded-lg transition-[background] duration-[3000ms]" style={{ background: tint }} aria-hidden />
+        <VillageLife town={t} hours={hours} grid={grid} />
+      </div>
       <p className="mt-2 text-right text-[11px] text-muted">
         {t.buildings.length}/{max} plots ·{" "}
         <span className="text-heal">■</span> right trade · <span className="text-warn">■</span> half pace · <span className="text-danger">■</span> nobody working
       </p>
     </div>
+  );
+}
+
+/** "+1 🍞" rising from a building when it hands over a finished unit. */
+function ProducePop({ fraction, icon }: { fraction: number; icon: string }) {
+  const last = useRef(fraction);
+  const [pops, setPops] = useState<number[]>([]);
+  useEffect(() => {
+    // The bar wrapped round: a unit is done.
+    if (fraction < last.current - 0.25) {
+      const id = Date.now();
+      setPops((p) => [...p, id]);
+      window.setTimeout(() => setPops((p) => p.filter((x) => x !== id)), 1500);
+    }
+    last.current = fraction;
+  }, [fraction]);
+  return (
+    <>
+      {pops.map((id) => (
+        <span key={id} className="pointer-events-none absolute top-1/4 left-1/2 -translate-x-1/2 text-sm font-bold text-heal [animation:float-up_1.4s_ease-out_forwards]" aria-hidden>
+          +1 {icon}
+        </span>
+      ))}
+    </>
   );
 }
 
