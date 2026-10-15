@@ -18,6 +18,7 @@ import { AdventureView } from "./AdventureView";
 import { AwayReportDialog, TownView } from "./TownView";
 import { RaidNewsDialog, ThreatBar } from "./RaidAlerts";
 import { HeroesView } from "./HeroesView";
+import { WorldView } from "./WorldView";
 import { finishTownBattle } from "../game/town-store";
 import { CharacterBuilder } from "../components/CharacterBuilder";
 import type { CharacterSpec } from "../domain/character";
@@ -61,13 +62,15 @@ export function PlayView() {
 
 /** Between adventures: your town, or setting out. */
 function Home() {
-  const [tab, setTab] = useState<"town" | "heroes" | "adventure">("town");
+  const hasTown = usePlayers((s) => !!s.docs[useActiveProfile.getState().id ?? ""]?.town);
+  const [tab, setTab] = useState<"world" | "town" | "heroes" | "adventure">(hasTown ? "world" : "town");
   return (
     <div className="mx-auto w-full max-w-6xl space-y-4">
       <ClaimOldSave />
       <div className="relative flex items-center gap-1 border-b border-line" role="tablist">
         {(
           [
+            ["world", "🧭 World"],
             ["town", "🏘 Town"],
             ["heroes", "🧙 Heroes"],
             ["adventure", "🗺 Adventures & skirmishes"],
@@ -87,7 +90,9 @@ function Home() {
           <PlayingAs />
         </span>
       </div>
-      {tab === "town" ? (
+      {tab === "world" ? (
+        <WorldView onGoTown={() => setTab("town")} onAdventure={() => setTab("adventure")} />
+      ) : tab === "town" ? (
         <TownView />
       ) : tab === "heroes" ? (
         <HeroesView />
@@ -887,7 +892,7 @@ function Outcome({ game }: { game: GameState }) {
         <div className="mt-4 flex flex-col gap-2">
           {playMode === "town" ? (
             <button className="btn btn-primary font-display" onClick={() => finishTownBattle()}>
-              Back to town
+              {usePlay.getState().context?.kind === "road" ? "Back on the road" : "Back to town"}
             </button>
           ) : campaign ? (
             <button className="btn btn-primary font-display" onClick={() => returnFromBattle()}>

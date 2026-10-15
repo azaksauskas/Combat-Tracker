@@ -35,7 +35,9 @@ export interface Tally {
 
 /** What a town battle is for: defending against a raid, a lair, a patrol, or a job from the board. */
 export interface TownBattleContext {
-  kind: "raid" | "lair" | "patrol" | "contract" | "reclaim";
+  kind: "raid" | "lair" | "patrol" | "contract" | "reclaim" | "road";
+  /** A band met on the world map. */
+  band?: string;
   /** Raids and lairs. */
   faction?: string;
   /** Contracts. */

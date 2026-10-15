@@ -617,6 +617,46 @@ picker into a real sign-in without changing the data model.
   - Everything is decoration over the same tiles (they stay clickable)
     and stops for players who ask for reduced motion.
 
+## Direction: a company on the road (Battle Brothers style)
+
+The town-building had drifted toward Travian (timers, resource counters,
+player-versus-player intrigue). The game turns toward Battle Brothers: you
+lead a company of adventurers across a land, take work in settlements, pay
+your people and fight tactical battles where death matters. The tactical
+engine, heroes, gear, treasure, injuries and the infirmary stay; the town
+becomes the company's camp.
+
+1. **BB-1: the world map and the march** (done, below).
+2. **BB-2: wages, food and work.** Daily pay and rations for the company;
+   contracts, markets and reputation in each settlement.
+3. **BB-3: a bigger company.** Six heroes in battle and a reserve; death is
+   harder to undo.
+4. **BB-4: the town becomes the camp.** No real-time clock, timers or build
+   queues; the camp's tents (forge, infirmary, mage) serve the heroes.
+   Spies, guilds and takeovers are hidden or removed.
+5. **BB-5: Little Fighter 2 feel.** Signature moves, knockback into walls,
+   things to throw on the battlefield, wave fights.
+
+- **BB-1: the world map.**
+  - 🧭 World tab (first when a town exists): a land generated from the
+    player's seed: the camp, five settlements (two villages, two towns, a
+    city, each known for something), roads between them, forests, hills,
+    marsh and a lake, the factions' lairs (further out the more renown
+    they need) and a site for every adventure.
+  - Click anywhere (or on a place) to march; the clock runs only while
+    the company moves (×1, ×2, ×4, halt). Roads ×1.5, forest ×0.6, hills
+    ×0.7, marsh ×0.5; the marched hours pass on the town's clock.
+  - The company sees 150 map units around it; lairs and adventure sites
+    stay ❔ until seen.
+  - Bands (wolves, bandits, the faction's own foes out of their lairs)
+    roam and give chase when they spot the company; settlements are safe
+    ground. When one catches up: stand and fight, or try to slip away
+    (best Stealth vs DC 12). A won fight clears the band and leaves a
+    chest; a lost one sends the company limping back toward the camp.
+  - Arriving: the camp (into the town), an adventure site (begin it), a
+    lair (attack it when renown allows). Settlements wait for BB-2.
+  - Numbers under "World" on the balance page.
+
 ## Future ideas
 
 - **A kids' version for playing with a child**, along the lines of

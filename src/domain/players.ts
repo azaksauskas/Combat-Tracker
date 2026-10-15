@@ -152,6 +152,22 @@ export const PlayerDocSchema = z.object({
   chests: z.array(z.object({ id: z.string(), tier: z.number(), from: z.string().catch(""), seed: z.number() })).catch([]),
   /** Unique treasures this player has found (each can be found once). */
   uniques: z.array(z.string()).catch([]),
+  /** The company on the world map (Battle Brothers style). */
+  world: z
+    .object({
+      seed: z.number(),
+      x: z.number(),
+      y: z.number(),
+      /** Game hours marched so far. */
+      hours: z.number().catch(0),
+      bands: z.array(z.object({ id: z.string(), foe: z.string(), name: z.string().catch("Raiders"), x: z.number(), y: z.number(), goal: z.object({ x: z.number(), y: z.number() }), from: z.string().optional() })).catch([]),
+      /** Hour the last band appeared. */
+      lastSpawn: z.number().catch(0),
+      /** Places the company has seen. */
+      seen: z.array(z.string()).catch([]),
+    })
+    .nullable()
+    .catch(null),
   /** Each hero's traits (absent: the ready-made heroes' own). */
   traits: z.record(z.string(), z.array(z.string()).catch([])).catch({}),
   /** What each hero has done in battle (for their personal quest). */

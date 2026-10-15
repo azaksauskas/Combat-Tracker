@@ -874,6 +874,10 @@ export function startTownBattle(kind: "raid" | "lair", fid: string) {
   startBattle({ ...sc, name }, board, units, { stash: { ...t.stash } }, "town", { kind, faction: fid, heroes: party.map((e) => e.key) });
 }
 
+let roadHook: ((bandId: string, won: boolean, game: GameState, battle: string) => void) | null = null;
+/** The world map's answer to a fight on the road (set by world-store, which depends on this module). */
+export const onRoadBattle = (f: (bandId: string, won: boolean, game: GameState, battle: string) => void) => void (roadHook = f);
+
 let reclaimHook: ((guildId: string, won: boolean) => void) | null = null;
 /** The guild system's answer to a fight for the town (set by intrigue-store, which depends on this module). */
 export const onReclaim = (f: (guildId: string, won: boolean) => void) => void (reclaimHook = f);
@@ -891,6 +895,14 @@ export function finishTownBattle(retreat = false) {
   recordDeeds(heroKey, !fled && game.outcome === "victory");
   const battle = scenario?.name ?? "a fight";
   const keepStash = (t: Town): Town => ({ ...t, stash: { ...(game.stash ?? t.stash) } });
+
+  if (context.kind === "road") {
+    if (won) awardXp(id, game, keys, undefined, num("xp.patrolMultiplier"));
+    roadHook?.(context.band ?? "", won, game, battle);
+    updatePlayer(id, (d) => (d.town ? { ...d, town: keepStash(d.town) } : d));
+    addChronicle(id, [{ kind: "fight", text: won ? `Beat ${battle.replace(/^On the road: /, "")} on the road.` : fled ? `Ran from ${battle.replace(/^On the road: /, "")}.` : `Beaten on the road by ${battle.replace(/^On the road: /, "")}.` }]);
+    return quitGame();
+  }
 
   if (context.kind === "reclaim") {
     if (won) {
