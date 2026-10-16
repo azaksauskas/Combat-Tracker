@@ -337,7 +337,7 @@ function TimeCard({ town: t, hours }: { town: Town; hours: number }) {
         </button>
       </div>
       <p className="text-[11px] text-faint">
-        1 real minute = 1 hour here. Help out: {helpsLeft(t, today())}/{beds(t)} left today.
+        {num("features.realtime") ? "1 real minute = 1 hour here." : "The camp's time moves with the company: marching, sleeping and work."} Help out: {helpsLeft(t, today())}/{beds(t)} left today.
       </p>
     </section>
   );

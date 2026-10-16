@@ -5,10 +5,12 @@ import { canStrike, threatOf } from "../game/region";
 import { allFactions, liveHours, startTownBattle } from "../game/town-store";
 import { num } from "../game/tuning";
 import { TERRAIN, WORLD_H, WORLD_W, dist, inSight, isExplored, terrainAt, travelHours, type Place, type Pt } from "../game/world";
-import { afterOutcome, beginAt, boardAt, buyAt, canChoose, choose, doDeed, doneToday, enterWorld, helloFrom, fightBand, passBy, talkTo, townsfolkAt, hireAt, marchTo, packRations, pauseMarch, raidDen, recruitsAt, resumeMarch, saveMarch, setSpeed, slipAway, takeContract, tradeHorses, useWorld, worldOf } from "../game/world-store";
+import { afterOutcome, beginAt, boardAt, buyAt, canChoose, choose, collectOrders, doDeed, placeOrder, doneToday, enterWorld, helloFrom, fightBand, passBy, talkTo, townsfolkAt, hireAt, marchTo, packRations, pauseMarch, raidDen, recruitsAt, resumeMarch, saveMarch, setSpeed, slipAway, takeContract, tradeHorses, useWorld, worldOf } from "../game/world-store";
 import { availableMembers, chosenParty, myCharacters } from "../game/party-store";
 import { costOf, horsePriceAt, isSettlement, priceOf, repText, sells, wageOf } from "../game/company";
 import { BUILDING, DEEDS, ROLE, buildingsOf, deedCost } from "../game/settlement";
+import { ordersAt, tradeInFor, workshopOf } from "../game/orders";
+import { MAGIC_ITEMS, RARITY } from "../game/treasure";
 import { SettlementScene, Figure, useTownUi } from "./SettlementScene";
 import { TRAITS } from "../game/roster";
 import { useActiveProfile, usePlayers } from "../store/players";
@@ -75,6 +77,10 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
   const party = chosenParty();
   const visibleEvents = s.events.filter((e) => inSight(e, pos) || isExplored(s.explored, e));
   const done = new Set(doc.world.done);
+  const orderAt = (placeId: string) => {
+    const mine = doc.world!.orders.filter((o) => o.place === placeId);
+    return !mine.length ? undefined : mine.some((o) => o.ready <= s.hours) ? ("ready" as const) : ("making" as const);
+  };
 
   // The camera: centred on the company (or wherever the player dragged), kept on the map.
   const vw = WORLD_W / zoom;
@@ -149,7 +155,7 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
           {dest && <line x1={pos.x} y1={pos.y} x2={dest.x} y2={dest.y} stroke={RED} strokeWidth={1.4} strokeDasharray="1 4" strokeLinecap="round" />}
           {dest && <path d={`M ${dest.x - 5} ${dest.y - 5} L ${dest.x + 5} ${dest.y + 5} M ${dest.x + 5} ${dest.y - 5} L ${dest.x - 5} ${dest.y + 5}`} stroke={RED} strokeWidth={2} strokeLinecap="round" />}
           {world.places.map((p) => (
-            <InkPlace key={p.id} place={p} known={known(p)} here={p.id === s.at} done={done.has(p.id)} />
+            <InkPlace key={p.id} place={p} known={known(p)} here={p.id === s.at} done={done.has(p.id)} order={orderAt(p.id)} />
           ))}
           {visibleEvents.map((e) => (
             <InkEvent key={e.id} x={e.x} y={e.y} look={EVENTS[e.kind]?.look ?? "figure"} />
@@ -495,7 +501,87 @@ function CompanyPurse() {
           })}
         </ul>
       )}
+      {doc.world.orders.length > 0 && (
+        <ul className="space-y-1 text-xs" aria-label="Orders">
+          {doc.world.orders.map((o) => {
+            const left = Math.ceil(o.ready - hours);
+            const at = world.places.find((p) => p.id === o.place)?.name;
+            const def = MAGIC_ITEMS[o.item];
+            return (
+              <li key={o.id} className="rounded border border-line bg-surface-2/60 px-2 py-1">
+                <span className="font-semibold" style={{ color: def ? RARITY[def.rarity].color : undefined }}>
+                  ⚒ {def?.icon} {def?.name ?? o.item}
+                </span>
+                <span className="block text-muted">{left > 0 ? `In the making in ${at}: ${left} h more (on the march).` : `Ready: collect it in ${at}.`}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
+  );
+}
+
+/** The smith's or the mages' order book, and what of the company's is in the making here. */
+function Workshop({ place, at }: { place: Place; at: "smithy" | "tower" }) {
+  const id = useActiveProfile((s) => s.id)!;
+  const doc = usePlayers((s) => s.docs[id]);
+  const hours = useWorld((s) => s.hours);
+  if (!doc?.world || !doc.town) return null;
+  const list = ordersAt(place).filter((r) => r.at === at);
+  const mine = doc.world.orders.filter((o) => o.place === place.id);
+  const shop = workshopOf(place);
+  const level = at === "smithy" ? shop.smith : shop.tower;
+  return (
+    <div className="space-y-1 text-xs">
+      <p className="text-muted italic">
+        {at === "smithy"
+          ? level >= 5
+            ? "The finest smiths for a week's ride: they make anything, given time."
+            : `A good smith: arms and armour up to ${level >= 3 ? "+2" : "+1"}. The forge town's masters make finer.`
+          : "The mages make wondrous things, slowly."}{" "}
+        The work goes on while the company is on the road; come back to collect it. A weaker piece of the same kind is traded in for half its value.
+      </p>
+      {mine.map((o) => {
+        const left = Math.ceil(o.ready - hours);
+        return (
+          <div key={o.id} className="flex items-center gap-2 rounded border border-accent/60 bg-surface-2/60 px-2 py-1">
+            <span className="flex-1">
+              ⚒ {MAGIC_ITEMS[o.item]?.name}: {left > 0 ? `${left} h more` : "ready"}
+            </span>
+            {left <= 0 && (
+              <button className="btn px-2 py-0 text-xs" onClick={() => collectOrders(place)}>
+                Collect
+              </button>
+            )}
+          </div>
+        );
+      })}
+      <ul className="max-h-72 space-y-1 overflow-y-auto">
+        {list.map((r) => {
+          const d = MAGIC_ITEMS[r.item]!;
+          const trade = tradeInFor(r.item, doc.treasure);
+          const price = Math.max(0, r.price - (trade?.credit ?? 0));
+          return (
+            <li key={r.item} className="flex items-center gap-2 rounded border bg-surface-2/60 px-2 py-1" style={{ borderColor: RARITY[d.rarity].color }}>
+              <span className="text-base">{d.icon}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold" style={{ color: RARITY[d.rarity].color }}>
+                  {d.name}
+                </span>
+                <span className="block text-muted">
+                  {d.text} · {r.wait >= 24 ? `${Math.round(r.wait / 24)} d` : `${r.wait} h`}
+                  {trade ? ` · trading in ${trade.name} (−${trade.credit})` : ""}
+                </span>
+              </span>
+              <button className="btn px-2 py-0 text-xs" disabled={doc.town!.gold < price || mine.length >= 2} onClick={() => placeOrder(place, r.item)}>
+                Order · 🪙 {price}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -610,7 +696,7 @@ function Settlement({ place }: { place: Place }) {
         </ul>
       )}
       {tab === "tavern" && place.kind === "village" && <p className="text-xs text-muted italic">A village alehouse: no sellswords here, but plenty of talk.</p>}
-      {tab === "forge" && <p className="text-xs text-muted italic">The smiths are busy with the duke's order. Before long they'll take orders from a company too.</p>}
+      {(tab === "forge" || tab === "college") && <Workshop place={place} at={tab === "forge" ? "smithy" : "tower"} />}
       {deeds.map((d) => {
         const cost = deedCost(d, place);
         const done = doneToday(`${d.id}:${place.id}`);

@@ -177,6 +177,8 @@ export const PlayerDocSchema = z.object({
       talked: z.array(z.string()).catch([]),
       /** Things done once a day in a settlement: "deed:place" → day. */
       daily: z.record(z.string(), z.number()).catch({}),
+      /** Magic items on order in other settlements (see orders.ts). */
+      orders: z.array(z.object({ id: z.string(), place: z.string(), item: z.string(), ready: z.number(), on: z.string().optional() })).catch([]),
       /** Rations the company carries. */
       provisions: z.number().catch(0),
       /** The last world day wages were paid for. */

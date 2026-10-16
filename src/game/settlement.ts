@@ -59,6 +59,8 @@ export function buildingsOf(place: Place): Building[] {
   const own = characterOf(place).building;
   const base: Building[] = ["board", "market", "tavern", "temple"];
   if (own !== "board" && !base.includes(own)) base.splice(2, 0, own);
+  // Every town and city has a smith taking orders (the forge town the best).
+  if (place.kind !== "village" && !base.includes("forge")) base.splice(base.indexOf("tavern"), 0, "forge");
   return base;
 }
 

@@ -190,6 +190,7 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Spies & guilds", "guild.reclaimShare", "Taking the town back removes this share of the guild's influence", 0.6, undefined, { step: 0.05, max: 1 }),
 
   // Features
+  f("Features", "features.realtime", "The home town's clock runs in real time, even while you're away (1 = on, 0 = off)", 0, "Off by default (Battle Brothers style): the town is the company's camp, and its time moves only with the company (marching, resting, crafting).", { max: 1 }),
   f("Features", "features.intrigue", "Spies, guilds, town takeovers and moving into other heroes' towns (1 = on, 0 = hidden)", 0, "Hidden by default: the game is about the company on the road. Hiding turns their effects off too.", { max: 1 }),
 
   // Battle
@@ -259,6 +260,9 @@ export const TUNING_FIELDS: TuningField[] = [
   f("Treasure", "treasure.dust.rare", "Mage tower: dust from a rare item", 8),
   f("Treasure", "treasure.dust.very-rare", "Mage tower: dust from a very rare item", 18),
   f("Treasure", "treasure.dust.legendary", "Mage tower: dust from a legendary item", 40),
+  f("Treasure", "craft.orderPrice", "Orders in other settlements: price of a magic item (× the home smithy's)", 1.2, "Towns' smiths make up to +1 arms, cities' up to +2, the forge town's the very best; a college makes wondrous items.", { step: 0.1, min: 0.1 }),
+  f("Treasure", "craft.orderWait", "Orders in other settlements: time to make (× the home smithy's hours, in world hours)", 2, "The work goes on while the company is on the road; collect it where it was ordered.", { step: 0.25, min: 0 }),
+  f("Treasure", "craft.tradeIn", "Trading in a weaker +N piece toward a better one: share of its value", 0.5, undefined, { step: 0.05, max: 1 }),
   f("Treasure", "treasure.craftMultiplier", "Smithy and mage tower: gold cost of magic items (×)", 1, undefined, { step: 0.1, min: 0.1 }),
 
   // Crafting

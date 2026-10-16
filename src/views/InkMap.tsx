@@ -324,7 +324,7 @@ const hexagon = (r: number) =>
   }).join(" ");
 
 /** A place drawn in ink, framed; unknown places are a question mark. */
-export const InkPlace = memo(function InkPlace({ place: p, known, here, done }: { place: Place; known: boolean; here: boolean; done?: boolean }) {
+export const InkPlace = memo(function InkPlace({ place: p, known, here, done, order }: { place: Place; known: boolean; here: boolean; done?: boolean; order?: "making" | "ready" }) {
   const settlement = p.kind === "village" || p.kind === "town" || p.kind === "city";
   const r = p.kind === "city" ? 20 : settlement ? 17 : 14;
   return (
@@ -397,6 +397,14 @@ export const InkPlace = memo(function InkPlace({ place: p, known, here, done }: 
           <rect x={5} y={0} width={3.5} height={6} fill={PAPER} stroke={INK} strokeWidth={0.9} />
           <path d="M -10 6 L 10 6" stroke={INK} strokeWidth={0.9} />
           <path d="M -7 -3 h 2 M -7 0 h 2 M 5.5 2.5 h 2" stroke={INK} strokeWidth={0.4} />
+        </g>
+      )}
+      {order && (
+        <g transform={`translate(${r + 2} ${-r + 2})`}>
+          <circle r={7} fill={PAPER} stroke={order === "ready" ? RED : INK} strokeWidth={1.2} />
+          <text y={4} textAnchor="middle" fontSize={9}>
+            ⚒
+          </text>
         </g>
       )}
       {known && (

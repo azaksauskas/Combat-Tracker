@@ -140,6 +140,13 @@ function step() {
     lastTick = visible ? now : 0;
     return;
   }
+  if (!num("features.realtime")) {
+    // The camp's clock moves only with the company: no time online or away.
+    // Keep its stamp fresh so turning real time on later doesn't count the gap.
+    lastTick = 0;
+    if (now - doc.town.at > 60_000) updatePlayer(id, (d) => (d.town ? { ...d, town: { ...d.town, at: now } } : d));
+    return;
+  }
   if (!visible) {
     // Away from the game: time keeps passing at real speed; caught up on return.
     if (lastTick) commitOnline(id, doc.town, now);

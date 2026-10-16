@@ -795,6 +795,27 @@ becomes the company's camp.
     nothing.
   - Prices are per item to a tenth of a gold; a purchase costs the total,
     rounded up.
+- **BB-4: the town becomes the camp.** The home town's clock no longer
+  runs in real time ("features.realtime" = 0 by default; 1 brings the old
+  online/away clock back). Its time moves only with the company: hours
+  marched on the world map, sleeping, helping out, building and crafting.
+  No more "while you were away" catch-up.
+- **Orders at other settlements' workshops (crafting with waiting).**
+  - Every town and city has a forge taking orders: a town's smith makes
+    arms and armour up to +1, a city's up to +2, and the forge town's
+    masters anything (+3 weapons and shields, +2 armour). A college of
+    mages makes wondrous items (rings, cloaks, wands, boots…); a city's
+    great temple a few blessed ones.
+  - Orders cost 1.2× the home smithy's price ("craft.orderPrice") and
+    take twice its hours in world time ("craft.orderWait": a +1 a day, a
+    +2 two, a +3 four). The work goes on while the company is on the
+    road; it is collected where it was ordered (on arrival, or with
+    "Collect"). Two orders at a time per settlement.
+  - Upgrading: ordering a "+N" trades in the company's best weaker piece
+    of the same kind for half its value ("craft.tradeIn"), and the new
+    piece goes straight to the hero who carried the old one.
+  - Orders show in the company's purse and as a ⚒ on the map (ringed red
+    when ready).
 
 ## Future ideas
 

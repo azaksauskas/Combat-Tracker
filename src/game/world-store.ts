@@ -15,6 +15,8 @@ import { num } from "./tuning";
 import { abilityMod } from "../domain/statblock";
 import { eventDef, resolveChoice, type Choice, type Outcome } from "./events";
 import { SKILL_ABILITY } from "./skills";
+import { ordersAt, tradeInFor } from "./orders";
+import { MAGIC_ITEMS } from "./treasure";
 import { DEEDS, characterOf, deedCost, greeting, townsfolkOf, type Townsfolk } from "./settlement";
 import { BAND_NAME, bandAt, bandCamps, blankExplored, dist, explore, generateWorld, isExplored, march, moveBands, nextBand, spawnBand, spawnEvent, type Band, type WorldEvent, type Place, type Pt, type World } from "./world";
 
@@ -95,7 +97,7 @@ export function enterWorld() {
     const explored = explore(blankExplored(), home, num("world.sight"));
     updatePlayer(id, (d) => ({
       ...d,
-      world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"], explored, provisions: 12, paidDay: 0, unpaid: {}, hungry: false, rep: {}, contracts: [], taken: [], horses: false, cleared: {}, events: [], lastEvent: 0, done: [], talked: [], daily: {} },
+      world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"], explored, provisions: 12, paidDay: 0, unpaid: {}, hungry: false, rep: {}, contracts: [], taken: [], horses: false, cleared: {}, events: [], lastEvent: 0, done: [], talked: [], daily: {}, orders: [] },
     }));
   }
   const w = docOf()!.world!;
@@ -239,6 +241,7 @@ function arrive(place: Place) {
   const id = me();
   if (!id) return;
   settleContracts(place);
+  collectOrders(place);
   updatePlayer(id, (d) => (d.world && !d.world.seen.includes(place.id) ? { ...d, world: { ...d.world, seen: [...d.world.seen, place.id] } } : d));
   if (place.kind === "mark" && place.ref && !docOf()?.world?.done.includes(place.id)) useWorld.setState({ happening: { id: place.id, kind: place.ref, mark: true } });
   if (place.kind !== "home" && !docOf()?.world?.seen.includes(place.id)) addChronicle(id, [{ kind: "story", text: `The company reached ${place.name}.` }]);
@@ -404,6 +407,52 @@ export function talkTo(place: Place, f: Townsfolk): { hello: string; told: strin
   const marked = applyOutcome({ text: "", revealAny: f.knows }, "");
   updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, talked: [...d.world.talked, f.id].slice(-300) } } : d));
   return { hello, told: marked.length ? `They tell you about ${marked[0]!.name} and mark it on your map.` : "They know nothing you don't already." };
+}
+
+/** Order a magic item from this settlement's smith or mages, trading in a weaker piece if there is one. */
+export function placeOrder(place: Place, itemId: string) {
+  const id = me();
+  const doc = docOf();
+  const r = ordersAt(place).find((x) => x.item === itemId);
+  if (!id || !doc?.world || !doc.town || !r) return;
+  if (doc.world.orders.filter((o) => o.place === place.id).length >= 2) return void toast.error("They have two orders of yours in hand already");
+  const trade = tradeInFor(itemId, doc.treasure);
+  const price = Math.max(0, r.price - (trade?.credit ?? 0));
+  if (doc.town.gold < price) return void toast.error(`Needs ${price} gold`);
+  const ready = useWorld.getState().hours + r.wait;
+  const order = { id: newOrderId(), place: place.id, item: itemId, ready, ...(trade?.on ? { on: trade.on } : {}) };
+  updatePlayer(id, (d) =>
+    d.world && d.town
+      ? { ...d, town: { ...d.town, gold: d.town.gold - price }, treasure: trade ? d.treasure.filter((t) => t.uid !== trade.uid) : d.treasure, world: { ...d.world, orders: [...d.world.orders, order] } }
+      : d,
+  );
+  const name = MAGIC_ITEMS[itemId]?.name ?? itemId;
+  addChronicle(id, [{ kind: "loot", text: `Ordered ${name} in ${place.name}${trade ? `, trading in ${trade.name}` : ""}: ready in ${Math.ceil(r.wait / 24)} day${r.wait > 24 ? "s" : ""}.` }]);
+  toast.success(`Ordered: ${name}. Come back for it in ${r.wait} hours.`);
+}
+
+const newOrderId = () => `o${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
+
+/** Collect whatever is ready here: it goes to the treasury (or straight back to the hero who traded in). */
+export function collectOrders(place: Place) {
+  const id = me();
+  const doc = docOf();
+  const hours = useWorld.getState().hours;
+  const ready = doc?.world?.orders.filter((o) => o.place === place.id && o.ready <= hours) ?? [];
+  if (!id || !ready.length) return;
+  updatePlayer(id, (d) =>
+    d.world
+      ? {
+          ...d,
+          // The hero who traded in gets the new piece, unless they've fallen since.
+          treasure: [...d.treasure, ...ready.map((o, i) => ({ uid: `${o.id}-${i}`, id: o.item, ...(o.on && !d.fallen.includes(o.on) ? { on: o.on } : {}) }))],
+          world: { ...d.world, orders: d.world.orders.filter((o) => !ready.includes(o)) },
+        }
+      : d,
+  );
+  const names = ready.map((o) => MAGIC_ITEMS[o.item]?.name ?? o.item);
+  addChronicle(id, [{ kind: "loot", text: `Collected in ${place.name}: ${names.join(", ")}.` }]);
+  toast.success(`⚒ Collected: ${names.join(", ")}`);
 }
 
 /** Do something at a building (buy a round, give alms…), once a day. */
