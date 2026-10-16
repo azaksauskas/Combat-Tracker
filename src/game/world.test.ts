@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BUILTIN_FACTIONS } from "./region";
-import { WORLD_H, WORLD_W, bandAt, dist, generateWorld, march, moveBands, spawnBand, terrainAt, travelHours, type Band } from "./world";
+import { WORLD_H, WORLD_W, bandAt, bandCamps, dist, generateWorld, march, moveBands, nextBand, spawnBand, terrainAt, travelHours, type Band } from "./world";
 import { mulberry32 } from "./rng";
 
 const sites = [{ id: "goblin-trail", title: "The Goblin Trail" }];
@@ -40,7 +40,7 @@ describe("the world map", () => {
 
   it("bands wander, chase a company they see, and catch it", () => {
     const rng = mulberry32(1).rng;
-    const band = spawnBand(world, rng, "b1", 3, BUILTIN_FACTIONS);
+    const band = spawnBand(world, rng, "b1", null);
     expect(band.foe).toBeTruthy();
     const company = { x: 500, y: 600 };
     const near: Band = { ...band, x: company.x + 60, y: company.y, goal: { x: 0, y: 0 }, home: { x: company.x + 60, y: company.y } };
@@ -59,6 +59,41 @@ describe("the world map", () => {
     const b: Band = { id: "x", foe: "wolves", name: "Wolves", x: company.x + 50, y: company.y, goal: { x: company.x, y: company.y }, home: { x: 950, y: 300 } };
     const after = moveBands(world, [b], company, 1, rng)[0]!;
     expect(dist(after, company)).toBeGreaterThan(dist(b, company));
+  });
+
+  it("dens sit out in the wilds and keep their bands close", () => {
+    const dens = world.places.filter((p) => p.kind === "den");
+    const home = world.places.find((p) => p.kind === "home")!;
+    expect(dens.length).toBeGreaterThanOrEqual(3);
+    for (const d of dens) expect(dist(d, home)).toBeGreaterThan(150);
+    const rng = mulberry32(9).rng;
+    const den = dens[0]!;
+    let bands = [spawnBand(world, rng, "d1", den)];
+    expect(bands[0]!.from).toBe(den.id);
+    // Wandering for days, it never strays past its camp's range.
+    for (let i = 0; i < 200; i++) bands = moveBands(world, bands, { x: -500, y: -500 }, 1, rng);
+    expect(dist(bands[0]!, den)).toBeLessThan(80);
+  });
+
+  it("each camp fills to its share, the open country gets a stray or two", () => {
+    const rng = mulberry32(4).rng;
+    const camps = bandCamps(world, 1, BUILTIN_FACTIONS, []);
+    expect(camps.some((c) => c.kind === "den")).toBe(true);
+    let bands: Band[] = [];
+    for (let i = 0; i < 100; i++) {
+      const b = nextBand(world, bands, rng, `n${i}`, 1, BUILTIN_FACTIONS, []);
+      if (b) bands.push(b);
+    }
+    expect(bands.length).toBe(camps.length * 2 + 1);
+    expect(bands.filter((b) => !b.from)).toHaveLength(1);
+    // A quiet camp sends nobody.
+    const quiet = camps[0]!.id;
+    bands = [];
+    for (let i = 0; i < 100; i++) {
+      const b = nextBand(world, bands, rng, `q${i}`, 1, BUILTIN_FACTIONS, [quiet]);
+      if (b) bands.push(b);
+    }
+    expect(bands.some((b) => b.from === quiet)).toBe(false);
   });
 
   it("settlements are safe ground", () => {

@@ -5,7 +5,7 @@ import { canStrike, threatOf } from "../game/region";
 import { allFactions, liveHours, startTownBattle } from "../game/town-store";
 import { num } from "../game/tuning";
 import { TERRAIN, WORLD_H, WORLD_W, dist, inSight, isExplored, terrainAt, travelHours, type Place, type Pt } from "../game/world";
-import { beginAt, boardAt, buyAt, enterWorld, fightBand, hireAt, marchTo, packRations, pauseMarch, recruitsAt, resumeMarch, saveMarch, setSpeed, slipAway, takeContract, tradeHorses, useWorld, worldOf } from "../game/world-store";
+import { beginAt, boardAt, buyAt, enterWorld, fightBand, hireAt, marchTo, packRations, pauseMarch, raidDen, recruitsAt, resumeMarch, saveMarch, setSpeed, slipAway, takeContract, tradeHorses, useWorld, worldOf } from "../game/world-store";
 import { availableMembers, chosenParty, myCharacters } from "../game/party-store";
 import { isSettlement, priceOf, repText, sells, wageOf } from "../game/company";
 import { TRAITS } from "../game/roster";
@@ -20,7 +20,7 @@ import { Compass, ExploredMask, INK, InkBand, InkCompany, InkDefs, InkPlace, PAP
  * drag to look around, scroll or use +/− to zoom.
  */
 
-const PLACE_ICON: Record<Place["kind"], string> = { home: "⛺", village: "🛖", town: "🏘️", city: "🏰", lair: "💀", site: "🏚️" };
+const PLACE_ICON: Record<Place["kind"], string> = { home: "⛺", village: "🛖", town: "🏘️", city: "🏰", lair: "💀", site: "🏚️", den: "🐾" };
 const FOE_ICON: Record<string, string> = { wolves: "🐺", bandits: "🗡️", goblins: "👺", undead: "💀", vermin: "🐀", cultists: "🕯️", gnolls: "🐗" };
 
 const clock = (hours: number) => `Day ${Math.floor(hours / 24) + 1}, ${String(Math.floor(hours % 24)).padStart(2, "0")}:00`;
@@ -264,6 +264,7 @@ function PlacePanel({ place, onGoTown, onAdventure }: { place: Place; onGoTown: 
           </button>
         </>
       )}
+      {place.kind === "den" && <Den place={place} />}
       {faction && doc?.town && (
         <>
           <p className="text-sm text-muted">{faction.description}</p>
@@ -280,6 +281,28 @@ function PlacePanel({ place, onGoTown, onAdventure }: { place: Place; onGoTown: 
   );
 }
 
+function Den({ place }: { place: Place }) {
+  const id = useActiveProfile((s) => s.id)!;
+  const doc = usePlayers((s) => s.docs[id]);
+  const hours = useWorld((s) => s.hours);
+  const out = useWorld((s) => s.bands.filter((b) => b.from === place.id).length);
+  const at = doc?.world?.cleared[place.id];
+  const quietFor = at === undefined ? 0 : Math.ceil(num("world.denRegrow") - (hours - at) / 24);
+  const what = place.ref === "bandits" ? "Outlaws hole up here and rob the roads nearby." : place.ref === "vermin" ? "Giant rats breed in the dark here." : "A pack makes its home here and hunts the land around.";
+  return (
+    <>
+      <p className="text-sm text-muted">
+        {what} {quietFor > 0 ? `Cleared out: quiet for ${quietFor} more day${quietFor === 1 ? "" : "s"}.` : `${out} band${out === 1 ? "" : "s"} out from here; they don't stray far.`}
+      </p>
+      {quietFor <= 0 && (
+        <button className="btn btn-primary" onClick={() => raidDen(place)}>
+          {FOE_ICON[place.ref ?? ""] ?? "⚔"} Clear the den
+        </button>
+      )}
+    </>
+  );
+}
+
 function Legend() {
   return (
     <section className="rounded-lg border border-line bg-surface p-3 text-xs text-muted shadow" aria-label="Legend">
@@ -287,7 +310,7 @@ function Legend() {
       <ul className="space-y-0.5">
         <li>Blank paper: land the company hasn't seen yet. It fills in as they march.</li>
         <li>Dotted lines are roads (quick). Forests, mountains and marsh are slow.</li>
-        <li>Hexagons are settlements, ? is a place not yet found, red rings are bands on the move.</li>
+        <li>Hexagons are settlements, ? is a place not yet found, red rings are bands on the move. Bands keep close to their dens and lairs; the open country is quieter.</li>
         <li>Drag to look around, scroll or +/− to zoom, ⌖ back to the company.</li>
       </ul>
     </section>

@@ -730,11 +730,18 @@ becomes the company's camp.
     Grappled, Poisoned…) and spell effect as a chip, with a line saying what
     the bad ones do, "Badly hurt" at a third of HP or less, and a big
     "Stand up (N ft)" button while the hero lies prone.
-  - Fewer bands, each with its own ground: two at the start, at most 2 + one
-    per two renown, a new one every 36 hours. A band keeps within 120 of
-    the place it rose ("world.bandRange"); bandits patrol the roads near
-    it. A band gives up the chase once the company is half as far again
-    beyond its ground, and goes home. They see 80 and move 11 an hour.
+  - Bands live by their camps; the open country is quiet. Five dens lie in
+    the wilds (wolf dens, bandit hideouts, a rat warren), next to the
+    factions' lairs the company has the renown to meet. Each camp keeps up
+    to two bands ("world.campBands") roaming within 55 of it; only one
+    stray (+1 per three renown) wanders the country, within 120 of where it
+    rose. A band gives up the chase once the company is half as far again
+    beyond its ground, and goes home. Every 12 hours one camp, or the
+    wilds, sends out a band if it has room. Bandits patrol the roads near
+    their haunt. Bands see 80 and move 11 an hour.
+  - 🐾 Clearing a den: march to it and fight its whole band (a moderate
+    fight, a better chest). Its bands scatter and it stays empty for ten
+    days ("world.denRegrow"). A broken faction's lair sends nobody.
   - 🐎 Horses: towns and cities sell mounts for the whole company (150
     gold, sold back for half). Riding is half as fast again and costs 4
     gold a day in fodder, paid before rations.

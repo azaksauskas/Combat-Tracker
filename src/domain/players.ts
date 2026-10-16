@@ -165,6 +165,8 @@ export const PlayerDocSchema = z.object({
         .catch([]),
       /** The company rides: faster on the march, but horses cost upkeep. */
       horses: z.boolean().catch(false),
+      /** Dens the company cleared out: place id → game hour it was cleared. */
+      cleared: z.record(z.string(), z.number()).catch({}),
       /** Rations the company carries. */
       provisions: z.number().catch(0),
       /** The last world day wages were paid for. */

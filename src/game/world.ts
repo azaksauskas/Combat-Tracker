@@ -40,7 +40,7 @@ export interface Patch {
   bumps: number[];
 }
 
-export type PlaceKind = "home" | "village" | "town" | "city" | "lair" | "site";
+export type PlaceKind = "home" | "village" | "town" | "city" | "lair" | "site" | "den";
 
 export interface Place {
   id: string;
@@ -133,7 +133,32 @@ export function generateWorld(seed: number, homeName: string, factions: Faction[
     roads.push([{ x: from.x, y: from.y }, mid, { x: p.x, y: p.y }]);
     linked.push(p);
   }
+  addDens(seed, places, patches);
   return { seed, places, patches, roads };
+}
+
+/** Dens in the wilds: the beasts' and outlaws' camps. */
+export const DEN_NAME: Record<string, string> = { wolves: "Wolf den", bandits: "Bandit hideout", vermin: "Rat warren" };
+const DEN_FOES = ["wolves", "bandits", "wolves", "bandits", "vermin"];
+
+/**
+ * Placed with their own random stream after everything else, so an old
+ * world keeps its towns, land and roads where they were.
+ */
+function addDens(seed: number, places: Place[], patches: Patch[]) {
+  const rng = mulberry32((seed ^ 0xd3e5) >>> 0).rng;
+  const home = places.find((p) => p.kind === "home")!;
+  const wild = patches.filter((p) => p.terrain === "forest" || p.terrain === "hills" || p.terrain === "marsh");
+  DEN_FOES.forEach((foe, i) => {
+    for (let tries = 0; tries < 40; tries++) {
+      const patch = wild.length && rng() < 0.7 ? wild[Math.floor(rng() * wild.length)]! : null;
+      const p = patch ? { x: patch.x + (rng() - 0.5) * 40, y: patch.y + (rng() - 0.5) * 30 } : { x: 40 + rng() * (WORLD_W - 80), y: 40 + rng() * (WORLD_H - 80) };
+      if (p.x < 30 || p.y < 30 || p.x > WORLD_W - 30 || p.y > WORLD_H - 30) continue;
+      if (dist(p, home) < 170 || places.some((q) => dist(q, p) < (q.kind === "den" ? 140 : 80))) continue;
+      places.push({ id: `den-${i}`, kind: "den", name: DEN_NAME[foe]!, ref: foe, x: p.x, y: p.y });
+      break;
+    }
+  });
 }
 
 /** Is a point inside a patch (with its bumpy edge)? */
@@ -220,20 +245,41 @@ export const FACTION_FOE: Record<string, string> = { "red-fang": "goblins", "riv
 const WILD_FOES = ["wolves", "wolves", "bandits", "vermin"];
 export const BAND_NAME: Record<string, string> = { wolves: "Wolf pack", bandits: "Bandits", goblins: "Goblin raiders", undead: "The restless dead", vermin: "Giant rats", cultists: "Cultists", gnolls: "Gnoll war party" };
 
-/** A new band: from a lair (the faction's foes) or from the wilds (wolves in the forest…). */
-export function spawnBand(w: World, rng: () => number, id: string, renown: number, factions: Faction[]): Band {
-  const lairs = w.places.filter((p) => p.kind === "lair" && (factions.find((f) => f.id === p.ref)?.minRenown ?? 1) <= renown + 1);
-  const fromLair = lairs.length && rng() < 0.6 ? lairs[Math.floor(rng() * lairs.length)]! : null;
-  const foe = fromLair ? (FACTION_FOE[fromLair.ref ?? ""] ?? "bandits") : WILD_FOES[Math.floor(rng() * WILD_FOES.length)]!;
-  const start = fromLair ?? (() => {
+/**
+ * Where bands come from: the dens not cleared out and the lairs of factions
+ * the company has the renown to meet (and hasn't broken).
+ */
+export function bandCamps(w: World, renown: number, factions: Faction[], quiet: string[]): Place[] {
+  return w.places.filter((p) => !quiet.includes(p.id) && (p.kind === "den" || (p.kind === "lair" && (factions.find((f) => f.id === p.ref)?.minRenown ?? 1) <= renown + 1)));
+}
+
+/** A new band: from a camp (it stays near it) or out of the wilds (wolves in the forest…). */
+export function spawnBand(w: World, rng: () => number, id: string, camp: Place | null): Band {
+  const foe = camp ? (camp.kind === "den" ? (camp.ref ?? "wolves") : (FACTION_FOE[camp.ref ?? ""] ?? "bandits")) : WILD_FOES[Math.floor(rng() * WILD_FOES.length)]!;
+  const start = camp ?? (() => {
     const forests = w.patches.filter((p) => p.terrain === "forest");
     const f = forests[Math.floor(rng() * forests.length)];
     return f ? { x: f.x, y: f.y } : { x: rng() * WORLD_W, y: rng() * WORLD_H };
   })();
   const home = { x: start.x, y: start.y };
-  const band: Band = { id, foe, name: BAND_NAME[foe] ?? "Raiders", x: start.x, y: start.y, goal: home, home, ...(fromLair ? { from: fromLair.id } : {}) };
+  const band: Band = { id, foe, name: BAND_NAME[foe] ?? "Raiders", x: start.x, y: start.y, goal: home, home, ...(camp ? { from: camp.id } : {}) };
   return { ...band, goal: wanderGoal(w, band, rng) };
 }
+
+/**
+ * The next band to take the field, if there's room: each camp keeps a few
+ * close by, and only a stray or two roam the open country.
+ */
+export function nextBand(w: World, bands: Band[], rng: () => number, id: string, renown: number, factions: Faction[], quiet: string[]): Band | null {
+  const camps = bandCamps(w, renown, factions, quiet).filter((c) => bands.filter((b) => b.from === c.id && !b.contract).length < num("world.campBands"));
+  const strays = bands.filter((b) => !b.from && !b.contract).length < num("world.wildBands") + Math.floor(renown / 3);
+  const slots: (Place | null)[] = [...camps, ...(strays ? [null] : [])];
+  if (!slots.length) return null;
+  return spawnBand(w, rng, id, slots[Math.floor(rng() * slots.length)]!);
+}
+
+/** How far a band roams: camp bands stay close to home. */
+const rangeOf = (b: Band) => num(b.from ? "world.campRange" : "world.bandRange");
 
 /**
  * Where a band wanders next: somewhere on its own ground. Bandits keep to the
@@ -242,7 +288,7 @@ export function spawnBand(w: World, rng: () => number, id: string, renown: numbe
  */
 function wanderGoal(w: World, b: Band, rng: () => number): Pt {
   const home = b.home ?? { x: b.x, y: b.y };
-  const range = num("world.bandRange");
+  const range = rangeOf(b);
   if (b.foe === "bandits" && w.roads.length) {
     const near = w.roads.flatMap((r) => [0.25, 0.5, 0.75].map((t) => ({ x: r[0]!.x + (r[2]!.x - r[0]!.x) * t, y: r[0]!.y + (r[2]!.y - r[0]!.y) * t }))).filter((p) => dist(p, home) < range);
     if (near.length) return near[Math.floor(rng() * near.length)]!;
@@ -256,11 +302,11 @@ function wanderGoal(w: World, b: Band, rng: () => number): Pt {
 export function moveBands(w: World, bands: Band[], company: Pt, hours: number, rng: () => number): Band[] {
   const aggro = num("world.bandSight");
   const speed = num("world.bandSpeed");
-  const safe = w.places.filter((p) => p.kind !== "lair" && p.kind !== "site");
+  const safe = w.places.filter((p) => p.kind !== "lair" && p.kind !== "site" && p.kind !== "den");
   const sheltered = safe.some((p) => dist(p, company) < 28);
-  const leash = num("world.bandRange") * 1.5;
   return bands.map((b) => {
     const home = b.home ?? { x: b.x, y: b.y };
+    const leash = rangeOf(b) * 1.5;
     // It gives chase only on its own ground; past that it gives up and heads home.
     const chasing = !sheltered && dist(b, company) < aggro && dist(home, company) < leash;
     const strayed = !chasing && dist(b, home) > leash;

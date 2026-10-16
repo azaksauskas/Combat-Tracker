@@ -12,7 +12,7 @@ import { setupFor } from "./scenarios";
 import { startBattle, usePlay } from "./store";
 import { allFactions, enlist, grantChest, onRoadBattle, partyLevel, passTime, salvageBattle } from "./town-store";
 import { num } from "./tuning";
-import { BAND_NAME, bandAt, blankExplored, dist, explore, generateWorld, march, moveBands, spawnBand, type Band, type Place, type Pt, type World } from "./world";
+import { BAND_NAME, bandAt, bandCamps, blankExplored, dist, explore, generateWorld, march, moveBands, nextBand, spawnBand, type Band, type Place, type Pt, type World } from "./world";
 
 /**
  * The company on the march: a clock that runs only while it moves (paused,
@@ -76,11 +76,13 @@ export function enterWorld() {
     const home = w.places.find((p) => p.kind === "home")!;
     // A few bands are already out there.
     const rng = mulberry32(seed ^ 0xb4d5).rng;
-    const bands = Array.from({ length: 2 }, (_, i) => spawnBand(w, rng, `b-start-${i}`, doc.renown, allFactions())).filter((b) => dist(b, home) > num("world.bandSight"));
+    // Each camp has a band out already, and one stray roams the country.
+    const camps = bandCamps(w, doc.renown, allFactions(), quietCamps(doc, 0));
+    const bands = [...camps, null].map((c, i) => spawnBand(w, rng, `b-start-${i}`, c)).filter((b) => dist(b, home) > num("world.bandSight"));
     const explored = explore(blankExplored(), home, num("world.sight"));
     updatePlayer(id, (d) => ({
       ...d,
-      world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"], explored, provisions: 12, paidDay: 0, unpaid: {}, hungry: false, rep: {}, contracts: [], taken: [], horses: false },
+      world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"], explored, provisions: 12, paidDay: 0, unpaid: {}, hungry: false, rep: {}, contracts: [], taken: [], horses: false, cleared: {} },
     }));
   }
   const w = docOf()!.world!;
@@ -142,6 +144,15 @@ function stopClock() {
   timer = null;
 }
 
+/** Camps sending out no bands: dens cleared lately, lairs of broken factions. */
+function quietCamps(doc: ReturnType<typeof docOf>, hours: number): string[] {
+  const cleared = Object.entries(doc?.world?.cleared ?? {})
+    .filter(([, at]) => hours - at < num("world.denRegrow") * 24)
+    .map(([placeId]) => placeId);
+  const broken = (doc?.town?.threats ?? []).filter((t) => t.stage === "defeated").map((t) => `lair-${t.faction}`);
+  return [...cleared, ...broken];
+}
+
 /** One tick of the march. */
 function tick() {
   const s = useWorld.getState();
@@ -156,9 +167,9 @@ function tick() {
   let bands = moveBands(w, s.bands, step.pos, hours, rng);
   let lastSpawn = s.lastSpawn;
   const renown = docOf()?.renown ?? 1;
-  const cap = num("world.maxBands") + Math.floor(renown / 2);
-  if (bands.length < cap && s.hours + hours - lastSpawn >= num("world.spawnHours")) {
-    bands = [...bands, spawnBand(w, rng, `b${Math.floor(s.hours * 10)}`, renown, allFactions())];
+  if (s.hours + hours - lastSpawn >= num("world.spawnHours")) {
+    const band = nextBand(w, bands, rng, `b${Math.floor(s.hours * 10)}`, renown, allFactions(), quietCamps(docOf(), s.hours));
+    if (band) bands = [...bands, band];
     lastSpawn = s.hours + hours;
   }
   const caught = bandAt(bands, step.pos);
@@ -212,6 +223,16 @@ export function fightBand() {
   startBattle(sc, board, units, { stash: { ...(docOf()?.town?.stash ?? {}) } }, "town", { kind: "road", band: band.id, heroes: party.map((e) => e.key) });
 }
 
+/** Clear out a den: its whole band, at home, fights harder than one met on the road. */
+export function raidDen(place: Place) {
+  const party = chosenParty();
+  if (!party.length || place.kind !== "den") return;
+  const foe = place.ref ?? "wolves";
+  const sc = foeBattle(foe, partyLevel(party), party.length, "moderate", randomSeed(), `${place.name}`);
+  const { board, units } = setupFor(sc, party);
+  startBattle(sc, board, units, { stash: { ...(docOf()?.town?.stash ?? {}) } }, "town", { kind: "road", band: `den:${place.id}`, heroes: party.map((e) => e.key) });
+}
+
 /** Try to slip away: the party's best Stealth against DC 12; on a failure the band gets its fight. */
 export function slipAway(): boolean {
   const band = useWorld.getState().encounter;
@@ -238,7 +259,15 @@ onRoadBattle((bandId, won, game, battle) => {
   const s = useWorld.getState();
   const w = worldOf(docOf());
   if (!id || !w) return;
-  if (won) {
+  if (won && bandId.startsWith("den:")) {
+    // A cleared den: its bands scatter and it stays empty for a while.
+    const den = bandId.slice(4);
+    salvageBattle(game, battle);
+    grantChest(num("loot.patrolTier") + 1, battle);
+    useWorld.setState({ bands: s.bands.filter((b) => b.from !== den) });
+    updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, cleared: { ...d.world.cleared, [den]: s.hours } } } : d));
+    toast.success(`${w.places.find((p) => p.id === den)?.name ?? "The den"} is cleared out`);
+  } else if (won) {
     salvageBattle(game, battle);
     grantChest(num("loot.patrolTier"), battle);
     useWorld.setState({ bands: s.bands.filter((b) => b.id !== bandId) });

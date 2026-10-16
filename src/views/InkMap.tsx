@@ -331,7 +331,7 @@ export const InkPlace = memo(function InkPlace({ place: p, known, here }: { plac
       {settlement || p.kind === "home" ? (
         <polygon points={hexagon(r)} fill={PAPER} stroke={INK} strokeWidth={here ? 2.6 : 1.6} />
       ) : (
-        <circle r={r} fill={PAPER} stroke={p.kind === "lair" && known ? RED : INK} strokeWidth={here ? 2.6 : 1.4} strokeDasharray={known ? undefined : "3 3"} />
+        <circle r={r} fill={PAPER} stroke={(p.kind === "lair" || p.kind === "den") && known ? RED : INK} strokeWidth={here ? 2.6 : 1.4} strokeDasharray={known ? undefined : "3 3"} />
       )}
       {!known ? (
         <text y={5} textAnchor="middle" fontFamily={FONT} fontSize={15} fill={INK}>
@@ -364,6 +364,20 @@ export const InkPlace = memo(function InkPlace({ place: p, known, here }: { plac
           <Tower x={-6} y={-4} s={0.8} />
           <Tower x={4} y={-3} s={1.1} />
         </g>
+      ) : p.kind === "den" && p.ref === "bandits" ? (
+        <g>
+          <path d="M -9 6 L -2 -8 L 5 6 Z" fill={PAPER} stroke={INK} strokeWidth={1} />
+          <path d="M -2 -8 L -2 6 M -4 6 L -2 0 L 0 6" stroke={INK} strokeWidth={0.7} fill="none" />
+          <path d="M 4 -2 L 11 6 M 4 6 L 11 -2" stroke={INK} strokeWidth={0.6} />
+          <path d="M 7.5 4 Q 6 0 7.5 -3 Q 9 0 7.5 4" fill={RED} />
+        </g>
+      ) : p.kind === "den" ? (
+        <g>
+          <path d="M -11 6 Q -10 -3 -4 -7 Q 2 -10 7 -5 Q 11 -1 11 6 Z" fill={PAPER} stroke={INK} strokeWidth={1} />
+          <path d="M -5 6 Q -4 -2 0 -2 Q 4 -2 5 6 Z" fill={INK} />
+          <path d="M -9 1 l 2 -1 M 7 -1 l 2 1 M -6 -4 l 1.5 -0.5" stroke={INK} strokeWidth={0.5} />
+          <path d="M -10 8.5 l 3 -1 M -8.5 7 l 0 3 M 8 8 l 3 0.5" stroke={INK} strokeWidth={0.7} />
+        </g>
       ) : p.kind === "lair" ? (
         <g>
           <path d="M -10 7 Q -9 -9 0 -9 Q 9 -9 10 7 Z" fill={PAPER} stroke={INK} strokeWidth={1} />
@@ -381,7 +395,7 @@ export const InkPlace = memo(function InkPlace({ place: p, known, here }: { plac
         </g>
       )}
       {known && (
-        <text y={r + 13} textAnchor="middle" fontFamily={FONT} fontSize={settlement ? 14 : 12} fontStyle={p.kind === "lair" || p.kind === "site" ? "italic" : undefined} fill={INK} stroke={PAPER} strokeWidth={3.5} paintOrder="stroke">
+        <text y={r + 13} textAnchor="middle" fontFamily={FONT} fontSize={settlement ? 14 : 12} fontStyle={p.kind === "lair" || p.kind === "site" || p.kind === "den" ? "italic" : undefined} fill={INK} stroke={PAPER} strokeWidth={3.5} paintOrder="stroke">
           {p.name}
         </text>
       )}
