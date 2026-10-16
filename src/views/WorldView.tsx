@@ -5,9 +5,11 @@ import { canStrike, threatOf } from "../game/region";
 import { allFactions, liveHours, startTownBattle } from "../game/town-store";
 import { num } from "../game/tuning";
 import { TERRAIN, WORLD_H, WORLD_W, dist, inSight, isExplored, terrainAt, travelHours, type Place, type Pt } from "../game/world";
-import { afterOutcome, beginAt, boardAt, buyAt, canChoose, choose, enterWorld, fightBand, passBy, hireAt, marchTo, packRations, pauseMarch, raidDen, recruitsAt, resumeMarch, saveMarch, setSpeed, slipAway, takeContract, tradeHorses, useWorld, worldOf } from "../game/world-store";
+import { afterOutcome, beginAt, boardAt, buyAt, canChoose, choose, doDeed, doneToday, enterWorld, helloFrom, fightBand, passBy, talkTo, townsfolkAt, hireAt, marchTo, packRations, pauseMarch, raidDen, recruitsAt, resumeMarch, saveMarch, setSpeed, slipAway, takeContract, tradeHorses, useWorld, worldOf } from "../game/world-store";
 import { availableMembers, chosenParty, myCharacters } from "../game/party-store";
-import { isSettlement, priceOf, repText, sells, wageOf } from "../game/company";
+import { costOf, horsePriceAt, isSettlement, priceOf, repText, sells, wageOf } from "../game/company";
+import { BUILDING, DEEDS, ROLE, buildingsOf, deedCost } from "../game/settlement";
+import { SettlementScene, Figure, useTownUi } from "./SettlementScene";
 import { TRAITS } from "../game/roster";
 import { useActiveProfile, usePlayers } from "../store/players";
 import { EVENTS, eventDef, MARKS } from "../game/events";
@@ -36,6 +38,13 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
   const [zoom, setZoom] = useState(1.8);
   const [look, setLook] = useState<Pt | null>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean; start: Pt } | null>(null);
+  // Arriving at a settlement goes into its streets; the map is one click away.
+  const [inside, setInside] = useState(false);
+  useEffect(() => {
+    const place = s.at ? worldOf(usePlayers.getState().docs[id])?.places.find((p) => p.id === s.at) : undefined;
+    setInside(isSettlement(place));
+    if (isSettlement(place)) useTownUi.setState({ building: "board" });
+  }, [s.at, id]);
   // The land is drawn once into a picture; the fog only changes when new ground is seen.
   const { url: land, baker } = useBakedLand(world);
   const fog = useFogImage(s.explored);
@@ -113,6 +122,9 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_20rem]">
+      {inside && here && isSettlement(here) ? (
+        <SettlementScene place={here} folk={townsfolkAt(here)} onLeave={() => setInside(false)} />
+      ) : (
       <div className="relative self-start overflow-hidden rounded-xl border-2 shadow-inner" style={{ borderColor: INK, background: PAPER }}>
         <svg
           ref={svg}
@@ -157,7 +169,6 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
         <div className="pointer-events-none absolute right-2 bottom-2">
           <Compass />
         </div>
-        {baker}
         <div className="absolute top-2 right-2 flex flex-col gap-1">
           {[
             ["+", () => setZoom((z) => clamp(z * 1.3, 1, 4)), "Zoom in"],
@@ -177,6 +188,8 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
           ))}
         </div>
       </div>
+      )}
+      {baker}
       <aside className="space-y-3">
         <section className="space-y-2 rounded-lg border border-line bg-surface p-3 shadow" aria-label="The march">
           <h3 className="text-xs font-bold tracking-wider text-faint uppercase">🚩 The company</h3>
@@ -209,11 +222,12 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
           <p className="text-[11px] text-faint">Roads are fast; forests, hills and marsh are slow. Bands that spot you give chase; settlements are safe ground.</p>
         </section>
         <CompanyPurse />
-        {here && <PlacePanel place={here} onGoTown={onGoTown} onAdventure={onAdventure} />}
+        {here && <PlacePanel place={here} onGoTown={onGoTown} onAdventure={onAdventure} inside={inside} onEnter={() => setInside(true)} />}
         <Legend />
       </aside>
 
       <Happening />
+      {here && <Talk place={here} />}
       <Dialog open={!!s.encounter} onClose={() => {}} title={s.encounter ? `${FOE_ICON[s.encounter.foe] ?? "⚔"} ${s.encounter.name}!` : ""}>
         {s.encounter && (
           <div className="space-y-3">
@@ -233,7 +247,7 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
   );
 }
 
-function PlacePanel({ place, onGoTown, onAdventure }: { place: Place; onGoTown: () => void; onAdventure: () => void }) {
+function PlacePanel({ place, onGoTown, onAdventure, inside, onEnter }: { place: Place; onGoTown: () => void; onAdventure: () => void; inside: boolean; onEnter: () => void }) {
   const id = useActiveProfile((s) => s.id)!;
   const doc = usePlayers((s) => s.docs[id]);
   const faction = place.kind === "lair" ? allFactions().find((f) => f.id === place.ref) : undefined;
@@ -258,7 +272,16 @@ function PlacePanel({ place, onGoTown, onAdventure }: { place: Place; onGoTown: 
           </div>
         </>
       )}
-      {isSettlement(place) && <Settlement place={place} />}
+      {isSettlement(place) && (
+        <>
+          {!inside && (
+            <button className="btn btn-primary" onClick={onEnter}>
+              🚪 Into {place.name}
+            </button>
+          )}
+          <Settlement place={place} />
+        </>
+      )}
       {place.kind === "site" && (
         <>
           <p className="text-sm text-muted">Something waits here.</p>
@@ -299,6 +322,41 @@ function PlacePanel({ place, onGoTown, onAdventure }: { place: Place; onGoTown: 
         </>
       )}
     </section>
+  );
+}
+
+/** Talking to someone in the street: a greeting, then what they know. */
+function Talk({ place }: { place: Place }) {
+  const who = useTownUi((s) => s.talk);
+  const [said, setSaid] = useState<{ hello: string; told: string } | null>(null);
+  useEffect(() => setSaid(who ? { hello: helloFrom(place, who), told: "" } : null), [who, place]);
+  const close = () => useTownUi.setState({ talk: null });
+  return (
+    <Dialog open={!!who} onClose={close} title={who ? `${who.name}, ${ROLE[who.role].title}` : ""}>
+      {who && said && (
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
+            <svg viewBox="-20 -62 40 66" className="h-24 w-16 shrink-0" aria-hidden>
+              <Figure role={who.role} s={1.3} />
+            </svg>
+            <div className="space-y-2">
+              <p className="font-serif italic">“{said.hello}”</p>
+              {said.told && <p className="text-sm">{said.told}</p>}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            {!said.told && (
+              <button className="btn btn-primary" onClick={() => setSaid({ ...said, told: talkTo(place, who).told })}>
+                Ask what they know
+              </button>
+            )}
+            <button className="btn" onClick={close}>
+              Farewell
+            </button>
+          </div>
+        </div>
+      )}
+    </Dialog>
   );
 }
 
@@ -445,26 +503,36 @@ function Settlement({ place }: { place: Place }) {
   const id = useActiveProfile((s) => s.id)!;
   const doc = usePlayers((s) => s.docs[id]);
   useWorld((s) => s.hours);
-  const [tab, setTab] = useState<"market" | "work" | "recruits">("work");
+  const building = useTownUi((s) => s.building);
   if (!doc?.world || !doc.town) return null;
   const rep = doc.world.rep[place.id] ?? 0;
   const board = boardAt(place);
   const recruits = recruitsAt(place);
-  const tabs = (["work", "market", ...(place.kind === "village" ? [] : ["recruits"])] as const).filter(Boolean) as ("market" | "work" | "recruits")[];
+  const buildings = buildingsOf(place);
+  const tab = buildings.includes(building) ? building : "board";
+  const folk = townsfolkAt(place).filter((f) => f.at === tab);
+  const deeds = DEEDS.filter((d) => d.building === tab);
+  // What each building shows: the board's work, the market's goods, the tavern's sellswords…
+  const shows = {
+    work: tab === "board" || tab === "court",
+    market: tab === "market" || tab === "docks",
+    recruits: (tab === "tavern" || tab === "hall") && place.kind !== "village",
+  };
   return (
     <div className="space-y-2 text-sm">
       <p className="text-muted">
         A {place.kind} known for {place.known}. The company is <strong className="text-strong">{repText(rep)}</strong> here ({rep >= 0 ? "+" : ""}
         {rep}).
       </p>
-      <div className="flex gap-1" role="tablist">
-        {tabs.map((k) => (
-          <button key={k} role="tab" aria-selected={tab === k} className={clsx("btn px-2 py-0 text-xs", tab === k && "border-accent text-accent")} onClick={() => setTab(k)}>
-            {k === "work" ? `📜 Work (${board.length})` : k === "market" ? "⚖ Market" : `🍺 Sellswords (${recruits.length})`}
+      <div className="flex flex-wrap gap-1" role="tablist">
+        {buildings.map((k) => (
+          <button key={k} role="tab" aria-selected={tab === k} className={clsx("btn px-2 py-0 text-xs", tab === k && "border-accent text-accent")} onClick={() => useTownUi.setState({ building: k })}>
+            {BUILDING[k].icon} {BUILDING[k].name}
+            {k === "board" ? ` (${board.length})` : ""}
           </button>
         ))}
       </div>
-      {tab === "work" && (
+      {shows.work && (
         <ul className="space-y-1">
           {board.map((c) => (
             <li key={c.id} className="rounded border border-line bg-surface-2/60 p-2 text-xs">
@@ -480,7 +548,7 @@ function Settlement({ place }: { place: Place }) {
           {board.length === 0 && <li className="text-xs text-muted italic">Nothing posted. New work comes every few days.</li>}
         </ul>
       )}
-      {tab === "market" && (
+      {shows.market && (
         <ul className="space-y-1 text-xs">
           {place.kind !== "village" && (
             <li className="flex items-center gap-2 rounded border border-line bg-surface-2/60 px-2 py-1">
@@ -489,11 +557,11 @@ function Settlement({ place }: { place: Place }) {
               </span>
               {doc.world.horses ? (
                 <button className="btn px-2 py-0 text-xs" onClick={() => tradeHorses(place, false)}>
-                  Sell · 🪙 {Math.round(num("world.horsePrice") / 2)}
+                  Sell · 🪙 {Math.round(horsePriceAt(place) / 2)}
                 </button>
               ) : (
-                <button className="btn px-2 py-0 text-xs" disabled={doc.town!.gold < num("world.horsePrice")} onClick={() => tradeHorses(place, true)}>
-                  Buy · 🪙 {num("world.horsePrice")}
+                <button className="btn px-2 py-0 text-xs" disabled={doc.town!.gold < horsePriceAt(place)} onClick={() => tradeHorses(place, true)}>
+                  Buy · 🪙 {horsePriceAt(place)}
                 </button>
               )}
             </li>
@@ -506,8 +574,8 @@ function Settlement({ place }: { place: Place }) {
                   {item === "ration" ? "🍖 Rations" : "🧪 Potion of Healing"} · 🪙 {price} each
                 </span>
                 {(item === "ration" ? [5, 10] : [1]).map((n) => (
-                  <button key={n} className="btn px-2 py-0 text-xs" disabled={doc.town!.gold < price * n} onClick={() => buyAt(place, item, n)}>
-                    +{n}
+                  <button key={n} className="btn px-2 py-0 text-xs" disabled={doc.town!.gold < costOf(item, place, rep, n)} onClick={() => buyAt(place, item, n)} title={`${costOf(item, place, rep, n)} gold`}>
+                    +{n} · 🪙 {costOf(item, place, rep, n)}
                   </button>
                 ))}
               </li>
@@ -515,7 +583,7 @@ function Settlement({ place }: { place: Place }) {
           })}
         </ul>
       )}
-      {tab === "recruits" && (
+      {shows.recruits && (
         <ul className="space-y-1">
           {recruits.map((c) => (
             <li key={c.id} className="rounded border border-line bg-surface-2/60 p-2 text-xs">
@@ -540,6 +608,30 @@ function Settlement({ place }: { place: Place }) {
           ))}
           {recruits.length === 0 && <li className="text-xs text-muted italic">Nobody looking for work. More come with renown and a good name here.</li>}
         </ul>
+      )}
+      {tab === "tavern" && place.kind === "village" && <p className="text-xs text-muted italic">A village alehouse: no sellswords here, but plenty of talk.</p>}
+      {tab === "forge" && <p className="text-xs text-muted italic">The smiths are busy with the duke's order. Before long they'll take orders from a company too.</p>}
+      {deeds.map((d) => {
+        const cost = deedCost(d, place);
+        const done = doneToday(`${d.id}:${place.id}`);
+        return (
+          <div key={d.id} className="flex items-center gap-2 rounded border border-line bg-surface-2/60 px-2 py-1 text-xs">
+            <span className="flex-1">{d.label}</span>
+            <button className="btn px-2 py-0 text-xs" disabled={done || doc.town!.gold < cost} onClick={() => doDeed(place, d.id)}>
+              {done ? "Done today" : cost ? `🪙 ${cost}` : "Go"}
+            </button>
+          </div>
+        );
+      })}
+      {folk.length > 0 && (
+        <div className="space-y-1">
+          <h4 className="text-xs font-bold tracking-wider text-faint uppercase">People here</h4>
+          {folk.map((f) => (
+            <button key={f.id} className="btn w-full justify-start px-2 py-0.5 text-xs" onClick={() => useTownUi.setState({ talk: f })}>
+              💬 {f.name}, {ROLE[f.role].title}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

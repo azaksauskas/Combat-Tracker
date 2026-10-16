@@ -173,6 +173,10 @@ export const PlayerDocSchema = z.object({
       lastEvent: z.number().catch(0),
       /** Landmarks already looked into. */
       done: z.array(z.string()).catch([]),
+      /** Townsfolk who have told the company what they know. */
+      talked: z.array(z.string()).catch([]),
+      /** Things done once a day in a settlement: "deed:place" → day. */
+      daily: z.record(z.string(), z.number()).catch({}),
       /** Rations the company carries. */
       provisions: z.number().catch(0),
       /** The last world day wages were paid for. */

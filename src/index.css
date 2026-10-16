@@ -355,6 +355,31 @@
     opacity: 1;
   }
 }
+@keyframes ink-walk {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(var(--walk, 300px));
+  }
+}
+@keyframes ink-drift {
+  from {
+    transform: translateX(-200px);
+  }
+  to {
+    transform: translateX(1200px);
+  }
+}
+@keyframes ink-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(2px) rotate(2deg);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .motion-village,
   .ink-anim,

@@ -21,7 +21,7 @@ describe("running the company", () => {
   });
 
   it("prices: cities cost more, a good name helps; villages sell only food", () => {
-    expect(priceOf("ration", village, 0)).toBe(1);
+    expect(priceOf("ration", { ...village, known: "a holy well" }, 0)).toBe(1);
     expect(priceOf("potion", city, 0)).toBeGreaterThan(priceOf("potion", city, 8));
     expect(sells(village)).toEqual(["ration"]);
     expect(sells(city)).toContain("potion");

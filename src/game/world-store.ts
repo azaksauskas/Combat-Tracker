@@ -4,7 +4,7 @@ import type { PlayerDoc } from "../domain/players";
 import { addChronicle, updatePlayer, useActiveProfile, usePlayers } from "../store/players";
 import { allAdventures, beginAdventure, useCampaign } from "./campaign-store";
 import { availableMembers, chosenParty, myCharacters } from "./party-store";
-import { addRep, contractsAt, isSettlement, payday, priceOf, type ActiveContract, type Contract } from "./company";
+import { addRep, boardBatch, contractsAt, costOf, horsePriceAt, isSettlement, payday, type ActiveContract, type Contract } from "./company";
 import { makeCandidates, type Candidate } from "./roster";
 import { foeBattle } from "./patrol";
 import { mulberry32, randomSeed } from "./rng";
@@ -15,6 +15,7 @@ import { num } from "./tuning";
 import { abilityMod } from "../domain/statblock";
 import { eventDef, resolveChoice, type Choice, type Outcome } from "./events";
 import { SKILL_ABILITY } from "./skills";
+import { DEEDS, characterOf, deedCost, greeting, townsfolkOf, type Townsfolk } from "./settlement";
 import { BAND_NAME, bandAt, bandCamps, blankExplored, dist, explore, generateWorld, isExplored, march, moveBands, nextBand, spawnBand, spawnEvent, type Band, type WorldEvent, type Place, type Pt, type World } from "./world";
 
 /**
@@ -94,7 +95,7 @@ export function enterWorld() {
     const explored = explore(blankExplored(), home, num("world.sight"));
     updatePlayer(id, (d) => ({
       ...d,
-      world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"], explored, provisions: 12, paidDay: 0, unpaid: {}, hungry: false, rep: {}, contracts: [], taken: [], horses: false, cleared: {}, events: [], lastEvent: 0, done: [] },
+      world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"], explored, provisions: 12, paidDay: 0, unpaid: {}, hungry: false, rep: {}, contracts: [], taken: [], horses: false, cleared: {}, events: [], lastEvent: 0, done: [], talked: [], daily: {} },
     }));
   }
   const w = docOf()!.world!;
@@ -316,12 +317,12 @@ export function afterOutcome() {
   resumeMarch();
 }
 
-function applyOutcome(o: Outcome, what: string) {
+function applyOutcome(o: Outcome & { revealAny?: Outcome["reveal"] }, what: string): Place[] {
   const id = me();
   const doc = docOf();
   const w = worldOf(doc);
   const s = useWorld.getState();
-  if (!id || !doc?.world || !doc.town || !w || !s.pos) return;
+  if (!id || !doc?.world || !doc.town || !w || !s.pos) return [];
   const pos = s.pos;
   const settled = w.places.filter(isSettlement);
   const nearest = settled.reduce<Place | undefined>((best, p) => (!best || dist(p, pos) < dist(best, pos) ? p : best), undefined);
@@ -330,6 +331,12 @@ function applyOutcome(o: Outcome, what: string) {
   for (const kind of o.reveal ?? []) {
     const p = w.places
       .filter((q) => q.kind === kind && !doc.world!.seen.includes(q.id) && !marked.includes(q) && !isExplored(s.explored, q))
+      .sort((a, b) => dist(a, pos) - dist(b, pos))[0];
+    if (p) marked.push(p);
+  }
+  if (o.revealAny?.length) {
+    const p = w.places
+      .filter((q) => o.revealAny!.includes(q.kind as never) && !doc.world!.seen.includes(q.id) && !isExplored(s.explored, q))
       .sort((a, b) => dist(a, pos) - dist(b, pos))[0];
     if (p) marked.push(p);
   }
@@ -361,6 +368,60 @@ function applyOutcome(o: Outcome, what: string) {
   if (o.hours) useWorld.setState((st) => ({ hours: st.hours + o.hours!, bank: st.bank + o.hours! }));
   if (o.chest) grantChest(o.chest, what);
   if (marked.length) toast.success(`Marked on the map: ${marked.map((p) => p.name).join(", ")}`);
+  return marked;
+}
+
+// --- Inside a settlement ------------------------------------------------------------------
+
+const today = () => Math.floor(useWorld.getState().hours / 24);
+
+/** The people about in a settlement now. */
+export function townsfolkAt(place: Place): Townsfolk[] {
+  const w = worldOf(docOf());
+  return w ? townsfolkOf(w.seed, place, boardBatch(useWorld.getState().hours)) : [];
+}
+
+/** Has the company already done this here today (or talked to them this time)? */
+export const doneToday = (key: string) => (docOf()?.world?.daily[key] ?? -1) === today();
+
+/** What someone says on being greeted. */
+export function helloFrom(place: Place, f: Townsfolk): string {
+  const doc = docOf();
+  return greeting(f, doc?.world?.rep[place.id] ?? 0, worldOf(doc)?.seed ?? 0);
+}
+
+/** Talk to someone: a greeting, and (once) a place they know about. */
+export function talkTo(place: Place, f: Townsfolk): { hello: string; told: string } {
+  const id = me();
+  const doc = docOf();
+  const w = worldOf(doc);
+  const rep = doc?.world?.rep[place.id] ?? 0;
+  const hello = greeting(f, rep, w?.seed ?? 0);
+  if (!id || !doc?.world) return { hello, told: "" };
+  if (doc.world.talked.includes(f.id)) return { hello, told: "They've told you all they know." };
+  // A hated company gets nothing out of anyone.
+  if (rep <= -6) return { hello, told: "They turn their back on you." };
+  const marked = applyOutcome({ text: "", revealAny: f.knows }, "");
+  updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, talked: [...d.world.talked, f.id].slice(-300) } } : d));
+  return { hello, told: marked.length ? `They tell you about ${marked[0]!.name} and mark it on your map.` : "They know nothing you don't already." };
+}
+
+/** Do something at a building (buy a round, give alms…), once a day. */
+export function doDeed(place: Place, deedId: string) {
+  const id = me();
+  const doc = docOf();
+  const deed = DEEDS.find((d) => d.id === deedId);
+  if (!id || !doc?.world || !doc.town || !deed) return;
+  const key = `${deed.id}:${place.id}`;
+  if (doneToday(key)) return void toast.error("Already done here today");
+  const cost = deedCost(deed, place);
+  if (doc.town.gold < cost) return void toast.error(`Needs ${cost} gold`);
+  updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, daily: { ...d.world.daily, [key]: today() } } } : d));
+  // Reputation is with this settlement, not the nearest one.
+  applyOutcome({ text: deed.text, gold: -cost, provisions: deed.provisions, hours: deed.hours, reveal: deed.reveal, revealAny: deed.revealAny }, deed.label);
+  if (deed.rep) updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, rep: addRep(d.world.rep, place.id, deed.rep!) } } : d));
+  toast.success(deed.text);
+  saveMarch();
 }
 
 // --- Bands on the road --------------------------------------------------------------------
@@ -552,7 +613,7 @@ export function buyAt(place: Place, item: "ration" | "potion", count: number) {
   const id = me();
   const doc = docOf();
   if (!id || !doc?.world || !doc.town || !isSettlement(place)) return;
-  const cost = priceOf(item, place, doc.world.rep[place.id] ?? 0) * count;
+  const cost = costOf(item, place, doc.world.rep[place.id] ?? 0, count);
   if (doc.town.gold < cost) return void toast.error(`Needs ${cost} gold`);
   updatePlayer(id, (d) =>
     d.world && d.town
@@ -584,7 +645,7 @@ export function recruitsAt(place: Place): Candidate[] {
   const rep = doc.world.rep[place.id] ?? 0;
   const score = Math.max(0, doc.renown * 10 + rep * num("company.recruitScorePerRep"));
   const seed = (w.seed ^ [...place.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 5) ^ (batch * 7907)) >>> 0;
-  return makeCandidates(seed, `rec-${place.id}-${batch}`, place.kind === "city" ? 3 : 2, Math.max(1, doc.renown), score).filter((c) => !doc.world!.taken.includes(c.id));
+  return makeCandidates(seed, `rec-${place.id}-${batch}`, (place.kind === "city" ? 3 : 2) + (characterOf(place).extraRecruits ?? 0), Math.max(1, doc.renown), score).filter((c) => !doc.world!.taken.includes(c.id));
 }
 
 export function hireAt(place: Place, c: Candidate) {
@@ -598,7 +659,7 @@ export function tradeHorses(place: Place, buy: boolean) {
   const id = me();
   const doc = docOf();
   if (!id || !doc?.world || !doc.town || (place.kind !== "town" && place.kind !== "city")) return;
-  const price = num("world.horsePrice");
+  const price = horsePriceAt(place);
   if (buy) {
     if (doc.world.horses) return;
     if (doc.town.gold < price) return void toast.error(`Needs ${price} gold`);

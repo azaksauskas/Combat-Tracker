@@ -15,7 +15,7 @@ export const INK = "#1d1a16";
 export const PAPER = "#f6f1e6";
 const WASH = "#d5e4ec";
 export const RED = "#a8322a";
-const FONT = "'IM Fell English', 'Cinzel', serif";
+export const FONT = "'IM Fell English', 'Cinzel', serif";
 
 /** Points spread over an area (jittered grid), kept where `keep` says. */
 function scatter(rng: () => number, x0: number, y0: number, x1: number, y1: number, step: number, keep: (p: Pt) => boolean): Pt[] {
@@ -479,10 +479,10 @@ export function Compass() {
   );
 }
 
-const anim = (name: string, s: number, delay = 0, timing = "ease-in-out") => ({ animation: `${name} ${s}s ${timing} ${delay}s infinite` });
+export const anim = (name: string, s: number, delay = 0, timing = "ease-in-out") => ({ animation: `${name} ${s}s ${timing} ${delay}s infinite` });
 
 /** Smoke rising from a point. */
-function Smoke({ x, y }: { x: number; y: number }) {
+export function Smoke({ x, y }: { x: number; y: number }) {
   return (
     <g pointerEvents="none">
       {[0, 1, 2].map((i) => (
@@ -493,7 +493,7 @@ function Smoke({ x, y }: { x: number; y: number }) {
 }
 
 /** A little hooded walker. */
-function Walker({ x, y, delay = 0, pack }: { x: number; y: number; delay?: number; pack?: boolean }) {
+export function Walker({ x, y, delay = 0, pack }: { x: number; y: number; delay?: number; pack?: boolean }) {
   return (
     <g className="ink-anim-base" style={anim("walk-bob", 0.9, delay)}>
       <path d={`M ${x - 2} ${y} L ${x} ${y - 7} L ${x + 2} ${y} Z`} fill={PAPER} stroke={INK} strokeWidth={0.8} />

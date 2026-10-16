@@ -764,6 +764,33 @@ becomes the company's camp.
     found by exploring and looked into once: the watchtower shows the land
     for miles, the hermit marks every den near her, the battlefield may
     wake its dead.
+- **Inside a settlement (Battle Brothers style).**
+  - Arriving at a village, town or city opens its streets, drawn in ink: a
+    road with the settlement's buildings along it, houses and trees
+    behind, a palisade round a town and stone walls round a city. Life
+    moves: chimney smoke, passers-by, a windmill turning, a tavern sign
+    and banners swinging, a barge bobbing at the quay, stars over the
+    college. "Back to the map" returns to the world; "Into …" goes back in.
+  - Every settlement has a notice board (contracts), a market, a tavern
+    and a temple, plus the building it's known for: a farm (bread at 60%),
+    a hunters' lodge (hunts pay 15% more), a forge (crafting comes next),
+    a quay (cheaper potions, horses at 75%), a mercenary hall (two more
+    sellswords), a college, the duke's court (work pays 25% more, one more
+    contract), or a famous temple (cheaper healing draughts). Clicking a
+    building opens it in the side panel.
+  - Once a day per settlement the company can buy the house a round (a
+    rumour marks a place), give alms (+2 reputation), help in the fields
+    (6 hours for 5 rations and goodwill), hire a tracker (marks two dens),
+    consult the sages (a ruin and a landmark), or pay court to the duke
+    (+3 reputation). Costs grow with the place (town ×1.5, city ×2).
+  - Three to five townsfolk stand about (always the reeve; then guards,
+    merchants, farmers, priests, hunters, a bard, a child, the smith, a
+    sage), new ones every few days. Clicking one opens a talk: a greeting
+    coloured by the company's name here, and once each, what they know: a
+    den, lair, ruin or landmark marked on the map. A hated company learns
+    nothing.
+  - Prices are per item to a tenth of a gold; a purchase costs the total,
+    rounded up.
 
 ## Future ideas
 

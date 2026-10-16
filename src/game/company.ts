@@ -1,5 +1,6 @@
 import { FOES } from "./patrol";
 import { mulberry32 } from "./rng";
+import { characterOf } from "./settlement";
 import { num } from "./tuning";
 import { FACTION_FOE, dist, travelHours, type Place, type Pt, type World } from "./world";
 
@@ -19,12 +20,17 @@ export const repText = (rep: number) => (rep >= 6 ? "beloved" : rep >= 3 ? "welc
 const clampRep = (r: number) => Math.max(-10, Math.min(10, r));
 export const addRep = (reps: Record<string, number>, placeId: string, n: number) => ({ ...reps, [placeId]: clampRep((reps[placeId] ?? 0) + n) });
 
-/** Prices in a settlement: bigger places cost more; reputation helps. */
+/** Prices in a settlement, per item (to a tenth of a gold): bigger places cost more; reputation helps. */
 export function priceOf(item: "ration" | "potion", place: Place, rep: number): number {
   const size = place.kind === "city" ? 1.4 : place.kind === "town" ? 1.15 : 1;
   const base = item === "ration" ? num("company.rationPrice") : num("company.potionPrice");
-  return Math.max(1, Math.round(base * size * (1 - 0.03 * rep)));
+  const local = (item === "ration" ? characterOf(place).rations : characterOf(place).potions) ?? 1;
+  return Math.max(0.1, Math.round(base * size * local * (1 - 0.03 * rep) * 10) / 10);
 }
+/** What a number of them costs, in whole gold. */
+export const costOf = (item: "ration" | "potion", place: Place, rep: number, count: number) => Math.max(1, Math.ceil(priceOf(item, place, rep) * count - 1e-9));
+/** Horses for the company here (cheaper where there's a river market). */
+export const horsePriceAt = (place: Place) => Math.round(num("world.horsePrice") * (characterOf(place).horses ?? 1));
 /** What a settlement sells. */
 export const sells = (place: Place): ("ration" | "potion")[] => (place.kind === "village" ? ["ration"] : ["ration", "potion"]);
 
@@ -64,8 +70,8 @@ export function contractsAt(w: World, place: Place, hours: number, level: number
   if (!isSettlement(place)) return [];
   const batch = boardBatch(hours);
   const rng = mulberry32((w.seed ^ hashOf(place.id) ^ (batch * 104729)) >>> 0).rng;
-  const count = place.kind === "city" ? 3 : place.kind === "town" ? 2 : 1;
-  const pay = 1 + 0.05 * rep;
+  const count = (place.kind === "city" ? 3 : place.kind === "town" ? 2 : 1) + (characterOf(place).extraWork ?? 0);
+  const pay = (1 + 0.05 * rep) * (characterOf(place).pay ?? 1);
   const others = w.places.filter((p) => isSettlement(p) && p.id !== place.id);
   const lairs = w.places.filter((p) => p.kind === "lair");
   const out: Contract[] = [];
