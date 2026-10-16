@@ -765,12 +765,16 @@ becomes the company's camp.
     for miles, the hermit marks every den near her, the battlefield may
     wake its dead.
 - **Inside a settlement (Battle Brothers style).**
-  - Arriving at a village, town or city opens its streets, drawn in ink: a
-    road with the settlement's buildings along it, houses and trees
-    behind, a palisade round a town and stone walls round a city. Life
-    moves: chimney smoke, passers-by, a windmill turning, a tavern sign
-    and banners swinging, a barge bobbing at the quay, stars over the
-    college. "Back to the map" returns to the world; "Into …" goes back in.
+  - Arriving at a village, town or city opens its plan, seen from above
+    like a hand-drawn D&D town map in the world map's ink: roads with
+    dotted edges meeting at the market square, hatched roofs with
+    chimneys and shadows along them, the buildings that matter round the
+    square, copses, fenced fields, sometimes a river with a bridge, a
+    palisade round a town and stone walls with towers round a city. Each
+    place is drawn the same way every visit; a village is seen close up, a
+    city whole. Life moves: chimney smoke, people and carts on the roads,
+    a windmill turning, the river flowing, a boat bobbing at the quay,
+    banners. "Back to the map" returns to the world; "Into …" goes back in.
   - Every settlement has a notice board (contracts), a market, a tavern
     and a temple, plus the building it's known for: a farm (bread at 60%),
     a hunters' lodge (hunts pay 15% more), a forge (crafting comes next),

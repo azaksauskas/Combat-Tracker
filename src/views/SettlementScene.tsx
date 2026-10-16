@@ -1,296 +1,21 @@
-import type { CSSProperties, ReactNode } from "react";
+import { memo, useMemo, type ReactNode } from "react";
 import { create } from "zustand";
 import { mulberry32 } from "../game/rng";
-import { BUILDING, buildingsOf, characterOf, ROLE, type Building, type Role, type Townsfolk } from "../game/settlement";
+import { BUILDING, characterOf, ROLE, type Building, type Role, type Townsfolk } from "../game/settlement";
+import { PLAN_H, PLAN_W, planOf, viewOf, type P, type Plan } from "../game/townplan";
 import type { Place } from "../game/world";
-import { FONT, INK, PAPER, RED, Smoke, anim } from "./InkMap";
+import { Compass, FONT, INK, InkDefs, PAPER, RED, Smoke, anim } from "./InkMap";
 
 /**
- * A settlement seen from the street, drawn in ink (Battle Brothers style):
- * its buildings along a road, each one clickable, townsfolk to talk to, and
- * the small life of the place (smoke, walkers, a turning mill, swinging signs).
+ * A settlement seen from above, like a hand-drawn D&D town map in the same
+ * ink as the world map: roads meeting at the market square, the buildings
+ * that matter (clickable), houses, trees, fields, a river, walls, and the
+ * small life of the place (smoke, people and carts on the roads, a turning
+ * mill, flowing water). Townsfolk stand about to be talked to.
  */
 
 /** Which building is open in the side panel, and who the company is talking to. */
 export const useTownUi = create<{ building: Building; talk: Townsfolk | null }>(() => ({ building: "board", talk: null }));
-
-const W = 1000;
-const H = 490;
-const GROUND = 352;
-
-const hashOf = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 11);
-
-const line = { stroke: INK, strokeWidth: 1.6, fill: PAPER, strokeLinejoin: "round" as const };
-const thin = { stroke: INK, strokeWidth: 0.9, fill: "none" };
-
-/** A pitched-roof house, bottom centre at 0,0. */
-function House({ w = 70, h = 50, roof = 34, x = 0, chimney, door = true }: { w?: number; h?: number; roof?: number; x?: number; chimney?: boolean; door?: boolean }) {
-  return (
-    <g transform={`translate(${x} 0)`}>
-      {chimney && <rect x={w / 4} y={-h - roof + 4} width={8} height={20} {...line} />}
-      <rect x={-w / 2} y={-h} width={w} height={h} {...line} />
-      <path d={`M ${-w / 2 - 6} ${-h} L 0 ${-h - roof} L ${w / 2 + 6} ${-h} Z`} {...line} />
-      {/* Thatch strokes */}
-      {Array.from({ length: 6 }, (_, i) => (
-        <path key={i} d={`M ${-w / 2 + i * (w / 6)} ${-h - 2} l 6 -${roof * 0.5}`} {...thin} />
-      ))}
-      {door && <path d={`M -7 0 L -7 -20 Q 0 -27 7 -20 L 7 0`} {...line} />}
-      <rect x={-w / 2 + 8} y={-h + 12} width={12} height={11} {...line} strokeWidth={1} />
-      <path d={`M ${-w / 2 + 14} ${-h + 12} v 11 M ${-w / 2 + 8} ${-h + 17.5} h 12`} {...thin} />
-      {chimney && (
-        <g transform={`translate(${w / 4 + 4} ${-h - roof})`}>
-          <g transform="scale(3)">
-            <Smoke x={0} y={0} />
-          </g>
-        </g>
-      )}
-    </g>
-  );
-}
-
-function Pine({ x, s = 1 }: { x: number; s?: number }) {
-  return (
-    <g transform={`translate(${x} 0) scale(${s})`}>
-      <g className="ink-anim-base" style={anim("sway", 5 + (x % 3), (x % 7) / 3)}>
-        <path d="M 0 -70 L -16 -30 L -8 -30 L -20 0 L 20 0 L 8 -30 L 16 -30 Z" {...line} strokeWidth={1.3} />
-        <path d="M -8 -18 l 6 -6 M 4 -40 l 5 -5 M -3 -52 l 4 -4" {...thin} />
-      </g>
-      <rect x={-2.5} y={0} width={5} height={8} fill={INK} />
-    </g>
-  );
-}
-
-/** Each building, bottom centre at 0,0, about 150 wide. */
-function BuildingArt({ kind, place }: { kind: Building; place: Place }) {
-  switch (kind) {
-    case "board":
-      return (
-        <g>
-          <House w={110} h={62} roof={40} chimney />
-          {/* The notice board in front, papers flapping */}
-          <g transform="translate(70 0)">
-            <path d="M -18 0 V -46 M 18 0 V -46" stroke={INK} strokeWidth={3} />
-            <rect x={-24} y={-62} width={48} height={30} {...line} />
-            <path d="M -28 -62 L 0 -72 L 28 -62" {...line} />
-            {[-14, 0, 12].map((x, i) => (
-              <rect key={x} className="ink-anim-base" x={x - 5} y={-58 + (i % 2) * 4} width={10} height={13} fill={PAPER} stroke={INK} strokeWidth={0.8} style={anim("sway", 2 + i * 0.4, i * 0.3)} />
-            ))}
-          </g>
-        </g>
-      );
-    case "market":
-      return (
-        <g>
-          {[-50, 10, 68].map((x, i) => (
-            <g key={x} transform={`translate(${x} 0)`}>
-              <path d="M -26 0 V -44 M 26 0 V -44" stroke={INK} strokeWidth={2} />
-              <rect x={-26} y={-20} width={52} height={20} {...line} />
-              <path d="M -32 -44 L 32 -44 L 26 -58 L -26 -58 Z" {...line} />
-              {[-26, -13, 0, 13].map((s) => (
-                <path key={s} d={`M ${s} -44 L ${s + 6.5} -44 L ${s + 5} -58 L ${s + 1.5} -58 Z`} fill={i % 2 ? RED : INK} opacity={0.85} />
-              ))}
-              <circle cx={-10} cy={-24} r={5} {...line} strokeWidth={1} />
-              <circle cx={2} cy={-25} r={5} {...line} strokeWidth={1} />
-              <rect x={10} y={-30} width={10} height={10} {...line} strokeWidth={1} />
-            </g>
-          ))}
-          <path d="M -80 0 L -60 -14 L -40 0" {...line} strokeWidth={1.2} />
-        </g>
-      );
-    case "tavern":
-      return (
-        <g>
-          <rect x={-62} y={-104} width={124} height={50} {...line} />
-          <House w={124} h={54} roof={46} chimney door />
-          <rect x={-50} y={-94} width={14} height={14} {...line} strokeWidth={1} />
-          <rect x={36} y={-94} width={14} height={14} {...line} strokeWidth={1} />
-          <path d="M -62 -104 L 0 -150 L 62 -104" {...line} />
-          {/* Swinging sign */}
-          <path d="M 62 -70 h 26" stroke={INK} strokeWidth={2.5} />
-          <g transform="translate(80 -70)">
-            <g className="ink-anim" style={{ ...anim("sway", 2.4), transformOrigin: "50% 0%" }}>
-              <path d="M -1 0 v 6 M 13 0 v 6" stroke={INK} strokeWidth={1} />
-              <rect x={-6} y={6} width={26} height={18} {...line} strokeWidth={1.2} />
-              <path d="M 2 10 h 8 v 10 h -8 Z M 10 12 h 3 v 5 h -3" {...thin} />
-            </g>
-          </g>
-          <ellipse cx={-80} cy={-8} rx={10} ry={8} {...line} strokeWidth={1.2} />
-          <path d="M -90 -8 h 20" {...thin} />
-        </g>
-      );
-    case "temple":
-      return place.kind === "village" ? (
-        <g>
-          <rect x={-40} y={-60} width={80} height={60} {...line} />
-          <path d="M -46 -60 L 0 -96 L 46 -60 Z" {...line} />
-          <rect x={-10} y={-130} width={20} height={36} {...line} />
-          <path d="M -14 -130 L 0 -150 L 14 -130 Z" {...line} />
-          <g className="ink-anim" style={{ ...anim("sway", 1.6), transformOrigin: "50% 0%" }}>
-            <path d="M -5 -110 Q 0 -124 5 -110 Z" fill={INK} />
-          </g>
-          <path d="M -8 0 V -28 Q 0 -38 8 -28 V 0" {...line} />
-          <path d="M 0 -150 v -10 M -5 -156 h 10" stroke={INK} strokeWidth={1.4} />
-        </g>
-      ) : (
-        <g>
-          <rect x={-70} y={-80} width={140} height={80} {...line} />
-          {[-50, -25, 25, 50].map((x) => (
-            <rect key={x} x={x - 5} y={-80} width={10} height={80} {...line} strokeWidth={1.1} />
-          ))}
-          <path d="M -78 -80 L 0 -112 L 78 -80 Z" {...line} />
-          <path d="M -36 -112 Q 0 -190 36 -112" {...line} />
-          <path d="M 0 -170 v -18 M -7 -180 h 14" stroke={INK} strokeWidth={1.6} />
-          <path d="M -12 0 V -40 Q 0 -54 12 -40 V 0" fill={INK} />
-          <circle cx={0} cy={-136} r={22} fill="#f3e3a0" opacity={0.35} className="ink-anim" style={anim("twinkle", 4)} />
-        </g>
-      );
-    case "farm":
-      return (
-        <g>
-          {/* Field rows */}
-          {Array.from({ length: 6 }, (_, i) => (
-            <path key={i} d={`M -95 ${-4 - i * 5} L 0 ${-4 - i * 5}`} {...thin} />
-          ))}
-          {/* Windmill */}
-          <g transform="translate(40 0)">
-            <path d="M -22 0 L -14 -90 L 14 -90 L 22 0 Z" {...line} />
-            <path d="M -18 -90 L 0 -108 L 18 -90 Z" {...line} />
-            <path d="M -6 0 V -18 H 6 V 0" {...line} strokeWidth={1.2} />
-            <g transform="translate(0 -88)">
-              <g className="ink-anim" style={anim("ink-spin", 9, 0, "linear")}>
-                {[0, 90, 180, 270].map((a) => (
-                  <g key={a} transform={`rotate(${a})`}>
-                    <path d="M 0 0 L 0 -62" stroke={INK} strokeWidth={2} />
-                    <rect x={0} y={-60} width={11} height={44} fill={PAPER} stroke={INK} strokeWidth={1} />
-                    <path d="M 0 -50 h 11 M 0 -40 h 11 M 0 -30 h 11" {...thin} strokeWidth={0.6} />
-                  </g>
-                ))}
-                <circle r={4} fill={INK} />
-              </g>
-            </g>
-          </g>
-          <path d="M -80 0 L -76 -18 M -72 0 L -70 -16 M -64 0 L -62 -14" {...thin} />
-        </g>
-      );
-    case "lodge":
-      return (
-        <g>
-          <rect x={-55} y={-48} width={110} height={48} {...line} />
-          {[-36, -24, -12, 0, 12, 24, 36].map((y, i) => i < 4 && <path key={y} d={`M -55 ${-12 * (i + 1)} h 110`} {...thin} />)}
-          <path d="M -64 -48 L 0 -86 L 64 -48 Z" {...line} />
-          {/* Antlers over the door */}
-          <path d="M 0 -60 q -12 -4 -16 -16 M -8 -64 l -4 -8 M 0 -60 q 12 -4 16 -16 M 8 -64 l 4 -8" {...thin} strokeWidth={1.4} />
-          <path d="M -8 0 V -26 H 8 V 0" {...line} />
-          {/* Hides on a frame, swaying */}
-          <g transform="translate(78 0)">
-            <path d="M -18 0 V -54 M 18 0 V -54 M -22 -50 H 22" stroke={INK} strokeWidth={2} />
-            <g className="ink-anim" style={{ ...anim("sway", 3.2), transformOrigin: "50% 0%" }}>
-              <path d="M -12 -50 Q -16 -30 -10 -16 L 10 -16 Q 16 -30 12 -50 Z" fill={PAPER} stroke={INK} strokeWidth={1.1} />
-              <path d="M -6 -40 l 4 6 M 4 -34 l 3 5" {...thin} />
-            </g>
-          </g>
-        </g>
-      );
-    case "forge":
-      return (
-        <g>
-          <rect x={-58} y={-56} width={116} height={56} {...line} />
-          <path d="M -66 -56 L 66 -56 L 54 -78 L -54 -78 Z" {...line} />
-          <rect x={30} y={-108} width={16} height={34} {...line} />
-          <g transform="translate(38 -108)">
-            <g transform="scale(4)">
-              <Smoke x={0} y={0} />
-            </g>
-          </g>
-          {/* The open front, fire glowing */}
-          <rect x={-46} y={-44} width={60} height={44} fill={INK} />
-          <path className="ink-anim-base" d="M -26 0 Q -30 -16 -18 -26 Q -14 -14 -6 -24 Q 0 -10 -4 0 Z" fill={RED} style={anim("ink-flicker", 0.45)} />
-          <path d="M 70 0 L 70 -14 L 56 -14 L 60 -20 L 90 -20 L 86 -14 L 76 -14 L 76 0 Z" {...line} />
-        </g>
-      );
-    case "docks":
-      return (
-        <g>
-          <path d="M -100 6 Q -50 0 0 6 T 100 6" {...thin} />
-          <path d="M -100 14 Q -50 8 0 14 T 100 14" {...thin} />
-          <rect x={-90} y={-8} width={100} height={8} {...line} />
-          {[-80, -50, -20].map((x) => (
-            <path key={x} d={`M ${x} 0 V 14`} stroke={INK} strokeWidth={2.5} />
-          ))}
-          <g transform="translate(50 4)">
-            <g className="ink-anim" style={anim("ink-bob", 3)}>
-              <path d="M -34 -6 Q 0 10 34 -6 L 30 -14 L -30 -14 Z" {...line} />
-              <path d="M 0 -14 V -80" stroke={INK} strokeWidth={2} />
-              <path d="M 2 -78 Q 30 -50 2 -22 Z" fill={PAPER} stroke={INK} strokeWidth={1.2} />
-              <path d="M 0 -80 l 12 4 l -12 4" fill={RED} />
-            </g>
-          </g>
-          <rect x={-70} y={-24} width={14} height={16} {...line} strokeWidth={1} />
-          <rect x={-52} y={-20} width={12} height={12} {...line} strokeWidth={1} />
-        </g>
-      );
-    case "hall":
-      return (
-        <g>
-          <rect x={-70} y={-70} width={140} height={70} {...line} />
-          {[-70, -46, -22, 2, 26, 50].map((x) => (
-            <rect key={x} x={x} y={-80} width={14} height={10} {...line} strokeWidth={1.1} />
-          ))}
-          <path d="M -12 0 V -34 Q 0 -46 12 -34 V 0" fill={INK} />
-          {[-48, 48].map((x, i) => (
-            <g key={x} transform={`translate(${x} -80)`}>
-              <path d="M 0 0 V -40" stroke={INK} strokeWidth={1.6} />
-              <g className="ink-anim" style={{ ...anim("sway", 1.8, i * 0.4), transformOrigin: "0% 50%" }}>
-                <path d="M 0 -40 L 24 -36 L 18 -30 L 24 -24 L 0 -22 Z" fill={RED} stroke={INK} strokeWidth={0.8} />
-              </g>
-            </g>
-          ))}
-          <path d="M -40 -40 l 10 10 M -30 -40 l -10 10 M 30 -40 l 10 10 M 40 -40 l -10 10" stroke={INK} strokeWidth={1.4} />
-        </g>
-      );
-    case "college":
-      return (
-        <g>
-          <rect x={-60} y={-60} width={90} height={60} {...line} />
-          <path d="M -66 -60 L -15 -86 L 36 -60 Z" {...line} />
-          <rect x={30} y={-150} width={40} height={150} {...line} />
-          <path d="M 24 -150 L 50 -196 L 76 -150 Z" {...line} />
-          {[-130, -100, -70].map((y) => (
-            <path key={y} d={`M 42 ${y} v 14 q 8 -8 16 0 v -14 q -8 -8 -16 0`} {...line} strokeWidth={1} />
-          ))}
-          {[
-            [10, -190],
-            [90, -210],
-            [-20, -170],
-          ].map(([x, y], i) => (
-            <path key={i} className="ink-anim" d={`M ${x} ${y! - 5} L ${x! + 1.5} ${y! - 1.5} L ${x! + 5} ${y} L ${x! + 1.5} ${y! + 1.5} L ${x} ${y! + 5} L ${x! - 1.5} ${y! + 1.5} L ${x! - 5} ${y} L ${x! - 1.5} ${y! - 1.5} Z`} fill={INK} style={anim("twinkle", 2 + i, i * 0.7)} />
-          ))}
-          <path d="M -24 0 V -26 Q -15 -34 -6 -26 V 0" {...line} />
-        </g>
-      );
-    case "court":
-      return (
-        <g>
-          <rect x={-50} y={-120} width={100} height={120} {...line} />
-          {[-50, -30, -10, 10, 30].map((x) => (
-            <rect key={x} x={x} y={-132} width={12} height={12} {...line} strokeWidth={1.1} />
-          ))}
-          <rect x={-80} y={-80} width={30} height={80} {...line} />
-          <rect x={50} y={-80} width={30} height={80} {...line} />
-          <path d="M -84 -80 L -65 -110 L -46 -80 Z M 46 -80 L 65 -110 L 84 -80 Z" {...line} />
-          <path d="M -16 0 V -40 Q 0 -58 16 -40 V 0" fill={INK} />
-          {[-65, 65].map((x, i) => (
-            <g key={x} transform={`translate(${x} -110)`}>
-              <path d="M 0 0 V -26" stroke={INK} strokeWidth={1.4} />
-              <g className="ink-anim" style={{ ...anim("sway", 1.5, i * 0.5), transformOrigin: "0% 50%" }}>
-                <path d="M 0 -26 L 22 -22 L 0 -16 Z" fill={RED} />
-              </g>
-            </g>
-          ))}
-        </g>
-      );
-  }
-}
 
 /** A person standing in the street, drawn by their trade. */
 export function Figure({ role, s = 1 }: { role: Role; s?: number }) {
@@ -319,172 +44,551 @@ export function Figure({ role, s = 1 }: { role: Role; s?: number }) {
   );
 }
 
-/** Someone walking along the road, back and forth. */
-function Passer({ x, walk, dur, delay, s }: { x: number; walk: number; dur: number; delay: number; s: number }) {
+
+// --- Drawing from above, in ink -----------------------------------------------------------
+
+const hatch = { stroke: INK, strokeWidth: 0.5, fill: "none" };
+
+/** A roof seen from above: outline, ridge, hatching across it, a chimney, a shadow. */
+function Roof({ w, h, hip, chimney }: { w: number; h: number; hip?: boolean; chimney?: boolean }) {
+  const inset = hip ? h / 2 : 0;
+  let d = "";
+  for (let x = -w / 2 + 2.5; x < w / 2 - 1; x += 3) {
+    // On a hipped roof the hatching stops at the slopes of the ends.
+    const lim = hip ? Math.min(h / 2, w / 2 - Math.abs(x)) : h / 2;
+    d += `M ${x.toFixed(1)} ${(-lim).toFixed(1)} V ${lim.toFixed(1)} `;
+  }
   return (
-    <g transform={`translate(${x} ${GROUND + 34})`}>
-      <g className="ink-anim-base" style={{ ...anim("ink-walk", dur, delay, "linear"), animationDirection: "alternate", "--walk": `${walk}px` } as CSSProperties}>
-        <g className="ink-anim-base" style={anim("walk-bob", 0.7, delay)}>
-          <g transform={`scale(${s})`}>
-            <path d="M -5 0 L -3 -16 Q 0 -18 3 -16 L 5 0 Z" fill={PAPER} stroke={INK} strokeWidth={1.1} />
-            <circle cx={0} cy={-21} r={3.6} fill={INK} />
+    <g>
+      <rect x={-w / 2 + 3} y={-h / 2 + 3} width={w} height={h} fill={INK} opacity={0.16} />
+      <rect x={-w / 2} y={-h / 2} width={w} height={h} fill={PAPER} stroke={INK} strokeWidth={1.3} />
+      <path d={d} {...hatch} />
+      <path d={hip ? `M ${-w / 2} ${-h / 2} L ${-w / 2 + inset} 0 L ${-w / 2} ${h / 2} M ${w / 2} ${-h / 2} L ${w / 2 - inset} 0 L ${w / 2} ${h / 2} M ${-w / 2 + inset} 0 H ${w / 2 - inset}` : `M ${-w / 2} 0 H ${w / 2}`} stroke={INK} strokeWidth={1.1} fill="none" />
+      {chimney && <rect x={w / 4 - 3} y={-h / 4 - 3} width={6} height={6} fill={PAPER} stroke={INK} strokeWidth={1} />}
+    </g>
+  );
+}
+
+/** A tree from above: a bumpy crown with a shadow and a few stipples. */
+const TreeTop = memo(function TreeTop({ x, y, r, seed }: { x: number; y: number; r: number; seed: number }) {
+  const rng = mulberry32(seed).rng;
+  const n = 7 + Math.floor(rng() * 4);
+  const pts = Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2;
+    const rr = r * (0.82 + rng() * 0.25);
+    return [x + Math.cos(a) * rr, y + Math.sin(a) * rr] as const;
+  });
+  const bump = r * 0.42;
+  const d = `M ${pts[0]![0].toFixed(1)} ${pts[0]![1].toFixed(1)} ` + pts.map((_, i) => {
+    const q = pts[(i + 1) % n]!;
+    return `A ${bump.toFixed(1)} ${bump.toFixed(1)} 0 0 1 ${q[0].toFixed(1)} ${q[1].toFixed(1)}`;
+  }).join(" ");
+  return (
+    <g>
+      <path d={d} transform="translate(3 3)" fill={INK} opacity={0.15} />
+      <path d={d} fill={PAPER} stroke={INK} strokeWidth={1.1} />
+      {[0, 1, 2].map((i) => (
+        <circle key={i} cx={x + (rng() - 0.3) * r * 0.9} cy={y + (rng() - 0.3) * r * 0.9} r={0.8} fill={INK} />
+      ))}
+    </g>
+  );
+});
+
+/** The buildings that matter, from above, centred at 0,0. */
+function KeyArt({ b, place, square }: { b: Building; place: Place; square: number }) {
+  switch (b) {
+    case "market":
+      // Stalls with striped awnings round the square, barrels and crates.
+      return (
+        <g>
+          {Array.from({ length: Math.round(square / 9) }, (_, i) => {
+            const a = (i / Math.round(square / 9)) * 360 + 20;
+            return (
+              <g key={i} transform={`rotate(${a}) translate(${square * 0.62} 0) rotate(90)`}>
+                <rect x={-9} y={-6} width={18} height={12} fill={PAPER} stroke={INK} strokeWidth={1} />
+                {[-9, -3, 3].map((x, k) => (
+                  <rect key={x} x={x} y={-6} width={3} height={12} fill={(i + k) % 2 ? RED : INK} opacity={0.75} />
+                ))}
+              </g>
+            );
+          })}
+          {place.kind === "village" ? (
+            <g>
+              <circle r={9} fill={PAPER} stroke={INK} strokeWidth={1.4} />
+              <circle r={5} fill={INK} opacity={0.75} />
+              <path d="M -11 -11 L 11 -11" stroke={INK} strokeWidth={1.2} />
+            </g>
+          ) : (
+            <g>
+              <circle r={14} fill={PAPER} stroke={INK} strokeWidth={1.4} />
+              <circle r={9} fill="none" stroke={INK} strokeWidth={0.7} strokeDasharray="2 2" className="ink-anim" style={anim("ink-spin", 14, 0, "linear")} />
+              <circle r={3} fill={INK} />
+            </g>
+          )}
+          {[
+            [-square * 0.3, square * 0.25],
+            [square * 0.32, -square * 0.2],
+          ].map(([x, y], i) => (
+            <g key={i} transform={`translate(${x} ${y})`}>
+              <circle r={4} fill={PAPER} stroke={INK} strokeWidth={0.9} />
+              <circle cx={7} cy={2} r={4} fill={PAPER} stroke={INK} strokeWidth={0.9} />
+              <rect x={-4} y={5} width={8} height={7} fill={PAPER} stroke={INK} strokeWidth={0.9} />
+            </g>
+          ))}
+        </g>
+      );
+    case "board":
+      return (
+        <g>
+          <Roof w={74} h={40} hip chimney />
+          <g transform="translate(-22 0)">
+            <Roof w={28} h={56} />
+          </g>
+          {/* The notice board out front */}
+          <g transform="translate(18 34)">
+            <rect x={-12} y={-3} width={24} height={6} fill={PAPER} stroke={INK} strokeWidth={1} />
+            {[-8, -2, 4].map((x, i) => (
+              <rect key={x} className="ink-anim" x={x} y={-6} width={5} height={6} fill={PAPER} stroke={INK} strokeWidth={0.6} style={anim("sway", 2 + i * 0.5, i * 0.3)} />
+            ))}
           </g>
         </g>
-      </g>
+      );
+    case "tavern":
+      return (
+        <g>
+          <Roof w={70} h={40} chimney />
+          <g transform="translate(26 18)">
+            <Roof w={26} h={40} hip />
+          </g>
+          {/* Tables in the yard, barrels by the door */}
+          {[-24, 0].map((x) => (
+            <g key={x} transform={`translate(${x} 34)`}>
+              <circle r={4.5} fill={PAPER} stroke={INK} strokeWidth={0.9} />
+              {[0, 90, 180, 270].map((a) => (
+                <circle key={a} cx={Math.cos((a * Math.PI) / 180) * 8} cy={Math.sin((a * Math.PI) / 180) * 8} r={1.4} fill={INK} />
+              ))}
+            </g>
+          ))}
+          {[0, 1, 2].map((i) => (
+            <g key={i} transform={`translate(${-44 + (i % 2) * 7} ${-8 + i * 7})`}>
+              <circle r={3.5} fill={PAPER} stroke={INK} strokeWidth={0.9} />
+              <circle r={1.6} fill="none" stroke={INK} strokeWidth={0.5} />
+            </g>
+          ))}
+        </g>
+      );
+    case "temple":
+      return place.kind === "village" ? (
+        <g>
+          <Roof w={56} h={28} />
+          <rect x={-40} y={-9} width={16} height={18} fill={PAPER} stroke={INK} strokeWidth={1.2} />
+          <path d="M -40 -9 L -24 9 M -24 -9 L -40 9" stroke={INK} strokeWidth={0.7} />
+          {/* The churchyard: a few graves */}
+          {[0, 1, 2, 3].map((i) => (
+            <rect key={i} x={-14 + i * 9} y={22} width={4} height={7} rx={1.5} fill={PAPER} stroke={INK} strokeWidth={0.7} />
+          ))}
+        </g>
+      ) : (
+        <g>
+          <Roof w={96} h={38} />
+          <g transform="translate(-6 0)">
+            <Roof w={30} h={78} />
+          </g>
+          <path d="M 48 -19 A 19 19 0 0 1 48 19" fill={PAPER} stroke={INK} strokeWidth={1.3} />
+          <path d="M 48 0 L 62 -10 M 48 0 L 66 0 M 48 0 L 62 10" stroke={INK} strokeWidth={0.6} />
+          <circle cx={-6} cy={0} r={11} fill="#f3e3a0" opacity={0.4} className="ink-anim" style={anim("twinkle", 4)} />
+        </g>
+      );
+    case "farm":
+      return (
+        <g>
+          <Roof w={56} h={30} />
+          <g transform="translate(-44 30)">
+            <circle r={13} fill={PAPER} stroke={INK} strokeWidth={1.3} />
+            <circle r={4} fill={INK} />
+            <g className="ink-anim" style={anim("ink-spin", 8, 0, "linear")}>
+              {[0, 90, 180, 270].map((a) => (
+                <g key={a} transform={`rotate(${a})`}>
+                  <path d="M 0 0 L 0 -34" stroke={INK} strokeWidth={1.6} />
+                  <rect x={0} y={-33} width={7} height={22} fill={PAPER} stroke={INK} strokeWidth={0.9} />
+                  <path d="M 0 -27 h 7 M 0 -21 h 7 M 0 -15 h 7" {...hatch} />
+                </g>
+              ))}
+            </g>
+          </g>
+          {[
+            [30, 26],
+            [44, 18],
+          ].map(([x, y], i) => (
+            <g key={i} transform={`translate(${x} ${y})`}>
+              <circle r={7} fill={PAPER} stroke={INK} strokeWidth={1} />
+              <path d="M 0 0 m -4 0 a 4 4 0 1 1 4 4 a 2.5 2.5 0 1 1 -2.5 -2.5" {...hatch} />
+            </g>
+          ))}
+        </g>
+      );
+    case "lodge":
+      return (
+        <g>
+          <Roof w={60} h={34} chimney />
+          {/* Racks of hides, a fire pit */}
+          {[-20, 2].map((x, i) => (
+            <g key={x} transform={`translate(${x} 32)`}>
+              <path d="M -9 0 H 9" stroke={INK} strokeWidth={1.6} />
+              <path className="ink-anim" d="M -7 0 Q -9 7 -4 10 L 4 10 Q 9 7 7 0 Z" fill={PAPER} stroke={INK} strokeWidth={0.8} style={{ ...anim("sway", 3 + i), transformOrigin: "50% 0%" }} />
+            </g>
+          ))}
+          <g transform="translate(30 30)">
+            <circle r={6} fill={PAPER} stroke={INK} strokeWidth={1} strokeDasharray="2 1.5" />
+            <circle r={2.5} fill={RED} className="ink-anim" style={anim("twinkle", 1.2)} />
+          </g>
+        </g>
+      );
+    case "forge":
+      return (
+        <g>
+          <Roof w={58} h={34} />
+          <g transform="translate(14 -6)">
+            <rect x={-5} y={-5} width={10} height={10} fill={INK} />
+          </g>
+          {/* The open yard: anvil, quench trough, glowing hearth */}
+          <g transform="translate(-10 30)">
+            <path d="M -8 -3 H 8 L 5 0 L 8 3 H -8 L -5 0 Z" fill={INK} />
+            <rect x={14} y={-4} width={14} height={8} fill={PAPER} stroke={INK} strokeWidth={0.9} />
+            <path d="M 16 0 h 10" {...hatch} />
+            <circle cx={-22} cy={0} r={6} fill={PAPER} stroke={INK} strokeWidth={1} />
+            <circle className="ink-anim" cx={-22} cy={0} r={3.5} fill={RED} style={anim("ink-flicker", 0.5)} />
+          </g>
+        </g>
+      );
+    case "docks":
+      return (
+        <g>
+          {[-28, 4, 34].map((x, i) => (
+            <g key={x} transform={`translate(${x} ${14 + i * 3})`}>
+              <rect x={-5} y={-4} width={10} height={40} fill={PAPER} stroke={INK} strokeWidth={1} />
+              <path d="M -5 4 h 10 M -5 12 h 10 M -5 20 h 10 M -5 28 h 10" {...hatch} />
+            </g>
+          ))}
+          <g transform="translate(-12 46)">
+            <g className="ink-anim" style={anim("ink-bob", 3)}>
+              <path d="M -16 0 Q 0 -9 16 0 Q 0 9 -16 0 Z" fill={PAPER} stroke={INK} strokeWidth={1.1} />
+              <path d="M -8 0 H 8" stroke={INK} strokeWidth={0.8} />
+            </g>
+          </g>
+          <Roof w={46} h={26} />
+          {[0, 1, 2].map((i) => (
+            <rect key={i} x={26 + (i % 2) * 8} y={-10 + i * 7} width={7} height={7} fill={PAPER} stroke={INK} strokeWidth={0.8} />
+          ))}
+        </g>
+      );
+    case "hall":
+      return (
+        <g>
+          <rect x={-56} y={-40} width={112} height={80} fill="none" stroke={INK} strokeWidth={2.6} strokeDasharray="10 2" />
+          <g transform="translate(0 -20)">
+            <Roof w={100} h={30} hip />
+          </g>
+          {/* The yard: practice posts */}
+          {[-30, -10, 10, 30].map((x) => (
+            <g key={x} transform={`translate(${x} 18)`}>
+              <circle r={3.5} fill={PAPER} stroke={INK} strokeWidth={0.9} />
+              <path d="M -3 -3 L 3 3 M 3 -3 L -3 3" {...hatch} />
+            </g>
+          ))}
+          {[-12, 12].map((x, i) => (
+            <g key={x} transform={`translate(${x} 40)`}>
+              <circle r={2} fill={INK} />
+              <path className="ink-anim" d="M 0 0 L 12 2 L 8 5 L 12 8 L 0 7 Z" fill={RED} style={{ ...anim("sway", 1.6, i * 0.4), transformOrigin: "0% 50%" }} />
+            </g>
+          ))}
+        </g>
+      );
+    case "college":
+      return (
+        <g>
+          <g transform="translate(-14 0)">
+            <Roof w={60} h={34} hip />
+          </g>
+          <g transform="translate(32 -4)">
+            <circle r={22} fill={INK} opacity={0.16} transform="translate(3 3)" />
+            <circle r={22} fill={PAPER} stroke={INK} strokeWidth={1.4} />
+            {Array.from({ length: 12 }, (_, i) => (
+              <path key={i} d={`M 0 0 L ${(Math.cos((i / 12) * Math.PI * 2) * 22).toFixed(1)} ${(Math.sin((i / 12) * Math.PI * 2) * 22).toFixed(1)}`} {...hatch} />
+            ))}
+            <circle r={5} fill={PAPER} stroke={INK} strokeWidth={1} />
+            <path className="ink-anim" d="M 0 -4 L 1 -1 L 4 0 L 1 1 L 0 4 L -1 1 L -4 0 L -1 -1 Z" fill={INK} style={anim("ink-spin", 12, 0, "linear")} />
+          </g>
+        </g>
+      );
+    case "court":
+      return (
+        <g>
+          <rect x={-66} y={-52} width={132} height={104} fill="none" stroke={INK} strokeWidth={3} />
+          <rect x={-66} y={-52} width={132} height={104} fill="none" stroke={PAPER} strokeWidth={1} strokeDasharray="4 4" />
+          <Roof w={56} h={56} hip chimney />
+          {[
+            [-66, -52],
+            [66, -52],
+            [-66, 52],
+            [66, 52],
+          ].map(([x, y], i) => (
+            <g key={i} transform={`translate(${x} ${y})`}>
+              <circle r={12} fill={PAPER} stroke={INK} strokeWidth={1.4} />
+              {Array.from({ length: 8 }, (_, k) => (
+                <path key={k} d={`M 0 0 L ${(Math.cos((k / 8) * Math.PI * 2) * 12).toFixed(1)} ${(Math.sin((k / 8) * Math.PI * 2) * 12).toFixed(1)}`} {...hatch} />
+              ))}
+              {i < 2 && <path className="ink-anim" d="M 0 0 L 14 -2 L 10 2 L 14 6 L 0 4 Z" fill={RED} style={{ ...anim("sway", 1.5, i * 0.5), transformOrigin: "0% 50%" }} />}
+            </g>
+          ))}
+          <rect x={-10} y={46} width={20} height={12} fill={PAPER} stroke={INK} strokeWidth={1.2} />
+        </g>
+      );
+  }
+}
+
+/** The settlement's walls: a palisade of stakes or stone with round towers. */
+function Wall({ c, wall }: { c: P; wall: NonNullable<Plan["wall"]> }) {
+  const towers = wall.kind === "stone" ? 14 : 0;
+  return (
+    <g>
+      {wall.kind === "stone" ? (
+        <>
+          <ellipse cx={c.x} cy={c.y} rx={wall.rx} ry={wall.ry} fill="none" stroke={INK} strokeWidth={9} />
+          <ellipse cx={c.x} cy={c.y} rx={wall.rx} ry={wall.ry} fill="none" stroke={PAPER} strokeWidth={5} />
+          <ellipse cx={c.x} cy={c.y} rx={wall.rx} ry={wall.ry} fill="none" stroke={INK} strokeWidth={0.6} strokeDasharray="5 3" />
+        </>
+      ) : (
+        <ellipse cx={c.x} cy={c.y} rx={wall.rx} ry={wall.ry} fill="none" stroke={INK} strokeWidth={3.2} strokeDasharray="1.6 2.6" />
+      )}
+      {Array.from({ length: towers }, (_, i) => {
+        const a = (i / towers) * Math.PI * 2 + 0.2;
+        return <circle key={i} cx={c.x + Math.cos(a) * wall.rx} cy={c.y + Math.sin(a) * wall.ry} r={9} fill={PAPER} stroke={INK} strokeWidth={1.4} />;
+      })}
+    </g>
+  );
+}
+
+/** Everything that doesn't change: drawn once per settlement. */
+const PlanArt = memo(function PlanArt({ place, plan }: { place: Place; plan: Plan }) {
+  const { centre: c, square } = plan;
+  const grass = useMemo(() => {
+    const rng = mulberry32(plan.houses.length * 7919 + Math.round(c.x)).rng;
+    let d = "";
+    for (let i = 0; i < 260; i++) {
+      const x = rng() * PLAN_W;
+      const y = rng() * PLAN_H;
+      d += `M ${x.toFixed(0)} ${y.toFixed(0)} l 1.5 -4 M ${(x + 3).toFixed(0)} ${y.toFixed(0)} l 0 -5 M ${(x + 6).toFixed(0)} ${y.toFixed(0)} l -1.5 -4 `;
+    }
+    return d;
+  }, [plan, c.x]);
+  return (
+    <g>
+      <rect width={PLAN_W} height={PLAN_H} fill={PAPER} />
+      <rect width={PLAN_W} height={PLAN_H} fill="url(#ink-dots)" opacity={0.6} />
+      <path d={grass} stroke={INK} strokeWidth={0.5} fill="none" opacity={0.45} />
+      {/* Fields: fenced, rows of crops */}
+      {plan.fields.map((f, i) => {
+        let rows = "";
+        const n = Math.floor((f.along ? f.h : f.w) / 9);
+        for (let k = 1; k < n; k++) rows += f.along ? `M ${-f.w / 2 + 4} ${-f.h / 2 + k * 9} H ${f.w / 2 - 4} ` : `M ${-f.w / 2 + k * 9} ${-f.h / 2 + 4} V ${f.h / 2 - 4} `;
+        return (
+          <g key={i} transform={`translate(${f.x} ${f.y}) rotate(${f.rot})`}>
+            <rect x={-f.w / 2} y={-f.h / 2} width={f.w} height={f.h} fill={PAPER} stroke={INK} strokeWidth={0.9} strokeDasharray="3 2" />
+            <path d={rows} {...hatch} opacity={0.6} />
+          </g>
+        );
+      })}
+      {plan.wall && <Wall c={c} wall={plan.wall} />}
+      {/* The river, banks drawn twice, and its bridge */}
+      {plan.river && (
+        <g>
+          <path d={plan.river.d} fill="none" stroke={INK} strokeWidth={50} />
+          <path d={plan.river.d} fill="none" stroke={PAPER} strokeWidth={46} />
+          <path d={plan.river.d} fill="none" stroke="#dfe6ea" strokeWidth={46} opacity={0.6} />
+          {[-14, 0, 14].map((o, i) => (
+            <path key={o} d={plan.river!.d} transform={`translate(0 ${o})`} fill="none" stroke={INK} strokeWidth={0.6} strokeDasharray="10 22" className="ink-flow" style={{ animationDuration: `${6 + i * 2}s` }} />
+          ))}
+        </g>
+      )}
+      {/* Roads: dotted edges, the wall and grass cut away under them */}
+      {plan.roads.map((l, i) => (
+        <g key={i}>
+          <path d={l.d} fill="none" stroke={PAPER} strokeWidth={30} />
+          <path d={l.d} fill="none" stroke={INK} strokeWidth={24} strokeDasharray="1.5 3.5" />
+          <path d={l.d} fill="none" stroke={PAPER} strokeWidth={21} />
+        </g>
+      ))}
+      {plan.bridge && (
+        <g transform={`translate(${plan.bridge.x} ${plan.bridge.y}) rotate(${plan.bridge.rot})`}>
+          <rect x={-34} y={-13} width={68} height={26} fill={INK} opacity={0.15} transform="translate(3 3)" />
+          <rect x={-34} y={-13} width={68} height={26} fill={PAPER} stroke={INK} strokeWidth={1.4} />
+          <path d={Array.from({ length: 16 }, (_, k) => `M ${-32 + k * 4.2} -13 V 13`).join(" ")} {...hatch} />
+          <path d="M -34 -13 H 34 M -34 13 H 34" stroke={INK} strokeWidth={2.2} />
+        </g>
+      )}
+      {/* The square: cobbles */}
+      <circle cx={c.x} cy={c.y} r={square} fill={PAPER} stroke={INK} strokeWidth={1.2} strokeDasharray="2 2.5" />
+      <circle cx={c.x} cy={c.y} r={square - 4} fill="url(#ink-dots)" opacity={0.9} />
+      {plan.houses.map((h, i) => (
+        <g key={i} transform={`translate(${h.x.toFixed(1)} ${h.y.toFixed(1)}) rotate(${h.rot.toFixed(1)})`}>
+          <Roof w={h.w} h={h.h} hip={h.hip} chimney={h.chimney} />
+          {h.wing && (
+            <g transform={`translate(${(h.w / 2 - h.h / 3).toFixed(1)} ${(h.h / 2).toFixed(1)})`}>
+              <Roof w={h.h * 0.66} h={h.h} />
+            </g>
+          )}
+        </g>
+      ))}
+      {plan.trees.map((t, i) => (
+        <TreeTop key={i} {...t} />
+      ))}
+      {plan.keys.map((k) => (
+        <g key={k.b} transform={`translate(${k.x.toFixed(1)} ${k.y.toFixed(1)}) rotate(${k.b === "market" ? 0 : k.rot.toFixed(1)})`}>
+          <KeyArt b={k.b} place={place} square={square} />
+        </g>
+      ))}
+    </g>
+  );
+});
+
+/** People and carts going about their business along the roads. */
+function Traffic({ plan, count }: { plan: Plan; count: number }) {
+  const rng = mulberry32(count * 31 + Math.round(plan.centre.y)).rng;
+  return (
+    <g pointerEvents="none">
+      {Array.from({ length: count }, (_, i) => {
+        const road = plan.roads[i % plan.roads.length]!;
+        const dur = 30 + rng() * 40;
+        const back = rng() < 0.5;
+        const side = (rng() - 0.5) * 12;
+        const cart = i % 5 === 4;
+        return (
+          <g key={i}>
+            <g transform={`translate(0 ${side.toFixed(1)})`}>
+              {cart ? (
+                <g>
+                  <rect x={-7} y={-4} width={12} height={8} fill={PAPER} stroke={INK} strokeWidth={0.9} />
+                  <ellipse cx={10} cy={0} rx={4} ry={2.5} fill={INK} />
+                  <animateMotion dur={`${dur * 1.6}s`} repeatCount="indefinite" path={road.d} rotate="auto" begin={`-${(rng() * dur).toFixed(1)}s`} {...(back ? { keyPoints: "1;0", keyTimes: "0;1", calcMode: "linear" } : {})} />
+                </g>
+              ) : (
+                <g>
+                  <circle r={2.8} fill={PAPER} stroke={INK} strokeWidth={0.9} />
+                  <circle r={1.4} fill={INK} />
+                  <animateMotion dur={`${dur}s`} repeatCount="indefinite" path={road.d} begin={`-${(rng() * dur).toFixed(1)}s`} {...(back ? { keyPoints: "1;0", keyTimes: "0;1", calcMode: "linear" } : {})} />
+                </g>
+              )}
+            </g>
+          </g>
+        );
+      })}
     </g>
   );
 }
 
 export function SettlementScene({ place, folk, onLeave }: { place: Place; folk: Townsfolk[]; onLeave: () => void }) {
   const selected = useTownUi((s) => s.building);
-  const buildings = buildingsOf(place);
-  const rng = mulberry32(hashOf(place.id)).rng;
-  const slot = (i: number) => 115 + (i * (W - 230)) / Math.max(1, buildings.length - 1);
-  // Townsfolk stand beside their building, a step apart from each other.
+  const plan = useMemo(() => planOf(place), [place]);
+  const view = viewOf(place.kind, plan.centre);
+  const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const pick = (b: Building) => useTownUi.setState({ building: b });
+  const keyOf = (b: Building) => plan.keys.find((k) => k.b === b) ?? plan.keys[0]!;
+  // Chimneys that smoke: some of the houses, and the warm buildings.
+  const smokes = useMemo(() => {
+    const out = plan.houses.filter((h, i) => h.chimney && i % 3 === 0).map((h) => ({ x: h.x, y: h.y - h.h / 4 }));
+    for (const k of plan.keys) if (k.b === "tavern" || k.b === "forge" || k.b === "board" || k.b === "lodge") out.push({ x: k.x, y: k.y });
+    return out.slice(0, 14);
+  }, [plan]);
+  // Townsfolk wait by their building, on the side towards the square.
   const spots = new Map<string, number>();
   const placed = folk.map((f) => {
+    const k = keyOf(f.at);
     const n = spots.get(f.at) ?? 0;
     spots.set(f.at, n + 1);
-    const bi = Math.max(0, buildings.indexOf(f.at));
-    return { f, x: Math.max(28, Math.min(W - 28, slot(bi) + [-62, 62, -24, 24][n % 4]!)) };
+    const toward = Math.atan2(plan.centre.y - k.y, plan.centre.x - k.x);
+    const d = k.b === "market" ? k.r * 0.35 : k.r * 0.75 + 8;
+    const spread = (n - 0.5) * 26;
+    return { f, x: k.x + Math.cos(toward) * d - Math.sin(toward) * spread, y: k.y + Math.sin(toward) * d + Math.cos(toward) * spread };
   });
-  const pick = (b: Building) => useTownUi.setState({ building: b });
-  // Filler houses behind the street: more of them the bigger the place.
-  const filler = Array.from({ length: place.kind === "city" ? 9 : place.kind === "town" ? 6 : 3 }, (_, i) => ({ x: 60 + rng() * (W - 120), s: 0.75 + rng() * 0.25, chimney: rng() < 0.5, i }));
-  const trees = Array.from({ length: place.kind === "village" ? 7 : 3 }, () => ({ x: 20 + rng() * (W - 40), s: 0.6 + rng() * 0.5 }));
-  const passers = Array.from({ length: place.kind === "city" ? 6 : place.kind === "town" ? 4 : 2 }, () => ({ x: 40 + rng() * 500, walk: 200 + rng() * 380, dur: 18 + rng() * 20, delay: -rng() * 20, s: 1 + rng() * 0.3 }));
 
   return (
     <div className="relative self-start overflow-hidden rounded-xl border-2 shadow-inner" style={{ borderColor: INK, background: PAPER }}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="block aspect-[1000/490] w-full select-none" role="img" aria-label={`The streets of ${place.name}`}>
-        <rect width={W} height={H} fill={PAPER} />
-        {/* Sky: drifting clouds and birds */}
-        {[0, 1, 2].map((i) => (
-          <g key={i} className="ink-anim" style={{ ...anim("ink-drift", 70 + i * 25, -i * 30, "linear") }}>
-            <path d={`M 0 ${60 + i * 34} q 10 -18 28 -10 q 12 -16 30 -4 q 20 -6 22 14 Z`} fill={PAPER} stroke={INK} strokeWidth={1} />
+      <svg viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} className="block aspect-[1000/640] w-full select-none" role="img" aria-label={`The streets of ${place.name}`}>
+        <InkDefs />
+        <PlanArt place={place} plan={plan} />
+        {smokes.map((p, i) => (
+          <g key={i} transform={`translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) scale(2)`}>
+            <Smoke x={0} y={0} />
           </g>
         ))}
-        {[0, 1].map((i) => (
-          <g key={i} className="ink-anim" style={{ ...anim("ink-drift", 30 + i * 12, -i * 9, "linear") }}>
-            <path d={`M 0 ${110 + i * 40} q 5 -5 9 0 q 4 -5 9 0`} {...thin} strokeWidth={1.2} />
-            <path d={`M 22 ${100 + i * 40} q 4 -4 7 0 q 3 -4 7 0`} {...thin} />
-          </g>
-        ))}
-        {/* Hills behind */}
-        <path d={`M 0 ${GROUND - 120} Q 160 ${GROUND - 190} 330 ${GROUND - 130} T 680 ${GROUND - 150} T ${W} ${GROUND - 120}`} fill="none" stroke={INK} strokeWidth={1.2} />
-        {Array.from({ length: 40 }, (_, i) => (
-          <path key={i} d={`M ${i * 25 + 5} ${GROUND - 128 + Math.sin(i) * 10} l 6 10`} {...thin} opacity={0.5} />
-        ))}
-        {/* Walls: a palisade for a town, stone for a city */}
-        {place.kind === "city" && (
-          <g>
-            <rect x={0} y={GROUND - 120} width={W} height={50} {...line} strokeWidth={1.3} />
-            {Array.from({ length: 34 }, (_, i) => (
-              <rect key={i} x={i * 30} y={GROUND - 132} width={16} height={12} {...line} strokeWidth={1.1} />
-            ))}
-            {Array.from({ length: 30 }, (_, i) => (
-              <path key={i} d={`M ${i * 34 + (i % 2) * 17} ${GROUND - 104 + (i % 3) * 12} h 18`} {...thin} />
-            ))}
-          </g>
-        )}
-        {place.kind === "town" && Array.from({ length: 70 }, (_, i) => <path key={i} d={`M ${i * 15} ${GROUND - 70} V ${GROUND - 112} l 5 -8 l 5 8 V ${GROUND - 70}`} {...line} strokeWidth={1} />)}
-        {/* Back rows of houses and trees */}
-        {filler.map((f) => (
-          <g key={f.i} transform={`translate(${f.x} ${GROUND - 54}) scale(${f.s})`}>
-            <House w={70} h={46} roof={30} chimney={f.chimney} />
-          </g>
-        ))}
-        {trees.map((t, i) => (
-          <g key={i} transform={`translate(${t.x} ${GROUND - 30})`}>
-            <Pine x={0} s={t.s} />
-          </g>
-        ))}
-        {/* The ground and the road */}
-        <rect x={0} y={GROUND - 4} width={W} height={H - GROUND + 4} fill={PAPER} />
-        <path d={`M 0 ${GROUND} H ${W}`} stroke={INK} strokeWidth={1.4} />
-        <path d={`M 0 ${GROUND + 18} Q ${W / 2} ${GROUND + 10} ${W} ${GROUND + 18}`} {...thin} strokeDasharray="2 6" />
-        <path d={`M 0 ${GROUND + 54} Q ${W / 2} ${GROUND + 62} ${W} ${GROUND + 54}`} {...thin} strokeDasharray="2 6" />
-        {Array.from({ length: 60 }, (_, i) => (
-          <path key={i} d={`M ${(i * 97) % W} ${GROUND + 70 + ((i * 13) % 50)} l 3 -6 l 3 6`} {...thin} opacity={0.5} />
-        ))}
+        {!reduce && <Traffic plan={plan} count={[5, 9, 14][place.kind === "city" ? 2 : place.kind === "town" ? 1 : 0]!} />}
         {/* The buildings that matter: click to go in */}
-        {buildings.map((b, i) => {
-          const x = slot(i);
-          const on = selected === b;
+        {plan.keys.map((k) => {
+          const on = selected === k.b;
           return (
             <g
-              key={b}
-              transform={`translate(${x} ${GROUND})`}
+              key={k.b}
+              transform={`translate(${k.x.toFixed(1)} ${k.y.toFixed(1)})`}
               role="button"
               tabIndex={0}
-              aria-label={BUILDING[b].name}
+              aria-label={BUILDING[k.b].name}
               aria-pressed={on}
-              className="cursor-pointer outline-none [&:hover_.bld]:opacity-100 [&:focus-visible_.bld]:opacity-100"
-              onClick={() => pick(b)}
-              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && pick(b)}
+              className="cursor-pointer outline-none [&:hover_.ring]:opacity-100 [&:focus-visible_.ring]:opacity-100"
+              onClick={() => pick(k.b)}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && pick(k.b)}
             >
-              <rect x={-100} y={-250} width={200} height={250} fill="transparent" />
-              <ellipse className="bld" cx={0} cy={-2} rx={100} ry={9} fill={RED} opacity={on ? 0.35 : 0} />
-              <g transform="scale(1.3)">
-                <BuildingArt kind={b} place={place} />
-              </g>
-              <g transform="translate(0 26)">
-                <path d="M -64 -10 H 64 L 58 0 L 64 10 H -64 L -58 0 Z" fill={on ? INK : PAPER} stroke={INK} strokeWidth={1.2} />
-                <text y={5} textAnchor="middle" fontFamily={FONT} fontSize={14} fill={on ? PAPER : INK}>
-                  {BUILDING[b].name}
-                </text>
-              </g>
-            </g>
-          );
-        })}
-        {/* Passers-by */}
-        {passers.map((p, i) => (
-          <Passer key={i} {...p} />
-        ))}
-        {/* Townsfolk to talk to */}
-        {placed.map(({ f, x }, i) => {
-          return (
-            <g
-              key={f.id}
-              transform={`translate(${x} ${GROUND + 106})`}
-              role="button"
-              tabIndex={0}
-              aria-label={`Talk to ${f.name}, ${ROLE[f.role].title}`}
-              className="cursor-pointer outline-none [&:hover_.who]:opacity-100 [&:focus-visible_.who]:opacity-100"
-              onClick={() => useTownUi.setState({ talk: f })}
-              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && useTownUi.setState({ talk: f })}
-            >
-              <rect x={-22} y={-74} width={44} height={82} fill="transparent" />
-              <ellipse cx={0} cy={2} rx={14} ry={3} fill={INK} opacity={0.15} />
-              <g className="ink-anim-base" style={anim("walk-bob", 2.4, i * 0.3)}>
-                <Figure role={f.role} s={1.45} />
-              </g>
-              <g className="ink-anim" transform="translate(0 -12)" style={anim("ink-beckon", 1.8, i * 0.2)}>
-                <path d="M 6 -66 h 22 a 4 4 0 0 1 4 4 v 8 a 4 4 0 0 1 -4 4 h -14 l -6 5 v -5 h -2 a 4 4 0 0 1 -4 -4 v -8 a 4 4 0 0 1 4 -4 Z" fill={PAPER} stroke={INK} strokeWidth={1} />
-                <text x={17} y={-55} textAnchor="middle" fontFamily={FONT} fontSize={12} fill={INK}>
-                  …
-                </text>
-              </g>
-              <text className="who" y={20} textAnchor="middle" fontFamily={FONT} fontSize={13} fill={INK} stroke={PAPER} strokeWidth={3} paintOrder="stroke" opacity={0.75}>
-                {f.name}
+              <circle r={k.r + 6} fill="transparent" />
+              <circle className="ring" r={k.r + 6} fill="none" stroke={RED} strokeWidth={1.6} strokeDasharray="5 4" opacity={on ? 1 : 0} />
+              <text y={k.r + 22} textAnchor="middle" fontFamily={FONT} fontSize={16} fontStyle="italic" fill={on ? RED : INK} stroke={PAPER} strokeWidth={4} paintOrder="stroke">
+                {BUILDING[k.b].name}
               </text>
             </g>
           );
         })}
-        {/* The settlement's name, like a map cartouche */}
-        <g transform={`translate(${W / 2} 34)`}>
-          <path d="M -150 -20 H 150 L 138 0 L 150 20 H -150 L -138 0 Z" fill={PAPER} stroke={INK} strokeWidth={1.4} />
-          <text y={7} textAnchor="middle" fontFamily={FONT} fontSize={24} fill={INK}>
-            {place.name}
-          </text>
-        </g>
-        <text x={W / 2} y={74} textAnchor="middle" fontFamily={FONT} fontSize={14} fontStyle="italic" fill={INK}>
-          {characterOf(place).blurb}
-        </text>
+        {/* Townsfolk to talk to */}
+        {placed.map(({ f, x, y }, i) => (
+          <g
+            key={f.id}
+            transform={`translate(${x.toFixed(1)} ${y.toFixed(1)})`}
+            role="button"
+            tabIndex={0}
+            aria-label={`Talk to ${f.name}, ${ROLE[f.role].title}`}
+            className="cursor-pointer outline-none [&:hover_.who]:opacity-100 [&:focus-visible_.who]:opacity-100"
+            onClick={() => useTownUi.setState({ talk: f })}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && useTownUi.setState({ talk: f })}
+          >
+            <rect x={-14} y={-40} width={28} height={46} fill="transparent" />
+            <ellipse cx={0} cy={1} rx={9} ry={3} fill={INK} opacity={0.2} />
+            <g className="ink-anim-base" style={anim("walk-bob", 2.4, i * 0.3)}>
+              <Figure role={f.role} s={0.8} />
+            </g>
+            <g className="ink-anim" transform="translate(4 -10)" style={anim("ink-beckon", 1.8, i * 0.2)}>
+              <path d="M 4 -36 h 16 a 3 3 0 0 1 3 3 v 6 a 3 3 0 0 1 -3 3 h -10 l -4 4 v -4 h -2 a 3 3 0 0 1 -3 -3 v -6 a 3 3 0 0 1 3 -3 Z" fill={PAPER} stroke={INK} strokeWidth={0.9} />
+              <text x={12} y={-27} textAnchor="middle" fontFamily={FONT} fontSize={10} fill={INK}>
+                …
+              </text>
+            </g>
+            <text className="who" y={14} textAnchor="middle" fontFamily={FONT} fontSize={12} fill={INK} stroke={PAPER} strokeWidth={3} paintOrder="stroke" opacity={0.8}>
+              {f.name}
+            </text>
+          </g>
+        ))}
       </svg>
       <button className="absolute top-2 left-2 rounded-sm border px-2 py-0.5 text-sm" style={{ borderColor: INK, background: PAPER, color: INK, fontFamily: FONT }} onClick={onLeave}>
         ← Back to the map
       </button>
+      <div className="pointer-events-none absolute inset-x-0 top-2 flex flex-col items-center gap-1 px-28 text-center" style={{ color: INK, fontFamily: FONT }}>
+        <span className="border-2 border-double px-8 py-0.5 text-xl" style={{ borderColor: INK, background: PAPER }}>
+          {place.name}
+        </span>
+        <span className="rounded-sm px-2 text-sm italic" style={{ background: `color-mix(in srgb, ${PAPER} 85%, transparent)` }}>
+          {characterOf(place).blurb}
+        </span>
+      </div>
+      <div className="pointer-events-none absolute right-2 bottom-2">
+        <Compass />
+      </div>
     </div>
   );
 }

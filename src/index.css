@@ -355,6 +355,14 @@
     opacity: 1;
   }
 }
+@keyframes ink-flow-move {
+  to {
+    stroke-dashoffset: -64;
+  }
+}
+.ink-flow {
+  animation: ink-flow-move 6s linear infinite;
+}
 @keyframes ink-walk {
   from {
     transform: translateX(0);
@@ -382,6 +390,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .motion-village,
+  .ink-flow,
   .ink-anim,
   .ink-anim-base {
     animation: none !important;
