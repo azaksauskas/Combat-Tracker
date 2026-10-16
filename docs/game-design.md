@@ -745,8 +745,32 @@ becomes the company's camp.
   - 🐎 Horses: towns and cities sell mounts for the whole company (150
     gold, sold back for half). Riding is half as fast again and costs 4
     gold a day in fodder, paid before rations.
+- **A living road: happenings and landmarks.**
+  - Every 8 hours on the march ("world.eventHours"), something turns up
+    near the company if fewer than three are out ("world.maxEvents"): a
+    farmstead burning, a wagon in the ditch, a wounded traveller, lights in
+    the marsh, an abandoned camp, pilgrims, a pedlar, tracks in the mud, a
+    riderless horse. Each is drawn in ink and moves (flames flicker, smoke
+    rises, a wheel spins, wisps bob, a red ! beckons) and lasts a day or
+    two. Marching into one opens it.
+  - Each offers choices: a skill check rolled by the party's best at it
+    (Athletics, Medicine, Survival, Arcana, Persuasion…, DC 10–14, the roll
+    shown), a sure thing that may cost gold or rations, or riding on.
+    Outcomes give or take gold, rations, healing draughts, a chest,
+    reputation with the nearest settlement, hours lost, horses, mark
+    unknown dens, lairs, sites and landmarks on the map, or bring a fight.
+  - Seven landmarks lie in the land from the start (standing stones, an old
+    battlefield, a hermit's hut, a ruined watchtower, a wayside shrine),
+    found by exploring and looked into once: the watchtower shows the land
+    for miles, the hermit marks every den near her, the battlefield may
+    wake its dead.
 
 ## Future ideas
+
+- **A bigger world for a longer game.** Today's map (1000 × 640) suits
+  trials, with quick travel between towns. A long campaign wants a much
+  larger land (several regions, each with its own towns, factions and
+  dens), travel in proportion to it, and horses or a wagon to cross it.
 
 - **A kids' version for playing with a child**, along the lines of
   Mausritter (brave mice, short rules, three stats, item slots that make

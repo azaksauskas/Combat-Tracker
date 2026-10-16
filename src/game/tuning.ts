@@ -210,6 +210,8 @@ export const TUNING_FIELDS: TuningField[] = [
   f("World", "world.horseSpeed", "Horses: march speed ×", 1.5, undefined, { min: 1, step: 0.1 }),
   f("World", "world.horsePrice", "Horses for the company (gold, in towns and cities)", 150, undefined, { min: 0 }),
   f("World", "world.horseUpkeep", "Horses: fodder and care, gold a day", 4, undefined, { min: 0 }),
+  f("World", "world.eventHours", "Something happens near the company every … game hours on the march", 8, "A burning farm, a wagon in the ditch, lights in the marsh… Each lasts a day or two.", { min: 1 }),
+  f("World", "world.maxEvents", "Happenings on the map at once", 3, undefined, { min: 0 }),
   f("World", "world.slipDc", "Slipping away from a band: Stealth DC", 12, undefined, { min: 1 }),
   f("World", "world.spawnHours", "A new band appears every … game hours (while a camp or the wilds has room)", 12, undefined, { min: 1 }),
 

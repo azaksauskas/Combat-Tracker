@@ -1,4 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { MARKS } from "../game/events";
 import { mulberry32 } from "../game/rng";
 import { EXPLORE_CELL, EXPLORE_COLS, EXPLORE_ROWS, WORLD_H, WORLD_W, dist, inPatch, onRoad, type Band, type Patch, type Place, type Pt, type World } from "../game/world";
 
@@ -323,11 +324,11 @@ const hexagon = (r: number) =>
   }).join(" ");
 
 /** A place drawn in ink, framed; unknown places are a question mark. */
-export const InkPlace = memo(function InkPlace({ place: p, known, here }: { place: Place; known: boolean; here: boolean }) {
+export const InkPlace = memo(function InkPlace({ place: p, known, here, done }: { place: Place; known: boolean; here: boolean; done?: boolean }) {
   const settlement = p.kind === "village" || p.kind === "town" || p.kind === "city";
   const r = p.kind === "city" ? 20 : settlement ? 17 : 14;
   return (
-    <g transform={`translate(${p.x} ${p.y})`}>
+    <g transform={`translate(${p.x} ${p.y})`} opacity={done ? 0.55 : undefined}>
       {settlement || p.kind === "home" ? (
         <polygon points={hexagon(r)} fill={PAPER} stroke={INK} strokeWidth={here ? 2.6 : 1.6} />
       ) : (
@@ -364,6 +365,10 @@ export const InkPlace = memo(function InkPlace({ place: p, known, here }: { plac
           <Tower x={-6} y={-4} s={0.8} />
           <Tower x={4} y={-3} s={1.1} />
         </g>
+      ) : p.kind === "mark" ? (
+        <g transform="scale(1.25)">
+          <InkVignette look={MARKS[p.ref ?? ""]?.look ?? "stones"} />
+        </g>
       ) : p.kind === "den" && p.ref === "bandits" ? (
         <g>
           <path d="M -9 6 L -2 -8 L 5 6 Z" fill={PAPER} stroke={INK} strokeWidth={1} />
@@ -395,7 +400,7 @@ export const InkPlace = memo(function InkPlace({ place: p, known, here }: { plac
         </g>
       )}
       {known && (
-        <text y={r + 13} textAnchor="middle" fontFamily={FONT} fontSize={settlement ? 14 : 12} fontStyle={p.kind === "lair" || p.kind === "site" || p.kind === "den" ? "italic" : undefined} fill={INK} stroke={PAPER} strokeWidth={3.5} paintOrder="stroke">
+        <text y={r + 13} textAnchor="middle" fontFamily={FONT} fontSize={settlement ? 14 : 12} fontStyle={p.kind === "lair" || p.kind === "site" || p.kind === "den" || p.kind === "mark" ? "italic" : undefined} fill={INK} stroke={PAPER} strokeWidth={3.5} paintOrder="stroke">
           {p.name}
         </text>
       )}
@@ -473,3 +478,202 @@ export function Compass() {
     </svg>
   );
 }
+
+const anim = (name: string, s: number, delay = 0, timing = "ease-in-out") => ({ animation: `${name} ${s}s ${timing} ${delay}s infinite` });
+
+/** Smoke rising from a point. */
+function Smoke({ x, y }: { x: number; y: number }) {
+  return (
+    <g pointerEvents="none">
+      {[0, 1, 2].map((i) => (
+        <circle key={i} className="ink-anim" cx={x} cy={y} r={2.2} fill="none" stroke={INK} strokeWidth={0.6} style={anim("ink-smoke", 2.7, i * 0.9, "ease-out")} />
+      ))}
+    </g>
+  );
+}
+
+/** A little hooded walker. */
+function Walker({ x, y, delay = 0, pack }: { x: number; y: number; delay?: number; pack?: boolean }) {
+  return (
+    <g className="ink-anim-base" style={anim("walk-bob", 0.9, delay)}>
+      <path d={`M ${x - 2} ${y} L ${x} ${y - 7} L ${x + 2} ${y} Z`} fill={PAPER} stroke={INK} strokeWidth={0.8} />
+      <circle cx={x} cy={y - 7.6} r={1.4} fill={INK} />
+      {pack && <rect x={x + 1} y={y - 9} width={4.5} height={6} rx={1} fill={PAPER} stroke={INK} strokeWidth={0.7} />}
+    </g>
+  );
+}
+
+/** The picture of a happening or a landmark, in ink, gently moving. */
+export function InkVignette({ look }: { look: string }) {
+  switch (look) {
+    case "fire":
+      return (
+        <g>
+          <path d="M -8 6 L -8 -1 L -2 -6 L 4 -1 L 4 6 Z" fill={PAPER} stroke={INK} strokeWidth={0.9} />
+          <path d="M -5 6 L -5 2 L -2 2 L -2 6" stroke={INK} strokeWidth={0.6} fill="none" />
+          {[-6, -1, 3].map((x, i) => (
+            <path key={x} className="ink-anim-base" d={`M ${x - 2} -1 Q ${x - 2} -6 ${x} -9 Q ${x + 2} -6 ${x + 2} -1 Z`} fill={RED} style={anim("ink-flicker", 0.5 + i * 0.12, i * 0.1)} />
+          ))}
+          <Smoke x={0} y={-10} />
+        </g>
+      );
+    case "wagon":
+      return (
+        <g>
+          <g transform="rotate(-18)">
+            <rect x={-8} y={-5} width={13} height={6} fill={PAPER} stroke={INK} strokeWidth={0.9} />
+            <path d="M -8 -5 Q -1.5 -12 5 -5" fill="none" stroke={INK} strokeWidth={0.7} />
+          </g>
+          <g transform="translate(5 2)">
+            <g className="ink-anim" style={anim("ink-spin", 3, 0, "linear")}>
+              <circle r={3.2} fill={PAPER} stroke={INK} strokeWidth={0.8} />
+              <path d="M -3.2 0 H 3.2 M 0 -3.2 V 3.2" stroke={INK} strokeWidth={0.5} />
+            </g>
+          </g>
+          <Walker x={-9} y={7} />
+        </g>
+      );
+    case "figure":
+      return (
+        <g>
+          <path d="M -7 5 L 5 5" stroke={INK} strokeWidth={2.2} strokeLinecap="round" />
+          <circle cx={7} cy={4.2} r={1.8} fill={INK} />
+          <g className="ink-anim-base" style={anim("sway", 1, 0)}>
+            <path d="M 4 4 L 4 -3" stroke={INK} strokeWidth={0.9} />
+          </g>
+          <path d="M -3 4 L -6 0" stroke={RED} strokeWidth={0.8} />
+        </g>
+      );
+    case "wisps":
+      return (
+        <g>
+          {[
+            [-6, 2],
+            [0, -4],
+            [6, 1],
+            [2, 5],
+          ].map(([x, y], i) => (
+            <g key={i} className="ink-anim" style={anim("ink-wisp", 2.2 + i * 0.4, i * 0.5)}>
+              <circle cx={x} cy={y} r={2.6} fill="#f3e3a0" opacity={0.6} />
+              <circle cx={x} cy={y} r={1.1} fill={PAPER} stroke={INK} strokeWidth={0.4} />
+            </g>
+          ))}
+        </g>
+      );
+    case "camp":
+      return (
+        <g>
+          <path d="M -9 5 L -4 -5 L 1 5 Z" fill={PAPER} stroke={INK} strokeWidth={0.9} />
+          <path d="M -4 -5 L -4 5" stroke={INK} strokeWidth={0.5} />
+          <path d="M 4 5 L 9 3 M 4 3 L 9 5" stroke={INK} strokeWidth={0.7} />
+          <circle cx={6.5} cy={3} r={0.9} fill={RED} className="ink-anim" style={anim("twinkle", 1.4)} />
+          <Smoke x={6.5} y={1} />
+        </g>
+      );
+    case "pilgrims":
+      return (
+        <g>
+          {[-7, -1, 5].map((x, i) => (
+            <Walker key={x} x={x} y={6} delay={i * 0.25} />
+          ))}
+          <path d="M 5 -1 L 5 -9 M 3 -7 L 7 -7" stroke={INK} strokeWidth={0.7} />
+        </g>
+      );
+    case "pedlar":
+      return (
+        <g>
+          <Walker x={-4} y={6} pack />
+          <g className="ink-anim-base" style={anim("walk-bob", 0.9, 0.3)}>
+            <path d="M 2 3 L 10 3 L 11 0 M 3 3 L 3 6 M 9 3 L 9 6" fill="none" stroke={INK} strokeWidth={0.9} />
+            <rect x={3} y={-1} width={5} height={4} fill={PAPER} stroke={INK} strokeWidth={0.6} />
+          </g>
+        </g>
+      );
+    case "tracks":
+      return (
+        <g>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <ellipse key={i} className="ink-anim" cx={-8 + i * 4} cy={i % 2 ? 2 : -1} rx={1.3} ry={0.8} fill={INK} style={anim("ink-print", 2.5, i * 0.35, "linear")} />
+          ))}
+        </g>
+      );
+    case "horse":
+      return (
+        <g>
+          <ellipse cx={-1} cy={0} rx={6} ry={3} fill={PAPER} stroke={INK} strokeWidth={0.9} />
+          <path d="M -5 2 L -6 7 M -3 2.5 L -3 7 M 2 2.5 L 2 7 M 4 2 L 5 7" stroke={INK} strokeWidth={0.9} />
+          <path d="M -7 -1 Q -10 1 -9 5" fill="none" stroke={INK} strokeWidth={1.1} />
+          <path d="M -3 -2.6 L 1 -2.6" stroke={RED} strokeWidth={1.2} />
+          {/* The head, down to graze and up again. */}
+          <g className="ink-anim" style={{ ...anim("sway", 2.6), transformOrigin: "0% 100%" }}>
+            <path d="M 4 -1 L 7 -6 L 10 -4 L 7.5 -3.5 L 5.5 1 Z" fill={PAPER} stroke={INK} strokeWidth={0.9} strokeLinejoin="round" />
+            <path d="M 6.5 -6 L 6 -8" stroke={INK} strokeWidth={0.7} />
+          </g>
+        </g>
+      );
+    case "stones":
+      return (
+        <g>
+          {[0, 1, 2, 3, 4, 5].map((i) => {
+            const a = (i / 6) * Math.PI * 2;
+            return <rect key={i} x={Math.cos(a) * 8 - 1.5} y={Math.sin(a) * 4.5 - 4} width={3} height={5} rx={0.6} fill={PAPER} stroke={INK} strokeWidth={0.8} />;
+          })}
+          <rect x={-2} y={-8} width={4} height={8} rx={0.6} fill={PAPER} stroke={INK} strokeWidth={0.9} />
+        </g>
+      );
+    case "bones":
+      return (
+        <g>
+          <path d="M -9 6 Q -5 1 -1 6 M 1 6 Q 5 2 9 6" fill={PAPER} stroke={INK} strokeWidth={0.8} />
+          <path d="M -5 -6 L 3 3 M 3 -6 L -5 3" stroke={INK} strokeWidth={1} />
+          <path d="M 6 -3 L 6 4" stroke={INK} strokeWidth={0.7} />
+          <path d="M 6 -3 L 10 -1.5 L 6 0" fill={RED} />
+        </g>
+      );
+    case "hut":
+      return (
+        <g>
+          <path d="M -7 6 L -7 0 L 0 -6 L 7 0 L 7 6 Z" fill={PAPER} stroke={INK} strokeWidth={0.9} />
+          <path d="M -9 1 L 0 -7 L 9 1" fill="none" stroke={INK} strokeWidth={1.4} />
+          <rect x={-1.5} y={2} width={3} height={4} fill={INK} />
+          <Smoke x={4} y={-6} />
+        </g>
+      );
+    case "tower":
+      return (
+        <g>
+          <path d="M -5 7 L -5 -6 L -3 -8 L -1 -5 L 1 -9 L 3 -6 L 5 -7 L 5 7 Z" fill={PAPER} stroke={INK} strokeWidth={0.9} />
+          <path d="M -2 -1 L 0 -1 M -3 3 L -1 3 M 1 1 L 3 1" stroke={INK} strokeWidth={0.6} />
+          <path d="M 7 7 l 2 -1 M 8 5 l 2 1" stroke={INK} strokeWidth={0.6} />
+        </g>
+      );
+    case "shrine":
+      return (
+        <g>
+          <path d="M -5 7 L -5 -3 Q 0 -10 5 -3 L 5 7 Z" fill={PAPER} stroke={INK} strokeWidth={0.9} />
+          <path d="M -2.5 6 L -2.5 -1 Q 0 -5 2.5 -1 L 2.5 6 Z" fill={INK} />
+          <circle cx={0} cy={-0.5} r={1} fill={PAPER} />
+          <circle cx={0} cy={1} r={4} fill="#f3e3a0" opacity={0.35} className="ink-anim" style={anim("twinkle", 3)} />
+        </g>
+      );
+    default:
+      return <circle r={4} fill={RED} />;
+  }
+}
+
+/** A happening on the map: its picture and a beckoning mark above it. */
+export const InkEvent = memo(function InkEvent({ x, y, look }: { x: number; y: number; look: string }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <circle r={18} fill={PAPER} opacity={0.75} />
+      <g transform="scale(1.6)">
+        <InkVignette look={look} />
+      </g>
+      <g className="ink-anim" style={anim("ink-beckon", 1.6)}>
+        <text y={-19} textAnchor="middle" fontFamily={FONT} fontSize={11} fontWeight="bold" fill={RED} stroke={PAPER} strokeWidth={2.5} paintOrder="stroke">
+          !
+        </text>
+      </g>
+    </g>
+  );
+});

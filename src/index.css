@@ -281,8 +281,84 @@
     transform: rotate(-28deg);
   }
 }
+/* Happenings on the world map (SVG: animate each shape about its own box). */
+.ink-anim {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.ink-anim-base {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+@keyframes ink-flicker {
+  0%,
+  100% {
+    transform: scaleY(1) skewX(0deg);
+  }
+  33% {
+    transform: scaleY(1.25) skewX(-6deg);
+  }
+  66% {
+    transform: scaleY(0.85) skewX(5deg);
+  }
+}
+@keyframes ink-smoke {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.5);
+  }
+  25% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(5px, -16px) scale(1.8);
+  }
+}
+@keyframes ink-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes ink-wisp {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translate(0, 0);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(2px, -4px);
+  }
+}
+@keyframes ink-print {
+  0%,
+  10% {
+    opacity: 0;
+  }
+  30%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes ink-beckon {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .motion-village {
+  .motion-village,
+  .ink-anim,
+  .ink-anim-base {
     animation: none !important;
   }
 }

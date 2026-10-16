@@ -167,6 +167,12 @@ export const PlayerDocSchema = z.object({
       horses: z.boolean().catch(false),
       /** Dens the company cleared out: place id → game hour it was cleared. */
       cleared: z.record(z.string(), z.number()).catch({}),
+      /** Things happening on the road (see events.ts). */
+      events: z.array(z.object({ id: z.string(), kind: z.string(), x: z.number(), y: z.number(), until: z.number() })).catch([]),
+      /** World hour the last event turned up. */
+      lastEvent: z.number().catch(0),
+      /** Landmarks already looked into. */
+      done: z.array(z.string()).catch([]),
       /** Rations the company carries. */
       provisions: z.number().catch(0),
       /** The last world day wages were paid for. */

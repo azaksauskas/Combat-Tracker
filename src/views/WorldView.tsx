@@ -5,12 +5,13 @@ import { canStrike, threatOf } from "../game/region";
 import { allFactions, liveHours, startTownBattle } from "../game/town-store";
 import { num } from "../game/tuning";
 import { TERRAIN, WORLD_H, WORLD_W, dist, inSight, isExplored, terrainAt, travelHours, type Place, type Pt } from "../game/world";
-import { beginAt, boardAt, buyAt, enterWorld, fightBand, hireAt, marchTo, packRations, pauseMarch, raidDen, recruitsAt, resumeMarch, saveMarch, setSpeed, slipAway, takeContract, tradeHorses, useWorld, worldOf } from "../game/world-store";
+import { afterOutcome, beginAt, boardAt, buyAt, canChoose, choose, enterWorld, fightBand, passBy, hireAt, marchTo, packRations, pauseMarch, raidDen, recruitsAt, resumeMarch, saveMarch, setSpeed, slipAway, takeContract, tradeHorses, useWorld, worldOf } from "../game/world-store";
 import { availableMembers, chosenParty, myCharacters } from "../game/party-store";
 import { isSettlement, priceOf, repText, sells, wageOf } from "../game/company";
 import { TRAITS } from "../game/roster";
 import { useActiveProfile, usePlayers } from "../store/players";
-import { Compass, ExploredMask, INK, InkBand, InkCompany, InkDefs, InkPlace, PAPER, RED, useBakedLand, useFogImage } from "./InkMap";
+import { EVENTS, eventDef, MARKS } from "../game/events";
+import { Compass, ExploredMask, INK, InkBand, InkCompany, InkDefs, InkEvent, InkPlace, InkVignette, PAPER, RED, useBakedLand, useFogImage } from "./InkMap";
 
 /**
  * The world map, drawn in pen and ink: the company marches across the land
@@ -20,7 +21,7 @@ import { Compass, ExploredMask, INK, InkBand, InkCompany, InkDefs, InkPlace, PAP
  * drag to look around, scroll or use +/− to zoom.
  */
 
-const PLACE_ICON: Record<Place["kind"], string> = { home: "⛺", village: "🛖", town: "🏘️", city: "🏰", lair: "💀", site: "🏚️", den: "🐾" };
+const PLACE_ICON: Record<Place["kind"], string> = { home: "⛺", village: "🛖", town: "🏘️", city: "🏰", lair: "💀", site: "🏚️", den: "🐾", mark: "🗿" };
 const FOE_ICON: Record<string, string> = { wolves: "🐺", bandits: "🗡️", goblins: "👺", undead: "💀", vermin: "🐀", cultists: "🕯️", gnolls: "🐗" };
 
 const clock = (hours: number) => `Day ${Math.floor(hours / 24) + 1}, ${String(Math.floor(hours % 24)).padStart(2, "0")}:00`;
@@ -63,6 +64,8 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
   const eta = dest ? travelHours(world, pos, dest) / ((doc.world.horses ? num("world.horseSpeed") : 1) * (doc.world.hungry ? num("company.hungrySlow") : 1)) : 0;
   const ground = TERRAIN[terrainAt(world, pos)];
   const party = chosenParty();
+  const visibleEvents = s.events.filter((e) => inSight(e, pos) || isExplored(s.explored, e));
+  const done = new Set(doc.world.done);
 
   // The camera: centred on the company (or wherever the player dragged), kept on the map.
   const vw = WORLD_W / zoom;
@@ -98,6 +101,8 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
     drag.current = null;
     if (!d || d.moved) return;
     const p = toWorld(e.clientX, e.clientY);
+    const ev = visibleEvents.find((q) => dist(q, p) < 16);
+    if (ev) return marchTo({ x: ev.x, y: ev.y });
     const place = world.places.find((q) => known(q) && dist(q, p) < 18);
     marchTo(place ? { x: place.x, y: place.y } : p, place?.id ?? null);
   };
@@ -108,7 +113,7 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_20rem]">
-      <div className="relative overflow-hidden rounded-xl border-2 shadow-inner" style={{ borderColor: INK, background: PAPER }}>
+      <div className="relative self-start overflow-hidden rounded-xl border-2 shadow-inner" style={{ borderColor: INK, background: PAPER }}>
         <svg
           ref={svg}
           viewBox={`${vx} ${vy} ${vw} ${vh}`}
@@ -132,7 +137,10 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
           {dest && <line x1={pos.x} y1={pos.y} x2={dest.x} y2={dest.y} stroke={RED} strokeWidth={1.4} strokeDasharray="1 4" strokeLinecap="round" />}
           {dest && <path d={`M ${dest.x - 5} ${dest.y - 5} L ${dest.x + 5} ${dest.y + 5} M ${dest.x + 5} ${dest.y - 5} L ${dest.x - 5} ${dest.y + 5}`} stroke={RED} strokeWidth={2} strokeLinecap="round" />}
           {world.places.map((p) => (
-            <InkPlace key={p.id} place={p} known={known(p)} here={p.id === s.at} />
+            <InkPlace key={p.id} place={p} known={known(p)} here={p.id === s.at} done={done.has(p.id)} />
+          ))}
+          {visibleEvents.map((e) => (
+            <InkEvent key={e.id} x={e.x} y={e.y} look={EVENTS[e.kind]?.look ?? "figure"} />
           ))}
           {s.bands
             .filter((b) => inSight(b, pos) || b.contract)
@@ -205,6 +213,7 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
         <Legend />
       </aside>
 
+      <Happening />
       <Dialog open={!!s.encounter} onClose={() => {}} title={s.encounter ? `${FOE_ICON[s.encounter.foe] ?? "⚔"} ${s.encounter.name}!` : ""}>
         {s.encounter && (
           <div className="space-y-3">
@@ -265,6 +274,18 @@ function PlacePanel({ place, onGoTown, onAdventure }: { place: Place; onGoTown: 
         </>
       )}
       {place.kind === "den" && <Den place={place} />}
+      {place.kind === "mark" && (
+        <>
+          <p className="text-sm text-muted">{MARKS[place.ref ?? ""]?.text}</p>
+          {doc?.world?.done.includes(place.id) ? (
+            <p className="text-xs text-faint">The company has seen what there is to see here.</p>
+          ) : (
+            <button className="btn btn-primary" onClick={() => useWorld.setState({ happening: { id: place.id, kind: place.ref ?? "", mark: true } })}>
+              🔍 Look closer
+            </button>
+          )}
+        </>
+      )}
       {faction && doc?.town && (
         <>
           <p className="text-sm text-muted">{faction.description}</p>
@@ -278,6 +299,55 @@ function PlacePanel({ place, onGoTown, onAdventure }: { place: Place; onGoTown: 
         </>
       )}
     </section>
+  );
+}
+
+/** An event or landmark the company came upon, and how the choice turned out. */
+function Happening() {
+  const h = useWorld((s) => s.happening);
+  const outcome = useWorld((s) => s.outcome);
+  // Re-render when gold or rations change what can be afforded.
+  usePlayers((s) => s.docs);
+  const def = h ? eventDef(h.kind) : undefined;
+  return (
+    <>
+      <Dialog open={!!def} onClose={passBy} title={def?.title ?? ""}>
+        {def && (
+          <div className="space-y-3">
+            <svg viewBox="-16 -16 32 26" className="mx-auto block h-24 w-32" aria-hidden>
+              <InkVignette look={def.look} />
+            </svg>
+            <p className="font-serif italic">{def.text}</p>
+            <div className="flex flex-col gap-1.5">
+              {def.choices.map((c, i) =>
+                c.needsNoHorses && !canChoose(c) && !c.cost ? null : (
+                  <button key={c.label} className={clsx("btn justify-start text-left", !c.leave && "btn-primary")} disabled={!canChoose(c)} onClick={() => choose(i)}>
+                    {c.label}
+                    {c.skill && (
+                      <span className="ml-auto pl-3 text-xs opacity-80">
+                        {c.skill} DC {c.dc}
+                      </span>
+                    )}
+                    {c.cost?.provisions ? <span className="ml-auto pl-3 text-xs opacity-80">−{c.cost.provisions} rations</span> : null}
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+        )}
+      </Dialog>
+      <Dialog open={!!outcome} onClose={afterOutcome} title={outcome?.title ?? ""}>
+        {outcome && (
+          <div className="space-y-3">
+            {outcome.check && <p className="text-xs text-muted">🎲 {outcome.check}</p>}
+            <p className="font-serif italic">{outcome.text}</p>
+            <button className="btn btn-primary" onClick={afterOutcome}>
+              {outcome.fight ? "⚔ To arms!" : "Carry on"}
+            </button>
+          </div>
+        )}
+      </Dialog>
+    </>
   );
 }
 
@@ -311,6 +381,7 @@ function Legend() {
         <li>Blank paper: land the company hasn't seen yet. It fills in as they march.</li>
         <li>Dotted lines are roads (quick). Forests, mountains and marsh are slow.</li>
         <li>Hexagons are settlements, ? is a place not yet found, red rings are bands on the move. Bands keep close to their dens and lairs; the open country is quieter.</li>
+        <li>A red ! is something happening nearby (a fire, a wagon in the ditch, lights in the marsh): march to it. Landmarks like standing stones can be looked into once.</li>
         <li>Drag to look around, scroll or +/− to zoom, ⌖ back to the company.</li>
       </ul>
     </section>

@@ -12,7 +12,10 @@ import { setupFor } from "./scenarios";
 import { startBattle, usePlay } from "./store";
 import { allFactions, enlist, grantChest, onRoadBattle, partyLevel, passTime, salvageBattle } from "./town-store";
 import { num } from "./tuning";
-import { BAND_NAME, bandAt, bandCamps, blankExplored, dist, explore, generateWorld, march, moveBands, nextBand, spawnBand, type Band, type Place, type Pt, type World } from "./world";
+import { abilityMod } from "../domain/statblock";
+import { eventDef, resolveChoice, type Choice, type Outcome } from "./events";
+import { SKILL_ABILITY } from "./skills";
+import { BAND_NAME, bandAt, bandCamps, blankExplored, dist, explore, generateWorld, isExplored, march, moveBands, nextBand, spawnBand, spawnEvent, type Band, type WorldEvent, type Place, type Pt, type World } from "./world";
 
 /**
  * The company on the march: a clock that runs only while it moves (paused,
@@ -44,9 +47,18 @@ interface WorldState {
   explored: string;
   /** Footprints behind the company (newest last). */
   trail: Pt[];
+  /** Things happening out there (see events.ts). */
+  events: WorldEvent[];
+  lastEvent: number;
+  /** The event or landmark the company has come upon. */
+  happening: { id: string; kind: string; mark: boolean } | null;
+  /** How a choice turned out, shown before the march goes on. */
+  outcome: { title: string; text: string; check?: string; fight?: string } | null;
+  /** An event the company walked past: not offered again until it moves off. */
+  ignore: string | null;
 }
 
-export const useWorld = create<WorldState>(() => ({ pos: null, dest: null, destPlace: null, bands: [], running: false, speed: 1, bank: 0, hours: 0, lastSpawn: 0, at: null, encounter: null, explored: "", trail: [] }));
+export const useWorld = create<WorldState>(() => ({ pos: null, dest: null, destPlace: null, bands: [], running: false, speed: 1, bank: 0, hours: 0, lastSpawn: 0, at: null, encounter: null, explored: "", trail: [], events: [], lastEvent: 0, happening: null, outcome: null, ignore: null }));
 
 const me = () => useActiveProfile.getState().id;
 const docOf = () => {
@@ -82,7 +94,7 @@ export function enterWorld() {
     const explored = explore(blankExplored(), home, num("world.sight"));
     updatePlayer(id, (d) => ({
       ...d,
-      world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"], explored, provisions: 12, paidDay: 0, unpaid: {}, hungry: false, rep: {}, contracts: [], taken: [], horses: false, cleared: {} },
+      world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"], explored, provisions: 12, paidDay: 0, unpaid: {}, hungry: false, rep: {}, contracts: [], taken: [], horses: false, cleared: {}, events: [], lastEvent: 0, done: [] },
     }));
   }
   const w = docOf()!.world!;
@@ -93,6 +105,8 @@ export function enterWorld() {
       bands: w.bands,
       hours: w.hours,
       lastSpawn: w.lastSpawn,
+      events: w.events,
+      lastEvent: w.lastEvent,
       explored: explore(w.explored, { x: w.x, y: w.y }, num("world.sight")),
       trail: [],
       at: placeAt(worldOf(docOf()), { x: w.x, y: w.y })?.id ?? null,
@@ -108,7 +122,7 @@ export function saveMarch() {
   if (!id || !s.pos || !docOf()?.world) return;
   const bank = s.bank;
   useWorld.setState({ bank: 0 });
-  updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, x: s.pos!.x, y: s.pos!.y, hours: s.hours, bands: s.bands, lastSpawn: s.lastSpawn, explored: s.explored } } : d));
+  updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, x: s.pos!.x, y: s.pos!.y, hours: s.hours, bands: s.bands, lastSpawn: s.lastSpawn, explored: s.explored, events: s.events, lastEvent: s.lastEvent } } : d));
   if (bank >= 0.05) passTime(bank);
 }
 
@@ -172,12 +186,24 @@ function tick() {
     if (band) bands = [...bands, band];
     lastSpawn = s.hours + hours;
   }
+  // Now and then something happens nearby; old happenings pass.
+  let events = s.events.filter((e) => e.until > s.hours);
+  let lastEvent = s.lastEvent;
+  if (s.hours + hours - lastEvent >= num("world.eventHours")) {
+    const e = events.length < num("world.maxEvents") ? spawnEvent(w, rng, `e${Math.floor(s.hours * 10)}`, step.pos, s.hours, num("world.sight")) : null;
+    if (e) events = [...events, e];
+    lastEvent = s.hours + hours;
+  }
   const caught = bandAt(bands, step.pos);
+  const contact = num("world.contactRange");
+  const ignored = s.ignore ? (events.find((e) => e.id === s.ignore) ?? w.places.find((p) => p.id === s.ignore)) : undefined;
+  const ignore = ignored && dist(ignored, step.pos) < contact * 2 ? s.ignore : null;
+  const met = events.find((e) => e.id !== ignore && dist(e, step.pos) < contact);
   // Footprints every few map units; the map fills in as the company sees more of it.
   const last = s.trail[s.trail.length - 1];
   const trail = !last || dist(last, step.pos) > 5 ? [...s.trail, step.pos].slice(-140) : s.trail;
   const explored = explore(s.explored, step.pos, num("world.sight"));
-  const next: Partial<WorldState> = { pos: step.pos, bands, hours: s.hours + hours, bank: s.bank + hours, lastSpawn, trail, explored };
+  const next: Partial<WorldState> = { pos: step.pos, bands, hours: s.hours + hours, bank: s.bank + hours, lastSpawn, trail, explored, events, lastEvent, ignore };
   // A new day on the road: wages, rations, deadlines.
   if (Math.floor((s.hours + hours) / 24) > Math.floor(s.hours / 24)) {
     useWorld.setState(next);
@@ -185,6 +211,12 @@ function tick() {
   }
   if (caught) {
     useWorld.setState({ ...next, running: false, encounter: caught });
+    stopClock();
+    saveMarch();
+    return;
+  }
+  if (met) {
+    useWorld.setState({ ...next, running: false, happening: { id: met.id, kind: met.kind, mark: false } });
     stopClock();
     saveMarch();
     return;
@@ -207,7 +239,128 @@ function arrive(place: Place) {
   if (!id) return;
   settleContracts(place);
   updatePlayer(id, (d) => (d.world && !d.world.seen.includes(place.id) ? { ...d, world: { ...d.world, seen: [...d.world.seen, place.id] } } : d));
+  if (place.kind === "mark" && place.ref && !docOf()?.world?.done.includes(place.id)) useWorld.setState({ happening: { id: place.id, kind: place.ref, mark: true } });
   if (place.kind !== "home" && !docOf()?.world?.seen.includes(place.id)) addChronicle(id, [{ kind: "story", text: `The company reached ${place.name}.` }]);
+}
+
+// --- Events and landmarks ---------------------------------------------------------------
+
+/** The party's best at a skill: who rolls, and their bonus. */
+function bestAt(skill: string): { name: string; bonus: number } {
+  const party = chosenParty();
+  let best = { name: party[0]?.label ?? "Someone", bonus: -5 };
+  for (const e of party) {
+    const st = e.build().stats;
+    if (!st) continue;
+    const bonus = st.skills[skill] ?? abilityMod(st.abilities[SKILL_ABILITY[skill] ?? "wis"]);
+    if (bonus > best.bonus) best = { name: e.label, bonus };
+  }
+  return best;
+}
+
+/** Can the company afford a choice (and is it on offer)? */
+export function canChoose(choice: Choice): boolean {
+  const doc = docOf();
+  if (!doc?.world || !doc.town) return false;
+  if (choice.needsNoHorses && doc.world.horses) return false;
+  return (choice.cost?.gold ?? 0) <= doc.town.gold && (choice.cost?.provisions ?? 0) <= doc.world.provisions;
+}
+
+/** Walk on by: the company carries on where it was going. */
+export function passBy() {
+  const s = useWorld.getState();
+  if (!s.happening) return;
+  useWorld.setState({ happening: null, ignore: s.happening.id });
+  resumeMarch();
+}
+
+/** Make a choice at an event or landmark. */
+export function choose(index: number) {
+  const id = me();
+  const s = useWorld.getState();
+  const h = s.happening;
+  const def = h ? eventDef(h.kind) : undefined;
+  const choice = def?.choices[index];
+  if (!id || !h || !def || !choice || !canChoose(choice)) return;
+  if (choice.leave) return passBy();
+  const who = choice.skill ? bestAt(choice.skill) : null;
+  const roll = 1 + Math.floor(Math.random() * 20);
+  const r = resolveChoice(choice, who?.bonus ?? 0, roll);
+  const cost = choice.cost ?? {};
+  applyOutcome({ ...r.outcome, gold: (r.outcome.gold ?? 0) - (cost.gold ?? 0), provisions: (r.outcome.provisions ?? 0) - (cost.provisions ?? 0) }, def.title);
+  // An event is over once dealt with; a landmark is done.
+  if (h.mark) updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, done: [...d.world.done, h.id] } } : d));
+  useWorld.setState((st) => ({
+    happening: null,
+    events: st.events.filter((e) => e.id !== h.id),
+    ignore: h.id,
+    outcome: {
+      title: def.title,
+      text: r.outcome.text,
+      check: who && choice.skill ? `${who.name}: ${choice.skill} ${r.total} (d20 ${roll} ${who.bonus >= 0 ? "+" : "−"} ${Math.abs(who.bonus)}) vs DC ${choice.dc}: ${r.ok ? "success" : "failure"}` : undefined,
+      fight: r.outcome.fight,
+    },
+  }));
+  saveMarch();
+}
+
+/** Close the outcome: to arms if something attacks, else on with the march. */
+export function afterOutcome() {
+  const s = useWorld.getState();
+  const fight = s.outcome?.fight;
+  useWorld.setState({ outcome: null });
+  if (fight && s.pos) {
+    useWorld.setState({ encounter: { id: `ev-${Math.floor(s.hours * 10)}`, foe: fight, name: BAND_NAME[fight] ?? "Raiders", x: s.pos.x, y: s.pos.y, goal: s.pos } });
+    return fightBand();
+  }
+  resumeMarch();
+}
+
+function applyOutcome(o: Outcome, what: string) {
+  const id = me();
+  const doc = docOf();
+  const w = worldOf(doc);
+  const s = useWorld.getState();
+  if (!id || !doc?.world || !doc.town || !w || !s.pos) return;
+  const pos = s.pos;
+  const settled = w.places.filter(isSettlement);
+  const nearest = settled.reduce<Place | undefined>((best, p) => (!best || dist(p, pos) < dist(best, pos) ? p : best), undefined);
+  // Places pointed out: the nearest unknown ones of each kind asked for.
+  const marked: Place[] = [];
+  for (const kind of o.reveal ?? []) {
+    const p = w.places
+      .filter((q) => q.kind === kind && !doc.world!.seen.includes(q.id) && !marked.includes(q) && !isExplored(s.explored, q))
+      .sort((a, b) => dist(a, pos) - dist(b, pos))[0];
+    if (p) marked.push(p);
+  }
+  let explored = s.explored;
+  for (const p of marked) explored = explore(explored, p, 30);
+  if (o.explore) explored = explore(explored, pos, o.explore);
+  useWorld.setState({ explored });
+  updatePlayer(id, (d) =>
+    d.world && d.town
+      ? {
+          ...d,
+          town: {
+            ...d.town,
+            gold: Math.max(0, d.town.gold + (o.gold ?? 0)),
+            stash: o.potions ? { ...d.town.stash, "potion-healing": (d.town.stash["potion-healing"] ?? 0) + o.potions } : d.town.stash,
+          },
+          world: {
+            ...d.world,
+            provisions: Math.max(0, d.world.provisions + (o.provisions ?? 0)),
+            hungry: (o.provisions ?? 0) > 0 ? false : d.world.hungry,
+            rep: o.rep && nearest ? addRep(d.world.rep, nearest.id, o.rep) : d.world.rep,
+            seen: [...d.world.seen, ...marked.map((p) => p.id)],
+            horses: o.horses ? true : d.world.horses,
+            explored,
+          },
+        }
+      : d,
+  );
+  if (o.hours) useWorld.setState((st) => ({ hours: st.hours + o.hours!, bank: st.bank + o.hours! }));
+  if (o.chest) grantChest(o.chest, what);
+  if (marked.length) toast.success(`Marked on the map: ${marked.map((p) => p.name).join(", ")}`);
 }
 
 // --- Bands on the road --------------------------------------------------------------------

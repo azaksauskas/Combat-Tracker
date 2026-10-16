@@ -1,4 +1,5 @@
 import type { Faction } from "../domain/faction";
+import { EVENT_KINDS, MARKS, MARK_KINDS } from "./events";
 import { mulberry32 } from "./rng";
 import { num } from "./tuning";
 
@@ -40,7 +41,7 @@ export interface Patch {
   bumps: number[];
 }
 
-export type PlaceKind = "home" | "village" | "town" | "city" | "lair" | "site" | "den";
+export type PlaceKind = "home" | "village" | "town" | "city" | "lair" | "site" | "den" | "mark";
 
 export interface Place {
   id: string;
@@ -134,6 +135,7 @@ export function generateWorld(seed: number, homeName: string, factions: Faction[
     linked.push(p);
   }
   addDens(seed, places, patches);
+  addMarks(seed, places, patches);
   return { seed, places, patches, roads };
 }
 
@@ -245,6 +247,46 @@ export const FACTION_FOE: Record<string, string> = { "red-fang": "goblins", "riv
 const WILD_FOES = ["wolves", "wolves", "bandits", "vermin"];
 export const BAND_NAME: Record<string, string> = { wolves: "Wolf pack", bandits: "Bandits", goblins: "Goblin raiders", undead: "The restless dead", vermin: "Giant rats", cultists: "Cultists", gnolls: "Gnoll war party" };
 
+/** Landmarks: standing stones, an old battlefield, a hermit… found by exploring. */
+function addMarks(seed: number, places: Place[], patches: Patch[]) {
+  const rng = mulberry32((seed ^ 0x1a7d) >>> 0).rng;
+  const home = places.find((p) => p.kind === "home")!;
+  const kinds = [...MARK_KINDS, ...MARK_KINDS.slice(0, 2)];
+  kinds.forEach((kind, i) => {
+    for (let tries = 0; tries < 60; tries++) {
+      const p = { x: 40 + rng() * (WORLD_W - 80), y: 40 + rng() * (WORLD_H - 80) };
+      if (dist(p, home) < 110 || places.some((q) => dist(q, p) < 70)) continue;
+      if (patches.some((q) => q.terrain === "water" && inPatch(p, q))) continue;
+      places.push({ id: `mark-${i}`, kind: "mark", name: MARKS[kind]!.name, ref: kind, x: p.x, y: p.y });
+      break;
+    }
+  });
+}
+
+/** Something happening on the road, for a day or two. */
+export interface WorldEvent {
+  id: string;
+  kind: string;
+  x: number;
+  y: number;
+  /** World hour it's gone by. */
+  until: number;
+}
+
+/** A new event, somewhere around the company (out on the land, clear of places). */
+export function spawnEvent(w: World, rng: () => number, id: string, company: Pt, hours: number, sight: number): WorldEvent | null {
+  for (let tries = 0; tries < 30; tries++) {
+    const a = rng() * Math.PI * 2;
+    const r = sight * (0.5 + rng() * 0.9);
+    const p = { x: company.x + Math.cos(a) * r, y: company.y + Math.sin(a) * r };
+    if (p.x < 20 || p.y < 20 || p.x > WORLD_W - 20 || p.y > WORLD_H - 20) continue;
+    if (terrainAt(w, p) === "water" || w.places.some((q) => dist(q, p) < 30)) continue;
+    const kind = EVENT_KINDS[Math.floor(rng() * EVENT_KINDS.length)]!;
+    return { id, kind, x: p.x, y: p.y, until: hours + 30 + rng() * 30 };
+  }
+  return null;
+}
+
 /**
  * Where bands come from: the dens not cleared out and the lairs of factions
  * the company has the renown to meet (and hasn't broken).
@@ -302,7 +344,7 @@ function wanderGoal(w: World, b: Band, rng: () => number): Pt {
 export function moveBands(w: World, bands: Band[], company: Pt, hours: number, rng: () => number): Band[] {
   const aggro = num("world.bandSight");
   const speed = num("world.bandSpeed");
-  const safe = w.places.filter((p) => p.kind !== "lair" && p.kind !== "site" && p.kind !== "den");
+  const safe = w.places.filter((p) => p.kind !== "lair" && p.kind !== "site" && p.kind !== "den" && p.kind !== "mark");
   const sheltered = safe.some((p) => dist(p, company) < 28);
   return bands.map((b) => {
     const home = b.home ?? { x: b.x, y: b.y };
