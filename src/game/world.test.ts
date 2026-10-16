@@ -43,13 +43,22 @@ describe("the world map", () => {
     const band = spawnBand(world, rng, "b1", 3, BUILTIN_FACTIONS);
     expect(band.foe).toBeTruthy();
     const company = { x: 500, y: 600 };
-    const near: Band = { ...band, x: company.x + 60, y: company.y, goal: { x: 0, y: 0 } };
+    const near: Band = { ...band, x: company.x + 60, y: company.y, goal: { x: 0, y: 0 }, home: { x: company.x + 60, y: company.y } };
     let bands = [near];
     for (let i = 0; i < 20 && !bandAt(bands, company); i++) bands = moveBands(world, bands, company, 0.5, rng);
     expect(bandAt(bands, company)?.id).toBe(band.id);
     // Far away, it doesn't come.
-    const far: Band = { ...band, x: 20, y: 20, goal: { x: 40, y: 40 } };
+    const far: Band = { ...band, x: 20, y: 20, goal: { x: 40, y: 40 }, home: { x: 20, y: 20 } };
     expect(dist(moveBands(world, [far], company, 1, rng)[0]!, company)).toBeGreaterThan(300);
+  });
+
+  it("a band won't chase the company far from its own ground", () => {
+    const rng = mulberry32(5).rng;
+    const company = { x: 500, y: 300 };
+    // Its home is far away: it turns back instead of following.
+    const b: Band = { id: "x", foe: "wolves", name: "Wolves", x: company.x + 50, y: company.y, goal: { x: company.x, y: company.y }, home: { x: 950, y: 300 } };
+    const after = moveBands(world, [b], company, 1, rng)[0]!;
+    expect(dist(after, company)).toBeGreaterThan(dist(b, company));
   });
 
   it("settlements are safe ground", () => {

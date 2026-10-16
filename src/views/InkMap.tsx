@@ -390,7 +390,7 @@ export const InkPlace = memo(function InkPlace({ place: p, known, here }: { plac
 });
 
 /** The company: a banner on a pole, swaying while it marches, and its footprints. */
-export function InkCompany({ pos, trail, marching, count }: { pos: Pt; trail: Pt[]; marching: boolean; count: number }) {
+export function InkCompany({ pos, trail, marching, count, riding }: { pos: Pt; trail: Pt[]; marching: boolean; count: number; riding?: boolean }) {
   return (
     <g>
       {trail.map((t, i) => {
@@ -405,6 +405,11 @@ export function InkCompany({ pos, trail, marching, count }: { pos: Pt; trail: Pt
           <line x1={0} y1={4} x2={0} y2={-22} stroke={INK} strokeWidth={1.6} />
           <path d="M 0 -22 Q 7 -24 13 -21 Q 9 -18 13 -14 Q 7 -16 0 -14 Z" fill={RED} stroke={INK} strokeWidth={0.9} />
           <circle cy={-23} r={1.5} fill={INK} />
+          {riding && (
+            <text x={6} y={4} fontSize={11} aria-label="Riding">
+              🐎
+            </text>
+          )}
           <text x={-3} y={-1} textAnchor="end" fontFamily={FONT} fontSize={10} fill={INK} stroke={PAPER} strokeWidth={3} paintOrder="stroke">
             {count}
           </text>

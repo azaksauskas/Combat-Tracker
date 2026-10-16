@@ -76,11 +76,11 @@ export function enterWorld() {
     const home = w.places.find((p) => p.kind === "home")!;
     // A few bands are already out there.
     const rng = mulberry32(seed ^ 0xb4d5).rng;
-    const bands = Array.from({ length: 3 }, (_, i) => spawnBand(w, rng, `b-start-${i}`, doc.renown, allFactions())).filter((b) => dist(b, home) > num("world.bandSight"));
+    const bands = Array.from({ length: 2 }, (_, i) => spawnBand(w, rng, `b-start-${i}`, doc.renown, allFactions())).filter((b) => dist(b, home) > num("world.bandSight"));
     const explored = explore(blankExplored(), home, num("world.sight"));
     updatePlayer(id, (d) => ({
       ...d,
-      world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"], explored, provisions: 12, paidDay: 0, unpaid: {}, hungry: false, rep: {}, contracts: [], taken: [] },
+      world: { seed, x: home.x, y: home.y, hours: 0, bands, lastSpawn: 0, seen: ["home"], explored, provisions: 12, paidDay: 0, unpaid: {}, hungry: false, rep: {}, contracts: [], taken: [], horses: false },
     }));
   }
   const w = docOf()!.world!;
@@ -149,12 +149,14 @@ function tick() {
   if (!s.running || !s.pos || !s.dest || !w) return stopClock();
   const hours = ((TICK_MS / 1000) * s.speed) / Math.max(0.05, num("world.realSecondsPerHour"));
   // A hungry company drags its feet.
-  const step = march(w, s.pos, s.dest, hours * (docOf()?.world?.hungry ? num("company.hungrySlow") : 1));
+  const cw = docOf()?.world;
+  const pace = (cw?.hungry ? num("company.hungrySlow") : 1) * (cw?.horses ? num("world.horseSpeed") : 1);
+  const step = march(w, s.pos, s.dest, hours * pace);
   const rng = mulberry32((w.seed ^ Math.floor(s.hours * 977)) >>> 0).rng;
   let bands = moveBands(w, s.bands, step.pos, hours, rng);
   let lastSpawn = s.lastSpawn;
   const renown = docOf()?.renown ?? 1;
-  const cap = num("world.maxBands") + renown;
+  const cap = num("world.maxBands") + Math.floor(renown / 2);
   if (bands.length < cap && s.hours + hours - lastSpawn >= num("world.spawnHours")) {
     bands = [...bands, spawnBand(w, rng, `b${Math.floor(s.hours * 10)}`, renown, allFactions())];
     lastSpawn = s.hours + hours;
@@ -275,7 +277,9 @@ function newDay() {
   const roster = availableMembers(myCharacters())
     .filter((e) => !doc.fallen.includes(e.key))
     .map((e) => ({ key: e.key, name: e.label, level: doc.progress[e.key]?.level ?? 1 }));
-  const pd = payday(doc.town.gold, roster, chosenParty().length, doc.world.provisions);
+  // The horses eat first.
+  const fodder = doc.world.horses ? Math.min(doc.town.gold, num("world.horseUpkeep")) : 0;
+  const pd = payday(doc.town.gold - fodder, roster, chosenParty().length, doc.world.provisions);
   const unpaid: Record<string, number> = {};
   for (const h of roster) unpaid[h.key] = pd.unpaid.includes(h.key) ? (doc.world.unpaid[h.key] ?? 0) + 1 : 0;
   // Hired heroes walk out after too many days without pay; the founders stay, grumbling.
@@ -287,7 +291,7 @@ function newDay() {
     for (const c of lapsed) rep = addRep(rep, c.from, -2);
     return {
       ...d,
-      town: { ...d.town, gold: d.town.gold - pd.paid },
+      town: { ...d.town, gold: d.town.gold - pd.paid - fodder },
       characters: d.characters.filter((c) => !deserters.some((x) => x.key === `custom-${c.id}`)),
       picks: d.picks.filter((k) => !deserters.some((x) => x.key === k)),
       world: {
@@ -303,7 +307,7 @@ function newDay() {
   });
   if (lapsed.length) useWorld.setState((s) => ({ bands: s.bands.filter((b) => !lapsed.some((c) => b.contract === c.id)) }));
   const lines: string[] = [];
-  if (pd.paid) lines.push(`Paid ${pd.paid} gold in wages.`);
+  if (pd.paid) lines.push(`Paid ${pd.paid} gold in wages${fodder ? ` and ${fodder} for the horses` : ""}.`);
   if (pd.unpaid.length) lines.push(`Couldn't pay ${pd.unpaid.length} of the company.`);
   if (pd.hungry) lines.push("The rations ran out: the company is hungry.");
   for (const x of deserters) lines.push(`${x.name} walked out: no pay for ${num("company.desertDays")} days.`);
@@ -405,4 +409,24 @@ export function hireAt(place: Place, c: Candidate) {
   const id = me();
   if (!id || !enlist(c, place.name)) return;
   updatePlayer(id, (d) => (d.world ? { ...d, world: { ...d.world, taken: [...d.world.taken, c.id].slice(-200) } } : d));
+}
+
+/** Buy horses (towns and cities): the company rides, faster, but the horses need feeding every day. Or sell them back for half. */
+export function tradeHorses(place: Place, buy: boolean) {
+  const id = me();
+  const doc = docOf();
+  if (!id || !doc?.world || !doc.town || (place.kind !== "town" && place.kind !== "city")) return;
+  const price = num("world.horsePrice");
+  if (buy) {
+    if (doc.world.horses) return;
+    if (doc.town.gold < price) return void toast.error(`Needs ${price} gold`);
+    updatePlayer(id, (d) => (d.world && d.town ? { ...d, town: { ...d.town, gold: d.town.gold - price }, world: { ...d.world, horses: true } } : d));
+    addChronicle(id, [{ kind: "story", text: `Bought horses in ${place.name}: the company rides now.` }]);
+    toast.success("🐎 The company rides: faster on the march");
+  } else {
+    if (!doc.world.horses) return;
+    const back = Math.round(price / 2);
+    updatePlayer(id, (d) => (d.world && d.town ? { ...d, town: { ...d.town, gold: d.town.gold + back }, world: { ...d.world, horses: false } } : d));
+    toast(`Sold the horses for ${back} gold`);
+  }
 }

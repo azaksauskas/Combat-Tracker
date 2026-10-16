@@ -725,6 +725,19 @@ becomes the company's camp.
     The company's tokens are black, foes are paper ringed in red.
   - Text maps take new marks: "O" pillar or boulder, "T" tree, "," rubble,
     "w" shallow and "W" deep water, plus optional height rows.
+- **Quick wins after play-testing.**
+  - A status bar under the hero's name in battle: every condition (Prone,
+    Grappled, Poisoned…) and spell effect as a chip, with a line saying what
+    the bad ones do, "Badly hurt" at a third of HP or less, and a big
+    "Stand up (N ft)" button while the hero lies prone.
+  - Fewer bands, each with its own ground: two at the start, at most 2 + one
+    per two renown, a new one every 36 hours. A band keeps within 120 of
+    the place it rose ("world.bandRange"); bandits patrol the roads near
+    it. A band gives up the chase once the company is half as far again
+    beyond its ground, and goes home. They see 80 and move 11 an hour.
+  - 🐎 Horses: towns and cities sell mounts for the whole company (150
+    gold, sold back for half). Riding is half as fast again and costs 4
+    gold a day in fodder, paid before rations.
 
 ## Future ideas
 

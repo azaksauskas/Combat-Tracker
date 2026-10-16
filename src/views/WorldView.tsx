@@ -5,7 +5,7 @@ import { canStrike, threatOf } from "../game/region";
 import { allFactions, liveHours, startTownBattle } from "../game/town-store";
 import { num } from "../game/tuning";
 import { TERRAIN, WORLD_H, WORLD_W, dist, inSight, isExplored, terrainAt, travelHours, type Place, type Pt } from "../game/world";
-import { beginAt, boardAt, buyAt, enterWorld, fightBand, hireAt, marchTo, packRations, pauseMarch, recruitsAt, resumeMarch, saveMarch, setSpeed, slipAway, takeContract, useWorld, worldOf } from "../game/world-store";
+import { beginAt, boardAt, buyAt, enterWorld, fightBand, hireAt, marchTo, packRations, pauseMarch, recruitsAt, resumeMarch, saveMarch, setSpeed, slipAway, takeContract, tradeHorses, useWorld, worldOf } from "../game/world-store";
 import { availableMembers, chosenParty, myCharacters } from "../game/party-store";
 import { isSettlement, priceOf, repText, sells, wageOf } from "../game/company";
 import { TRAITS } from "../game/roster";
@@ -60,7 +60,7 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
   const known = (p: Place) => p.kind === "home" || p.kind === "village" || p.kind === "town" || p.kind === "city" || seen.has(p.id) || inSight(p, pos) || isExplored(s.explored, p);
   const here = s.at ? world.places.find((p) => p.id === s.at) : undefined;
   const dest = s.dest;
-  const eta = dest ? travelHours(world, pos, dest) : 0;
+  const eta = dest ? travelHours(world, pos, dest) / ((doc.world.horses ? num("world.horseSpeed") : 1) * (doc.world.hungry ? num("company.hungrySlow") : 1)) : 0;
   const ground = TERRAIN[terrainAt(world, pos)];
   const party = chosenParty();
 
@@ -139,7 +139,7 @@ export function WorldView({ onGoTown, onAdventure }: { onGoTown: () => void; onA
             .map((b) => (
               <InkBand key={b.id} band={b} chasing={dist(b, pos) < num("world.bandSight")} pos={pos} />
             ))}
-          <InkCompany pos={pos} trail={s.trail} marching={s.running} count={party.length} />
+          <InkCompany pos={pos} trail={s.trail} marching={s.running} count={party.length} riding={doc.world.horses} />
           {/* The edge of sight */}
           <circle cx={pos.x} cy={pos.y} r={num("world.sight")} fill="none" stroke={INK} strokeWidth={0.6} strokeDasharray="1 5" opacity={0.5} pointerEvents="none" />
         </svg>
@@ -301,7 +301,7 @@ function CompanyPurse() {
   const world = worldOf(doc);
   if (!doc?.world || !doc.town || !world) return null;
   const roster = availableMembers(myCharacters()).filter((e) => !doc.fallen.includes(e.key));
-  const wages = roster.reduce((n, e) => n + wageOf(doc.progress[e.key]?.level ?? 1), 0);
+  const wages = roster.reduce((n, e) => n + wageOf(doc.progress[e.key]?.level ?? 1), 0) + (doc.world.horses ? num("world.horseUpkeep") : 0);
   const marching = chosenParty().length;
   const days = marching ? Math.floor(doc.world.provisions / marching) : 0;
   const unpaid = Object.values(doc.world.unpaid).filter((n) => n > 0).length;
@@ -388,6 +388,22 @@ function Settlement({ place }: { place: Place }) {
       )}
       {tab === "market" && (
         <ul className="space-y-1 text-xs">
+          {place.kind !== "village" && (
+            <li className="flex items-center gap-2 rounded border border-line bg-surface-2/60 px-2 py-1">
+              <span className="flex-1">
+                🐎 Horses · ×{num("world.horseSpeed")} march speed · {num("world.horseUpkeep")} gold a day
+              </span>
+              {doc.world.horses ? (
+                <button className="btn px-2 py-0 text-xs" onClick={() => tradeHorses(place, false)}>
+                  Sell · 🪙 {Math.round(num("world.horsePrice") / 2)}
+                </button>
+              ) : (
+                <button className="btn px-2 py-0 text-xs" disabled={doc.town!.gold < num("world.horsePrice")} onClick={() => tradeHorses(place, true)}>
+                  Buy · 🪙 {num("world.horsePrice")}
+                </button>
+              )}
+            </li>
+          )}
           {sells(place).map((item) => {
             const price = priceOf(item, place, rep);
             return (

@@ -469,7 +469,6 @@ function HeroPanel({
   hoverId: string | null;
 }) {
   const send = (cmd: Parameters<typeof dispatch>[0]) => dispatch(cmd);
-  const prone = u.conditions.includes("Prone");
   const secondWind = u.stats.features.includes("second-wind") ? (u.resources["second-wind"] ?? 0) : null;
   const target = hoverId ? game.units.find((x) => x.id === hoverId) : undefined;
 
@@ -481,6 +480,7 @@ function HeroPanel({
           AC {u.ac} · {u.hp}/{u.hpMax} HP
         </span>
       </div>
+      {u.side === "party" && !u.turn.needsDeathSave && <StatusBar game={game} unit={u} heroTurn={heroTurn} onStand={() => send({ type: "stand-up", unitId: u.id })} />}
       {u.side === "party" && u.turn.needsDeathSave ? (
         <DyingPanel unit={u} busy={usePlay.getState().aiRunning || !!game.outcome} />
       ) : u.side === "party" ? (
@@ -574,11 +574,6 @@ function HeroPanel({
                 title="Bonus action: regain 1d10 + level HP"
               >
                 Second Wind ({secondWind})
-              </button>
-            )}
-            {prone && (
-              <button className="btn px-1 text-xs" disabled={!heroTurn} onClick={() => send({ type: "stand-up", unitId: u.id })}>
-                Stand up
               </button>
             )}
             {u.stats.features.includes("action-surge") && (
@@ -943,6 +938,66 @@ function Potions({ game, unit: u, heroTurn }: { game: GameState; unit: Unit; her
             ))}
           </select>
         </div>
+      ))}
+    </div>
+  );
+}
+
+/** What a condition means for the one who has it, in a few words. */
+const CONDITION_HELP: Record<string, { icon: string; text: string; bad?: boolean }> = {
+  Prone: { icon: "⤓", text: "On the ground: your attacks have Disadvantage, and foes next to you have Advantage. Standing up takes half your speed.", bad: true },
+  Grappled: { icon: "⛓", text: "Held: your speed is 0. Break free with an action.", bad: true },
+  Restrained: { icon: "⛓", text: "Restrained: speed 0, your attacks have Disadvantage, attacks against you have Advantage.", bad: true },
+  Poisoned: { icon: "🤢", text: "Poisoned: Disadvantage on attacks and ability checks.", bad: true },
+  Frightened: { icon: "😨", text: "Frightened: Disadvantage on attacks while you can see what scares you.", bad: true },
+  Blinded: { icon: "🙈", text: "Blinded: Disadvantage on your attacks, Advantage on attacks against you.", bad: true },
+  Incapacitated: { icon: "💫", text: "Incapacitated: no actions or reactions.", bad: true },
+  Stunned: { icon: "💫", text: "Stunned: no actions, can't move; attacks against you have Advantage.", bad: true },
+  Hidden: { icon: "🫥", text: "Hidden: your next attack has Advantage; attacking or being hurt gives you away." },
+  Unconscious: { icon: "💤", text: "Unconscious.", bad: true },
+};
+
+/** Effects on a creature, from others or itself. */
+function effectsOn(game: GameState, u: Unit): { icon: string; text: string; bad?: boolean }[] {
+  const out: { icon: string; text: string; bad?: boolean }[] = [];
+  for (const e of game.effects) {
+    if (e.target !== u.id) continue;
+    if (e.kind === "bless") out.push({ icon: "✨", text: "Blessed: +1d4 to attacks and saves." });
+    if (e.kind === "faith") out.push({ icon: "🛡", text: "Shield of Faith: +2 AC." });
+    if (e.kind === "shield") out.push({ icon: "🛡", text: "Shield: +5 AC until your next turn." });
+    if (e.kind === "sap") out.push({ icon: "😵", text: "Sapped: Disadvantage on your next attack.", bad: true });
+    if (e.kind === "slow") out.push({ icon: "🐌", text: "Slowed: −10 ft speed.", bad: true });
+    if (e.kind === "guided") out.push({ icon: "🎯", text: "Marked: the next attack against you has Advantage.", bad: true });
+    if (e.kind === "vex") out.push({ icon: "🎯", text: "Vexed: the one who hit you has Advantage on their next attack against you.", bad: true });
+  }
+  return out;
+}
+
+/** The hero's state at a glance, right under the name: conditions and effects, and the way back up when they're down. */
+function StatusBar({ game, unit: u, heroTurn, onStand }: { game: GameState; unit: Unit; heroTurn: boolean; onStand: () => void }) {
+  const items = [...u.conditions.filter((c) => c !== "Unconscious").map((c) => ({ name: c, ...(CONDITION_HELP[c] ?? { icon: "•", text: c }) })), ...effectsOn(game, u).map((e) => ({ name: e.text.split(":")[0]!, ...e }))];
+  const prone = u.conditions.includes("Prone");
+  const hurt = u.hp <= u.hpMax / 3;
+  if (!items.length && !hurt) return <p className="text-xs text-heal">✔ Ready: no conditions.</p>;
+  return (
+    <div className={clsx("space-y-1.5 rounded-md border p-2", items.some((i) => i.bad) || hurt ? "border-danger/60 bg-danger/10" : "border-heal/50 bg-heal/10")} aria-label="Status">
+      {prone && (
+        <button className="btn btn-primary w-full text-sm" disabled={!heroTurn || u.turn.movement < Math.ceil(u.speed / 2)} onClick={onStand} title="Takes half your speed">
+          ⤒ Stand up ({Math.ceil(u.speed / 2)} ft)
+        </button>
+      )}
+      {hurt && <p className="text-xs font-semibold text-danger">❤ Badly hurt: {u.hp} of {u.hpMax} HP.</p>}
+      <ul className="flex flex-wrap gap-1">
+        {items.map((i) => (
+          <li key={i.name} className={clsx("rounded-full border px-2 py-0.5 text-xs font-semibold", i.bad ? "border-danger/60 text-danger" : "border-heal/60 text-heal")} title={i.text}>
+            {i.icon} {i.name}
+          </li>
+        ))}
+      </ul>
+      {items.filter((i) => i.bad).map((i) => (
+        <p key={`t-${i.name}`} className="text-[11px] leading-snug text-muted">
+          {i.icon} {i.text}
+        </p>
       ))}
     </div>
   );

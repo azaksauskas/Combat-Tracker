@@ -211,6 +211,8 @@ export interface Band {
   from?: string;
   /** The contract that set the company on it, if any. */
   contract?: string;
+  /** Its ground: it wanders near here and won't chase far from it. */
+  home?: Pt;
 }
 
 /** Which foes a faction sends out. */
@@ -228,13 +230,27 @@ export function spawnBand(w: World, rng: () => number, id: string, renown: numbe
     const f = forests[Math.floor(rng() * forests.length)];
     return f ? { x: f.x, y: f.y } : { x: rng() * WORLD_W, y: rng() * WORLD_H };
   })();
-  return { id, foe, name: BAND_NAME[foe] ?? "Raiders", x: start.x, y: start.y, goal: wanderGoal(start, rng), ...(fromLair ? { from: fromLair.id } : {}) };
+  const home = { x: start.x, y: start.y };
+  const band: Band = { id, foe, name: BAND_NAME[foe] ?? "Raiders", x: start.x, y: start.y, goal: home, home, ...(fromLair ? { from: fromLair.id } : {}) };
+  return { ...band, goal: wanderGoal(w, band, rng) };
 }
 
-const wanderGoal = (p: Pt, rng: () => number): Pt => ({
-  x: Math.min(WORLD_W - 20, Math.max(20, p.x + (rng() - 0.5) * 300)),
-  y: Math.min(WORLD_H - 20, Math.max(20, p.y + (rng() - 0.5) * 220)),
-});
+/**
+ * Where a band wanders next: somewhere on its own ground. Bandits keep to the
+ * roads near their haunt (that's where travellers are); beasts and the rest
+ * roam round their home.
+ */
+function wanderGoal(w: World, b: Band, rng: () => number): Pt {
+  const home = b.home ?? { x: b.x, y: b.y };
+  const range = num("world.bandRange");
+  if (b.foe === "bandits" && w.roads.length) {
+    const near = w.roads.flatMap((r) => [0.25, 0.5, 0.75].map((t) => ({ x: r[0]!.x + (r[2]!.x - r[0]!.x) * t, y: r[0]!.y + (r[2]!.y - r[0]!.y) * t }))).filter((p) => dist(p, home) < range);
+    if (near.length) return near[Math.floor(rng() * near.length)]!;
+  }
+  const a = rng() * Math.PI * 2;
+  const r = rng() * range;
+  return { x: Math.min(WORLD_W - 20, Math.max(20, home.x + Math.cos(a) * r)), y: Math.min(WORLD_H - 20, Math.max(20, home.y + Math.sin(a) * r)) };
+}
 
 /** Bands wander; one that sees the company comes for it. Settlements and home are safe ground. */
 export function moveBands(w: World, bands: Band[], company: Pt, hours: number, rng: () => number): Band[] {
@@ -242,12 +258,16 @@ export function moveBands(w: World, bands: Band[], company: Pt, hours: number, r
   const speed = num("world.bandSpeed");
   const safe = w.places.filter((p) => p.kind !== "lair" && p.kind !== "site");
   const sheltered = safe.some((p) => dist(p, company) < 28);
+  const leash = num("world.bandRange") * 1.5;
   return bands.map((b) => {
-    const chasing = !sheltered && dist(b, company) < aggro;
+    const home = b.home ?? { x: b.x, y: b.y };
+    // It gives chase only on its own ground; past that it gives up and heads home.
+    const chasing = !sheltered && dist(b, company) < aggro && dist(home, company) < leash;
+    const strayed = !chasing && dist(b, home) > leash;
     // A band a contract is about stays in its camp until it sees the company.
-    const target = chasing ? company : b.contract ? { x: b.x, y: b.y } : b.goal;
+    const target = chasing ? company : strayed ? home : b.contract ? home : b.goal;
     const step = march(w, b, target, hours * (speed / marchSpeed()));
-    const goal = !chasing && step.arrived ? wanderGoal(step.pos, rng) : b.goal;
+    const goal = !chasing && !strayed && step.arrived ? wanderGoal(w, { ...b, home }, rng) : b.goal;
     // Bands keep clear of settlements.
     const near = safe.find((p) => dist(p, step.pos) < 30);
     const pos = near ? { x: near.x + ((step.pos.x - near.x) / Math.max(1, dist(near, step.pos))) * 30, y: near.y + ((step.pos.y - near.y) / Math.max(1, dist(near, step.pos))) * 30 } : step.pos;

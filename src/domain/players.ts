@@ -161,8 +161,10 @@ export const PlayerDocSchema = z.object({
       /** Game hours marched so far. */
       hours: z.number().catch(0),
       bands: z
-        .array(z.object({ id: z.string(), foe: z.string(), name: z.string().catch("Raiders"), x: z.number(), y: z.number(), goal: z.object({ x: z.number(), y: z.number() }), from: z.string().optional(), contract: z.string().optional() }))
+        .array(z.object({ id: z.string(), foe: z.string(), name: z.string().catch("Raiders"), x: z.number(), y: z.number(), goal: z.object({ x: z.number(), y: z.number() }), from: z.string().optional(), contract: z.string().optional(), home: z.object({ x: z.number(), y: z.number() }).optional() }))
         .catch([]),
+      /** The company rides: faster on the march, but horses cost upkeep. */
+      horses: z.boolean().catch(false),
       /** Rations the company carries. */
       provisions: z.number().catch(0),
       /** The last world day wages were paid for. */
