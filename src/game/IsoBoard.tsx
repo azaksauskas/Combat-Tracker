@@ -8,7 +8,7 @@ import { fromKey, key, type Cell } from "./board";
 import { checkArea } from "./engine";
 import { Burst, FloatingText, Shot, useBoardLogic, useSize, type BoardProps } from "./GameBoard";
 import { INK, PAPER } from "./inkBoard";
-import { drawIsoBoard, isoGeom, type IsoGeom } from "./isoBoard";
+import { drawIsoBoard, isoGeom, type IsoGeom } from "./isoDraw";
 import type { Unit } from "./state";
 import type { Fx } from "./store";
 
