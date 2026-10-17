@@ -143,7 +143,7 @@ export function IsoBoard({ game, mode, interactive, fx, paths = {}, onMove, onTa
               .sort((a, b) => a.pos.x + a.pos.y - (b.pos.x + b.pos.y))
               .map((u) => (
                 <Miniature
-                  key={u.id}
+                  key={`${game.rngSeed}:${u.id}`}
                   unit={u}
                   g={g}
                   colors={colors}

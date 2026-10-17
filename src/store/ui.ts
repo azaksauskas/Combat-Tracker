@@ -25,6 +25,8 @@ interface UiState {
   dockMap: boolean;
   /** The game's battle board: drawn at an angle (isometric) or from straight above. */
   boardView: "iso" | "flat";
+  /** The board from above: zoom over the size that fits the whole map (drag to look around). */
+  boardZoom: number;
   /** Battle order page on narrow screens: which pane is showing. */
   combatTab: CombatTab;
   /** Combatant pinned in the details panel; null = follow the active turn. */
@@ -61,7 +63,8 @@ export const useUi = create<UiState>()(
       rollShown: false,
       sidebarOpen: true,
       dockMap: true,
-      boardView: "iso",
+      boardView: "flat",
+      boardZoom: 1.6,
       combatTab: "order",
       pinnedId: null,
       hoverId: null,

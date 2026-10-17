@@ -1,11 +1,12 @@
 import type Konva from "konva";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from "react-konva";
+import { Circle, Ellipse, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from "react-konva";
 import { INK, PAPER, drawInkBoard } from "./inkBoard";
+import { lookOf, miniImage } from "./minis";
 
 const INK_RED = "#a8322a";
 import { initials } from "../domain/combat";
-import { useThemeColors } from "../store/ui";
+import { useThemeColors, useUi } from "../store/ui";
 import { withAlpha, type ThemeColors } from "../theme/themes";
 import { distanceFt, findPath, fromKey, key, type Cell } from "./board";
 import { areaCells, checkArea, checkTarget, currentUnit, reachable } from "./engine";
@@ -93,30 +94,69 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
   const colors = useThemeColors();
   const [ref, size] = useSize();
   const { board } = game;
-  const cell = Math.max(16, Math.floor(Math.min(size.width / board.width, size.height / board.height, 72)));
+  // Zoomed in over the size that fits the whole map; when it doesn't fit, drag to look around.
+  const zoom = useUi((s) => s.boardZoom);
+  const fit = Math.min(size.width / board.width, size.height / board.height, 72);
+  const cell = Math.max(16, Math.floor(Math.min(110, fit * zoom)));
   const width = cell * board.width;
   const height = cell * board.height;
+  const roomy = width <= size.width && height <= size.height;
   const [hover, setHover] = useState<Cell | null>(null);
 
   const { active, heroTurn, reach, path, targets, area, picked } = useBoardLogic(game, mode, interactive, hover);
+  const stage = useRef<Konva.Stage>(null);
+  const clampPos = (p: { x: number; y: number }) => ({
+    x: width <= size.width ? 0 : Math.min(0, Math.max(size.width - width, p.x)),
+    y: height <= size.height ? 0 : Math.min(0, Math.max(size.height - height, p.y)),
+  });
+  // Keep whoever is acting in view.
+  const focus = active ?? game.units.find((u) => u.side === "party" && !u.dead);
+  useEffect(() => {
+    if (!stage.current || roomy || !focus) return;
+    stage.current.position(clampPos({ x: size.width / 2 - (focus.pos.x + 0.5) * cell, y: size.height / 2 - (focus.pos.y + 0.5) * cell }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cell, size.width, size.height, focus?.id, roomy]);
 
   const center = (c: Cell) => ({ x: c.x * cell + cell / 2, y: c.y * cell + cell / 2 });
   const ink = useMemo(() => drawInkBoard(board, cell, game.rngSeed), [board, cell, game.rngSeed]);
 
   return (
-    <div ref={ref} className="flex h-full w-full items-center justify-center overflow-hidden">
+    <div ref={ref} className="relative flex h-full w-full items-center justify-center overflow-hidden">
+      <div className="absolute right-1 bottom-1 z-10 flex flex-col gap-1">
+        {(
+          [
+            ["+", 1.25, "Zoom in"],
+            ["−", 1 / 1.25, "Zoom out"],
+          ] as const
+        ).map(([label, by, title]) => (
+          <button
+            key={label}
+            className="grid h-7 w-7 place-items-center rounded-sm border text-base leading-none"
+            style={{ borderColor: INK, background: PAPER, color: INK }}
+            onClick={() => useUi.setState((s) => ({ boardZoom: Math.min(4, Math.max(1, s.boardZoom * by)) }))}
+            title={title}
+            aria-label={title}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {size.width > 0 && (
         <Stage
-          width={width}
-          height={height}
+          ref={stage}
+          width={roomy ? width : size.width}
+          height={roomy ? height : size.height}
+          draggable={!roomy}
+          dragDistance={6}
+          dragBoundFunc={(p) => clampPos(p)}
           onMouseLeave={() => setHover(null)}
           onMouseMove={(e) => {
-            const p = e.target.getStage()?.getPointerPosition();
+            const p = e.target.getStage()?.getRelativePointerPosition();
             if (p) setHover({ x: Math.floor(p.x / cell), y: Math.floor(p.y / cell) });
           }}
           onClick={(e) => {
             if (!heroTurn || mode.kind === "target") return;
-            const p = e.target.getStage()?.getPointerPosition();
+            const p = e.target.getStage()?.getRelativePointerPosition();
             if (!p) return;
             const c = { x: Math.floor(p.x / cell), y: Math.floor(p.y / cell) };
             if (mode.kind === "area") {
@@ -180,9 +220,12 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
             {game.units
               // The slain leave the board once they've fallen.
               .filter((u) => !(u.dead && u.side === "enemy" && !fx.some((f) => f.kind === "fall" && f.unitId === u.id)))
+              // Figures stand up out of their squares: the ones further down the map in front.
+              .slice()
+              .sort((a, b) => a.pos.y - b.pos.y)
               .map((u) => (
                 <UnitToken
-                  key={u.id}
+                  key={`${game.rngSeed}:${u.id}`}
                   unit={u}
                   cell={cell}
                   colors={colors}
@@ -250,7 +293,7 @@ function UnitToken({
 }) {
   const ref = useRef<Konva.Group>(null);
   const body = useRef<Konva.Group>(null);
-  const flash = useRef<Konva.Circle>(null);
+  const flash = useRef<Konva.Image>(null);
   const x = u.pos.x * cell + cell / 2;
   const y = u.pos.y * cell + cell / 2;
   const first = useRef(true);
@@ -290,21 +333,33 @@ function UnitToken({
       if (f.kind === "hit") {
         const amp = f.crit ? 7 : 4;
         setTimeout(() => {
-          flash.current?.to({ opacity: 0.75, duration: 0.05, onFinish: () => flash.current?.to({ opacity: 0, duration: 0.35 }) });
+          flash.current?.to({ shadowBlur: 16, duration: 0.05, onFinish: () => flash.current?.to({ shadowBlur: 0, duration: 0.35 }) });
           b.to({ x: amp, duration: 0.04, onFinish: () => b.to({ x: -amp, duration: 0.06, onFinish: () => b.to({ x: 0, duration: 0.05 }) }) });
         }, 180);
       }
-      if (f.kind === "fall") setTimeout(() => b.to({ rotation: 80, scaleX: 0.85, scaleY: 0.85, opacity: u.side === "enemy" && u.dead ? 0 : 1, duration: 0.5 }), 250);
+      if (f.kind === "fall") setTimeout(() => b.to({ rotation: -80, opacity: u.side === "enemy" && u.dead ? 0 : 1, duration: 0.5 }), 250);
     }
   }, [fx, u.pos.x, u.pos.y, u.side, u.dead, cell]);
   // Back on their feet: stand up again.
   const down = u.hp <= 0;
+  const lying = down || u.conditions.includes("Prone");
   useEffect(() => {
-    if (!down) body.current?.to({ rotation: 0, scaleX: 1, scaleY: 1, opacity: 1, duration: 0.3 });
-  }, [down]);
+    body.current?.to({ rotation: lying ? -80 : 0, opacity: 1, duration: 0.3 });
+  }, [lying]);
 
   const r = cell * 0.4;
   const hpPct = Math.max(0, u.hp) / Math.max(1, u.hpMax);
+  // An ink miniature on a base: the company's bases rimmed black, foes' red.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const look = useMemo(() => lookOf(u), [u.id, u.name, u.side, u.stats.className]);
+  const [, setLoaded] = useState(0);
+  const foe = u.side === "enemy";
+  const img = miniImage(look, foe, () => setLoaded((n) => n + 1));
+  const k = (cell * 1.3) / 128;
+  const feet = cell * 0.24;
+  const rx = cell * (look.kind === "wolf" ? 0.46 : look.kind === "rat" ? 0.3 : 0.37);
+  const ry = rx * 0.42;
+  const rim = foe ? INK_RED : INK;
   return (
     <Group
       ref={ref}
@@ -316,26 +371,26 @@ function UnitToken({
       onMouseLeave={() => onHover(false)}
       opacity={u.dead ? 0.35 : u.conditions.includes("Hidden") ? 0.55 : 1}
     >
-      {targetable !== undefined && (
-        <Circle radius={r + 6} stroke={targetable ? colors.highlight : colors.faint} strokeWidth={targetable ? 3 : 1} dash={targetable ? undefined : [4, 4]} />
-      )}
-      {picked && <Circle radius={r + 9} stroke={colors.heal} strokeWidth={4} />}
-      {inArea && <Circle radius={r + 7} stroke={colors.danger} strokeWidth={4} dash={[6, 3]} />}
-      {active && <Circle radius={r + 4} stroke={colors.accent} strokeWidth={3} shadowColor={colors.accent} shadowBlur={12} />}
-      <Group ref={body} rotation={down ? 80 : 0} scaleX={down ? 0.85 : 1} scaleY={down ? 0.85 : 1}>
-        {/* Ink tokens: the company in black, foes in paper ringed red. */}
-        <Circle radius={r} fill={u.side === "enemy" ? PAPER : INK} stroke={u.side === "enemy" ? INK_RED : INK} strokeWidth={u.side === "enemy" ? Math.max(2, r * 0.16) : 2} shadowColor="black" shadowBlur={3} shadowOffset={{ x: 1.5, y: 1.5 }} shadowOpacity={0.35} />
-        {u.side !== "enemy" && <Circle radius={r - Math.max(2, r * 0.14)} stroke={PAPER} strokeWidth={1} listening={false} />}
-        <Text text={initials(u.name)} width={r * 2} height={r * 2} x={-r} y={-r} align="center" verticalAlign="middle" fontStyle="bold" fontFamily="'IM Fell English', serif" fontSize={r * 0.95} fill={u.side === "enemy" ? INK : PAPER} listening={false} />
-        <Circle ref={flash} radius={r} fill="#ef4444" opacity={0} listening={false} />
+      {targetable !== undefined && <Ellipse y={feet} radiusX={rx + 7} radiusY={ry + 5} stroke={targetable ? colors.highlight : colors.faint} strokeWidth={targetable ? 3 : 1} dash={targetable ? undefined : [4, 4]} />}
+      {picked && <Ellipse y={feet} radiusX={rx + 10} radiusY={ry + 7} stroke={colors.heal} strokeWidth={4} />}
+      {inArea && <Ellipse y={feet} radiusX={rx + 8} radiusY={ry + 6} stroke={colors.danger} strokeWidth={4} dash={[6, 3]} />}
+      {active && <Ellipse y={feet} radiusX={rx + 4} radiusY={ry + 3} stroke={colors.accent} strokeWidth={3} shadowColor={colors.accent} shadowBlur={12} />}
+      <Ellipse y={feet + 2.5} radiusX={rx} radiusY={ry} fill={rim} shadowColor="black" shadowBlur={3} shadowOffset={{ x: 1.5, y: 1.5 }} shadowOpacity={0.3} />
+      <Ellipse y={feet} radiusX={rx} radiusY={ry} fill={PAPER} stroke={rim} strokeWidth={1.6} />
+      <Group ref={body} y={feet} rotation={lying ? -80 : 0}>
+        {img ? (
+          <KonvaImage ref={flash} image={img} x={foe ? 64 * k : -64 * k} y={-132 * k} width={128 * k} height={140 * k} scaleX={foe ? -1 : 1} shadowColor="#ef4444" shadowBlur={0} shadowOpacity={0.95} />
+        ) : (
+          <Text text={initials(u.name)} width={r * 2} x={-r} y={-r * 1.6} align="center" fontStyle="bold" fontFamily="'IM Fell English', serif" fontSize={r * 0.95} fill={rim} listening={false} />
+        )}
       </Group>
-      {down && <Text text={u.dead ? "✝" : "💤"} x={r * 0.3} y={-r * 1.2} fontSize={r * 0.8} listening={false} />}
-      {u.conditions.includes("Prone") && !down && <Text text="⤓" x={-r * 1.25} y={-r * 1.2} fontSize={r * 0.8} fill={colors.warn} listening={false} />}
-      {u.conditions.includes("Grappled") && <Text text="⛓" x={r * 0.45} y={r * 0.2} fontSize={r * 0.7} listening={false} />}
-      {u.conditions.includes("Hidden") && <Text text="🫥" x={r * 0.4} y={-r * 1.25} fontSize={r * 0.75} listening={false} />}
-      {/* HP bar */}
-      <Rect x={-r} y={r + 3} width={r * 2} height={4} fill={colors["surface-3"]} cornerRadius={2} listening={false} />
-      <Rect x={-r} y={r + 3} width={r * 2 * hpPct} height={4} fill={hpPct > 0.5 ? colors.heal : hpPct > 0.25 ? colors.warn : colors.danger} cornerRadius={2} listening={false} />
+      {down && <Text text={u.dead ? "✝" : "💤"} x={rx * 0.4} y={feet - cell * 0.55} fontSize={r * 0.8} listening={false} />}
+      {u.conditions.includes("Prone") && !down && <Text text="⤓" x={-rx - r * 0.7} y={feet - cell * 0.62} fontSize={r * 0.8} fontStyle="bold" fill={colors.warn} shadowColor="black" shadowBlur={2} listening={false} />}
+      {u.conditions.includes("Grappled") && <Text text="⛓" x={rx * 0.6} y={feet - r * 0.5} fontSize={r * 0.7} listening={false} />}
+      {u.conditions.includes("Hidden") && <Text text="🫥" x={rx * 0.5} y={feet - cell * 1.1} fontSize={r * 0.75} listening={false} />}
+      {/* HP bar under the base */}
+      <Rect x={-r} y={feet + ry + 4} width={r * 2} height={4} fill={colors["surface-3"]} cornerRadius={2} listening={false} />
+      <Rect x={-r} y={feet + ry + 4} width={r * 2 * hpPct} height={4} fill={hpPct > 0.5 ? colors.heal : hpPct > 0.25 ? colors.warn : colors.danger} cornerRadius={2} listening={false} />
     </Group>
   );
 }

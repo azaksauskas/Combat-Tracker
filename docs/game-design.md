@@ -828,6 +828,19 @@ becomes the company's camp.
   creature lies down on its base ("⤓ prone" beside it). The view fits the
   map's height, centres on whoever is acting, drags to look along it, and
   zooms with + and −. Battle maps know their look (dungeon, cave, wilds).
+- **Ink miniatures on the board from above.** The board from above is the
+  default again, and its round tokens are now ink miniatures on rimmed
+  bases (black for the company, red for foes), drawn in passes like an ink
+  illustration: a heavy outer contour, flat tones, hatched shade on the
+  side away from the light, fine interior lines. A hero is built from
+  species (human, dwarf, elf, halfling: height, build, beard and braids,
+  ears, curls, bare feet) and class (fighter: mail, pauldrons, helm,
+  sword and heater shield; rogue: hood, cloak, two daggers; cleric: robe,
+  tabard, mace and a glowing holy symbol; wizard: starred robe, pointed
+  hat, crystal staff, sparks). Foes by kind: goblin, wolf, giant rat,
+  skeleton, cultist, bandit. Prone and fallen figures lie down; a hit
+  flashes red. The board zooms (+ / −, 1.6× by default) and drags when the
+  map is bigger than the panel, following whoever acts.
 
 ## Future ideas
 
