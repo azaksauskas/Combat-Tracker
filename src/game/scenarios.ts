@@ -26,6 +26,8 @@ export interface Scenario {
   heights?: string[];
   /** Already sized for the party (patrols, contracts, bands on the road): not scaled again. */
   sized?: boolean;
+  /** How the map is drawn: built stone, a cave, or the open country. */
+  look?: "dungeon" | "cave" | "wilds";
 }
 
 /** A fight written for four heroes, scaled for a bigger company: more of the same foes (6 heroes: half as many again). */
@@ -242,6 +244,7 @@ export function scenarioSetup(sc: Scenario, members: ContentEntry[] = PARTY) {
     sc.map.map((r) => r.replace(/[P1-9X]/g, ".")),
     sc.heights,
   );
+  if (sc.look) board.look = sc.look;
   const marked = sc.starts ?? starts(sc.map, (c) => c === "P");
   // More foes or heroes than the map has marked squares for: the rest stand close by.
   const monsterCells = startCells(board, starts(sc.map, (c) => /[1-9]/.test(c)), sc.monsters.length, marked);

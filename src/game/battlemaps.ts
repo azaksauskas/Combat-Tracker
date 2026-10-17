@@ -14,6 +14,7 @@ export type MapKind = "dungeon" | "cave" | "wilds";
 export interface BattleMap {
   map: string[];
   heights: string[];
+  look?: MapKind;
 }
 
 const W = 22;
@@ -218,11 +219,11 @@ export function generateBattlemap(kind: MapKind, rng: () => number, heroes: numb
     const map = g.map((r) => r.join(""));
     const heights = h.map((r) => r.join(""));
     // Every foe must be reachable from the heroes (and so from each other).
-    if (left.length >= Math.min(heroes, 4) && right.length && right.every((f) => connected(map, heights, left[0]!, f))) return trim({ map, heights });
+    if (left.length >= Math.min(heroes, 4) && right.length && right.every((f) => connected(map, heights, left[0]!, f))) return { ...trim({ map, heights }), look: kind };
   }
   // Fallback: an open field.
   const map = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) => (x === 1 && y >= 3 && y < 9 ? "P" : x === W - 2 && y >= 2 && y < 2 + Math.min(9, foes) ? String(y - 1) : ".")).join(""));
-  return { map, heights: [] };
+  return { map, heights: [], look: "wilds" };
 }
 
 /** Cut away rows and columns of solid rock, keeping one row of wall round the edge, so the board is as big as it can be. */

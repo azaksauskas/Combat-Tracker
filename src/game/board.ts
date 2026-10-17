@@ -25,6 +25,8 @@ export interface Board {
   deep?: string[];
   /** How the walls look when drawn: pillars ("O"), trees ("T"), or plain wall. */
   props?: Record<string, "pillar" | "tree" | "rock">;
+  /** How it's drawn: built stone, a cave, or the open country (default: built stone). */
+  look?: "dungeon" | "cave" | "wilds";
 }
 
 export const FEET_PER_CELL = 5;

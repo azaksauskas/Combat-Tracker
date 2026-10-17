@@ -5,6 +5,8 @@ import { actionDamage, describeAction, formatMod, type StatAction } from "../dom
 import { averageDamage, hitChance } from "../game/ai";
 import { canAct, checkTarget, currentUnit, weaponInHand } from "../game/engine";
 import { GameBoard, type BoardMode } from "../game/GameBoard";
+import { IsoBoard } from "../game/IsoBoard";
+import { useUi } from "../store/ui";
 import { SCENARIOS, encounterScenario, objectiveText, type Scenario } from "../game/scenarios";
 import { mapScenario } from "../game/maps";
 import type { GameState, Unit } from "../game/state";
@@ -306,6 +308,8 @@ function PlayingAs() {
 }
 
 function Battle({ game }: { game: GameState }) {
+  const boardView = useUi((s) => s.boardView);
+  const Board = boardView === "iso" ? IsoBoard : GameBoard;
   const { scenario, log, fx, paths, aiRunning, mode: playMode } = usePlay();
   const [mode, setMode] = useState<BoardMode>({ kind: "move" });
   const [hoverId, setHoverId] = useState<string | null>(null);
@@ -371,7 +375,14 @@ function Battle({ game }: { game: GameState }) {
         <TurnOrder game={game} hoverId={hoverId} />
 
         <section className="relative min-h-[50dvh] rounded-lg border border-line bg-surface p-2 shadow lg:min-h-0" aria-label="Battlefield">
-          <GameBoard
+          <div className="absolute top-2 right-2 z-10 flex gap-1" role="group" aria-label="Board view">
+            {(["iso", "flat"] as const).map((v) => (
+              <button key={v} className={clsx("btn px-2 py-0 text-xs", boardView === v && "border-accent text-accent")} aria-pressed={boardView === v} onClick={() => useUi.setState({ boardView: v })}>
+                {v === "iso" ? "◇ Angled" : "⬚ From above"}
+              </button>
+            ))}
+          </div>
+          <Board
             game={game}
             mode={mode}
             interactive={heroTurn}

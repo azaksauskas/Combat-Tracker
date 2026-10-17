@@ -94,6 +94,7 @@ export const SRD_MONSTERS: ContentEntry[] = [
           proficiency: 2,
           cr: "1/4",
           skills: { Perception: 5, Stealth: 4 },
+          creatureType: "beast",
           actions: [attack({ name: "Bite", attackType: "melee", toHit: 4, damage: [{ dice: "1d6+2", type: "piercing" }], onHitCondition: "Prone", notes: "A Medium or smaller target has the Prone condition" })],
           features: ["pack-tactics"],
           traits: [{ name: "Pack Tactics", text: "Advantage on attack rolls against a creature if an ally is within 5 ft. of it and isn't Incapacitated." }],

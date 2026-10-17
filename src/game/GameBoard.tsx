@@ -19,7 +19,7 @@ export type BoardMode =
   /** Aim an area spell at a square. */
   | { kind: "area"; actionId: string };
 
-interface Props {
+export interface BoardProps {
   game: GameState;
   mode: BoardMode;
   /** Heroes can be commanded; false while monsters act. */
@@ -33,7 +33,7 @@ interface Props {
   onHoverUnit: (unitId: string | null) => void;
 }
 
-function useSize() {
+export function useSize() {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   useEffect(() => {
@@ -46,16 +46,9 @@ function useSize() {
   return [ref, size] as const;
 }
 
-/** Tile-based battle board for the game (fixed grid, click to move/target). */
-export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onTarget, onArea, onHoverUnit }: Props) {
-  const colors = useThemeColors();
-  const [ref, size] = useSize();
+/** What the board shows for the turn: where the hero can go, the path to the square under the pointer, who can be targeted, an area spell's reach. */
+export function useBoardLogic(game: GameState, mode: BoardMode, interactive: boolean, hover: Cell | null) {
   const { board } = game;
-  const cell = Math.max(16, Math.floor(Math.min(size.width / board.width, size.height / board.height, 72)));
-  const width = cell * board.width;
-  const height = cell * board.height;
-  const [hover, setHover] = useState<Cell | null>(null);
-
   const active = currentUnit(game);
   const heroTurn = interactive && active?.side === "party";
   const reach = useMemo(() => (heroTurn && mode.kind === "move" && active ? reachable(game, active.id) : new Map<string, number>()), [game, heroTurn, mode, active]);
@@ -91,6 +84,21 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
     return { ok: check.ok, reason: check.reason, cells: check.ok ? areaCells(game, active.id, action, hover) : [] };
   }, [game, heroTurn, mode, active, hover]);
   const picked = mode.kind === "target" ? (mode.picked ?? []) : [];
+
+  return { active, heroTurn, reach, path, targets, area, picked };
+}
+
+/** Tile-based battle board for the game (fixed grid, click to move/target). */
+export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onTarget, onArea, onHoverUnit }: BoardProps) {
+  const colors = useThemeColors();
+  const [ref, size] = useSize();
+  const { board } = game;
+  const cell = Math.max(16, Math.floor(Math.min(size.width / board.width, size.height / board.height, 72)));
+  const width = cell * board.width;
+  const height = cell * board.height;
+  const [hover, setHover] = useState<Cell | null>(null);
+
+  const { active, heroTurn, reach, path, targets, area, picked } = useBoardLogic(game, mode, interactive, hover);
 
   const center = (c: Cell) => ({ x: c.x * cell + cell / 2, y: c.y * cell + cell / 2 });
   const ink = useMemo(() => drawInkBoard(board, cell, game.rngSeed), [board, cell, game.rngSeed]);
@@ -212,7 +220,7 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
   );
 }
 
-const TONE_COLOR = (c: ThemeColors, tone: ShotTone) =>
+export const TONE_COLOR = (c: ThemeColors, tone: ShotTone) =>
   ({ arrow: c.text, magic: "#a78bfa", fire: "#f97316", cold: "#38bdf8", radiant: "#facc15", heal: c.heal })[tone];
 
 function UnitToken({
@@ -333,7 +341,7 @@ function UnitToken({
 }
 
 /** An arrow or a bolt of magic flying to its target. */
-function Shot({ from, to, tone, cell, colors }: { from: { x: number; y: number }; to: { x: number; y: number }; tone: ShotTone; cell: number; colors: ThemeColors }) {
+export function Shot({ from, to, tone, cell, colors }: { from: { x: number; y: number }; to: { x: number; y: number }; tone: ShotTone; cell: number; colors: ThemeColors }) {
   const ref = useRef<Konva.Group>(null);
   useEffect(() => {
     const n = ref.current;
@@ -358,7 +366,7 @@ function Shot({ from, to, tone, cell, colors }: { from: { x: number; y: number }
 }
 
 /** A ring of light where a spell goes off or healing lands. */
-function Burst({ at, tone, cell, colors }: { at: { x: number; y: number }; tone: ShotTone; cell: number; colors: ThemeColors }) {
+export function Burst({ at, tone, cell, colors }: { at: { x: number; y: number }; tone: ShotTone; cell: number; colors: ThemeColors }) {
   const ref = useRef<Konva.Circle>(null);
   useEffect(() => {
     const n = ref.current;
@@ -369,7 +377,7 @@ function Burst({ at, tone, cell, colors }: { at: { x: number; y: number }; tone:
   return <Circle ref={ref} x={at.x} y={at.y} radius={cell * 0.2} stroke={color} strokeWidth={4} fill={color} opacity={0.6} shadowColor={color} shadowBlur={14} />;
 }
 
-function FloatingText({ x, y, text, fill, size, pop }: { x: number; y: number; text: string; fill: string; size: number; pop?: boolean }) {
+export function FloatingText({ x, y, text, fill, size, pop }: { x: number; y: number; text: string; fill: string; size: number; pop?: boolean }) {
   const ref = useRef<Konva.Text>(null);
   useEffect(() => {
     const n = ref.current;

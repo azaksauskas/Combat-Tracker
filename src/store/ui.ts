@@ -23,6 +23,8 @@ interface UiState {
   sidebarOpen: boolean;
   /** Battle order page: show the map docked between the list and details. */
   dockMap: boolean;
+  /** The game's battle board: drawn at an angle (isometric) or from straight above. */
+  boardView: "iso" | "flat";
   /** Battle order page on narrow screens: which pane is showing. */
   combatTab: CombatTab;
   /** Combatant pinned in the details panel; null = follow the active turn. */
@@ -59,6 +61,7 @@ export const useUi = create<UiState>()(
       rollShown: false,
       sidebarOpen: true,
       dockMap: true,
+      boardView: "iso",
       combatTab: "order",
       pinnedId: null,
       hoverId: null,

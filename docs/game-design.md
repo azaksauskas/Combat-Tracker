@@ -816,6 +816,18 @@ becomes the company's camp.
     piece goes straight to the hero who carried the old one.
   - Orders show in the company's purse and as a ⚒ on the map (ringed red
     when ready).
+- **The battle board at an angle (isometric ink).** The default battle
+  view ("◇ Angled"; "⬚ From above" keeps the old flat board) is drawn like
+  an isometric dungeon on paper: floor slabs float on the page with their
+  sides showing (bricks for built stone, rough strata for caves, earth
+  outdoors), walls rise only along the back edges as a cut-away so nobody
+  is hidden, higher ground stands taller with brick cliffs, stairs have
+  treads, water ripples, pillars, trees and boulders stand on the floor.
+  Every creature is a flat ink miniature on a round base: the company in
+  black, foes in paper ringed red, beasts on four legs; a prone or fallen
+  creature lies down on its base ("⤓ prone" beside it). The view fits the
+  map's height, centres on whoever is acting, drags to look along it, and
+  zooms with + and −. Battle maps know their look (dungeon, cave, wilds).
 
 ## Future ideas
 
