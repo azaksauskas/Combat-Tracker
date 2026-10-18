@@ -71,6 +71,24 @@ export function describeEvents(events: GameEvent[], s: GameState, startId: numbe
       case "feature":
         add(`${name(e.unitId)}: ${e.name} (${e.detail})`, "info");
         break;
+      case "object": {
+        const who = e.unitId ? name(e.unitId) : "Someone";
+        const what = s.objects?.find((o) => o.id === e.objectId)?.kind ?? "it";
+        const text = {
+          opened: `${who} opens the ${what}`,
+          closed: `${who} shuts the ${what}`,
+          unlocked: `${who} unlocks the ${what}${e.detail ? ` ${e.detail}` : ""}`,
+          stuck: `The ${what} won't give`,
+          pulled: `${who} pulls the lever`,
+          triggered: `Click! ${who} sets off ${e.detail}`,
+          revealed: `${who} spots ${e.detail}`,
+          disarmed: `${who} disarms ${e.detail}`,
+          looted: `${who} finds ${e.detail}`,
+          burst: `The flask bursts into flame`,
+        }[e.what];
+        add(text, e.what === "triggered" ? "bad" : e.what === "looted" ? "win" : "info");
+        break;
+      }
       case "outcome":
         add(e.outcome === "victory" ? "Victory!" : s.fled ? "The party retreats." : "Defeat…", e.outcome === "victory" ? "win" : "lose");
         break;

@@ -13,9 +13,9 @@ import {
   type StatAction,
 } from "../domain/statblock";
 import { num } from "./tuning";
-import { FEET_PER_CELL, coverBetween, distanceFt, findPath, lineOfSight, makeBoardIndex, reachableCells, sameCell, type Board, type Cell, type Cover } from "./board";
+import { FEET_PER_CELL, coverBetween, distanceFt, findPath, key, lineOfSight, makeBoardIndex, reachableCells, sameCell, type Board, type Cell, type Cover } from "./board";
 import { mulberry32 } from "./rng";
-import { GameError, type Effect, type GameEvent, type GameState, type Objective, type Side, type Unit } from "./state";
+import { GameError, type Effect, type GameEvent, type GameState, type MapObject, type Objective, type Side, type Unit } from "./state";
 
 /**
  * The rules engine: `apply(state, command)` validates a command for the
@@ -61,7 +61,16 @@ export type Command =
    * The party flees the battle: every enemy next to a conscious hero gets a
    * parting opportunity attack, then the fight is lost (fled).
    */
-  | { type: "retreat"; unitId: string };
+  | { type: "retreat"; unitId: string }
+  /**
+   * Work something next to you: open or close a door, pull a lever, open a
+   * chest (free, once a turn); pick or force a lock, disarm a trap (action).
+   */
+  | { type: "interact"; unitId: string; objectId: string; how?: "pick" | "force" }
+  /** Search (action): a Wisdom (Perception) check finds hidden traps within 30 ft. */
+  | { type: "search"; unitId: string }
+  /** Throw something from the stash (action): a flask of fire at a square, holy water or a javelin at a creature. */
+  | { type: "throw"; unitId: string; itemId: string; targetId?: string; point?: Cell };
 
 // --- Rules tables --------------------------------------------------------------
 
@@ -72,6 +81,12 @@ const INCAPACITATING = ["Incapacitated", "Paralyzed", "Petrified", "Stunned", "U
 export const POTIONS: Record<string, { name: string; dice: string }> = {
   "potion-healing": { name: "Potion of Healing", dice: "2d4+2" },
   "potion-greater-healing": { name: "Potion of Greater Healing", dice: "4d4+4" },
+};
+/** Things to throw in a fight. */
+export const THROWABLES: Record<string, { name: string; range: number; dice: string; type: string; burst?: { dc: number }; vs?: string[] }> = {
+  "alchemists-fire": { name: "Alchemist's Fire", range: 20, dice: "2d6", type: "fire", burst: { dc: 13 } },
+  "holy-water": { name: "Holy Water", range: 20, dice: "2d8", type: "radiant", vs: ["undead", "fiend"] },
+  javelin: { name: "Javelin", range: 30, dice: "1d6", type: "piercing" },
 };
 const GRANTS_ADVANTAGE_AGAINST = ["Blinded", "Paralyzed", "Petrified", "Restrained", "Stunned", "Unconscious"];
 const AUTO_CRIT_WITHIN_5 = ["Paralyzed", "Unconscious"];
@@ -91,9 +106,11 @@ export const currentUnit = (s: GameState): Unit | undefined => s.units[s.turnInd
 
 function pathOptions(s: GameState, mover: Unit) {
   const others = s.units.filter((u) => u.id !== mover.id && occupies(u));
+  // Chests and barrels are in the way; heroes step around the traps they know of.
+  const solid = new Set((s.objects ?? []).filter((o) => o.kind === "chest" || o.kind === "barrel" || (mover.side === "party" && o.kind === "trap" && o.armed && !o.hidden)).map((o) => key(o.pos)));
   return {
     // Can't move through a hostile creature's space (unless it's down).
-    blocked: (c: Cell) => others.some((u) => u.side !== mover.side && u.hp > 0 && sameCell(u.pos, c)),
+    blocked: (c: Cell) => solid.has(key(c)) || others.some((u) => u.side !== mover.side && u.hp > 0 && sameCell(u.pos, c)),
     // Can pass allies (and fallen creatures) but not stop on them.
     noStop: (c: Cell) => others.some((u) => sameCell(u.pos, c)),
     costMultiplier: has(mover, "Prone") ? 2 : 1,
@@ -236,10 +253,12 @@ function checkOutcome(ctx: Ctx) {
   const met =
     goal?.kind === "survive"
       ? ctx.s.round > goal.rounds
-      : goal?.kind === "escape"
+      : goal?.kind === "escape" || goal?.kind === "exit"
         ? standing.length > 0 && standing.every((u) => goal.cells.some((c) => sameCell(c, u.pos)))
         : false;
-  const outcome = !alive("party") ? "defeat" : !alive("enemy") || met ? "victory" : null;
+  // A delve level is won only at the way out, foes or no foes.
+  const beaten = goal?.kind !== "exit" && !alive("enemy");
+  const outcome = !alive("party") ? "defeat" : beaten || met ? "victory" : null;
   if (outcome) {
     ctx.s.outcome = outcome;
     ctx.events.push({ type: "outcome", outcome });
@@ -709,9 +728,19 @@ function moveUnit(ctx: Ctx, u: Unit, to: Cell) {
     spent += (idx.isDifficult(step) ? 2 : 1) * FEET_PER_CELL * mult;
     from = step;
     u.pos = { ...step };
+    if (u.side === "party") {
+      pickUp(ctx, u);
+      if (springTrap(ctx, u)) break;
+    }
   }
   u.turn.movement = Math.max(0, u.turn.movement - spent);
   ctx.events.push({ type: "move", unitId: u.id, path: travelled, cost: spent });
+  // A trap or a find comes after the move that led there.
+  const sprung = ctx.events.findIndex((e) => e.type === "object" && (e.what === "triggered" || e.what === "looted") && e.unitId === u.id);
+  if (sprung >= 0) {
+    const moved = ctx.events.pop()!;
+    ctx.events.splice(sprung, 0, moved);
+  }
   // Walking off lets go of whoever you were holding.
   for (const e of [...ctx.s.effects]) if (e.kind === "grapple" && e.source === u.id && distanceFt(u.pos, unit(ctx, e.target).pos) > 5) releaseGrapple(ctx, e.target);
 }
@@ -823,6 +852,228 @@ function spendSpell(u: Unit, action: StatAction, cost: "action" | "bonusAction")
 function spend(u: Unit, kind: "action" | "bonusAction") {
   if (!u.turn[kind]) throw new GameError(kind === "action" ? `${u.name} has already used their action` : `${u.name} has already used their bonus action`);
   u.turn[kind] = false;
+}
+
+// --- Map objects ------------------------------------------------------------------------
+
+export const objectAt = (s: GameState, c: Cell, kinds?: MapObject["kind"][]) => (s.objects ?? []).find((o) => sameCell(o.pos, c) && (!kinds || kinds.includes(o.kind)));
+
+/** Thieves' tools: rogues add their proficiency to picking locks and disarming traps. */
+const toolsBonus = (u: Unit) => skillBonus(u, "Sleight of Hand", "dex") + (u.stats.className === "Rogue" && !u.stats.skills["Sleight of Hand"] ? u.stats.proficiency : 0);
+
+function reveal(ctx: Ctx, o: Draft<MapObject>, by?: Unit) {
+  o.hidden = false;
+  ctx.events.push({ type: "object", objectId: o.id, unitId: by?.id, what: "revealed", detail: `${TRAP_NAME[o.trap ?? "spikes"]}` });
+}
+
+const TRAP_NAME = { spikes: "a spiked pit", darts: "a dart trap", fire: "a fire rune", net: "a net trap" } as const;
+
+function setOpen(ctx: Ctx, o: Draft<MapObject>, open: boolean) {
+  o.open = open;
+  const k = key(o.pos);
+  if (open) ctx.s.board.walls = ctx.s.board.walls.filter((w) => w !== k);
+  else if (!ctx.s.board.walls.includes(k)) ctx.s.board.walls.push(k);
+}
+
+/** Something to pick up where a hero stands: coins, an item, a key. */
+function pickUp(ctx: Ctx, u: Unit) {
+  const o = (ctx.s.objects ?? []).find((x) => x.kind === "loot" && !x.open && sameCell(x.pos, u.pos));
+  if (o) takeLoot(ctx, u, o);
+}
+
+function takeLoot(ctx: Ctx, u: Unit, o: Draft<MapObject>) {
+  o.open = true;
+  const l = o.loot;
+  const got: string[] = [];
+  if (l) {
+    const haul = (ctx.s.haul ??= { gold: 0, items: [] });
+    if (l.gold) {
+      haul.gold += l.gold;
+      got.push(`${l.gold} gp`);
+    }
+    for (const it of l.items) {
+      haul.items.push(it);
+      got.push(it);
+    }
+    for (const [id, n] of Object.entries(l.stash ?? {})) {
+      ctx.s.stash = { ...ctx.s.stash, [id]: (ctx.s.stash?.[id] ?? 0) + n };
+      got.push(`${n}× ${POTIONS[id]?.name ?? THROWABLES[id]?.name ?? id}`);
+    }
+  }
+  if (o.group) {
+    (ctx.s.keys ??= []).push(o.group);
+    got.push("a key");
+  }
+  ctx.events.push({ type: "object", objectId: o.id, unitId: u.id, what: "looted", detail: got.join(", ") || "nothing" });
+}
+
+/** A hero steps on an armed trap. Returns true when it stops them in their tracks. */
+function springTrap(ctx: Ctx, u: Unit): boolean {
+  const o = (ctx.s.objects ?? []).find((x) => x.kind === "trap" && x.armed && sameCell(x.pos, u.pos));
+  if (!o) return false;
+  triggerTrap(ctx, o, u);
+  return true;
+}
+
+function triggerTrap(ctx: Ctx, o: Draft<MapObject>, u: Unit) {
+  o.armed = false;
+  o.hidden = false;
+  const kind = o.trap ?? "spikes";
+  ctx.events.push({ type: "object", objectId: o.id, unitId: u.id, what: "triggered", detail: TRAP_NAME[kind] });
+  const dc = o.dc ?? 12;
+  const roll = d20(ctx, saveBonus(u.stats, "dex"), has(u, "Restrained") ? "dis" : "normal");
+  const success = roll.total >= dc;
+  ctx.events.push({ type: "save", targetId: u.id, action: TRAP_NAME[kind].replace(/^an? /, ""), ability: "Dexterity", dc, roll, success });
+  if (kind === "net") {
+    if (!success) addCondition(ctx, u, "Restrained");
+    return;
+  }
+  const type = kind === "fire" ? "fire" : "piercing";
+  const raw = rollTerms(parseDice(o.damage ?? "2d6"), ctx.rng).total;
+  const { amount, adjustment } = adjustDamage(success ? Math.floor(raw / 2) : raw, type as never, u.stats);
+  takeDamage(ctx, u, amount, `${amount} ${type}${adjustment ? ` (${adjustment})` : ""} (${TRAP_NAME[kind]})`, { types: [type] });
+  if (kind === "spikes" && !success && !u.dead && u.hp > 0) addCondition(ctx, u, "Prone");
+}
+
+/** Free object interactions: one a turn. */
+function useInteraction(u: Unit) {
+  if (u.turn.interacted) throw new GameError(`${u.name} has already handled something this turn`);
+  u.turn.interacted = true;
+}
+
+function interact(ctx: Ctx, u: Unit, objectId: string, how?: "pick" | "force") {
+  const o = (ctx.s.objects ?? []).find((x) => x.id === objectId);
+  if (!o) throw new GameError("Nothing there");
+  if (distanceFt(u.pos, o.pos) > 5) throw new GameError("Too far away: stand next to it");
+  const others = ctx.s.units.filter((x) => !x.dead && sameCell(x.pos, o.pos));
+  switch (o.kind) {
+    case "door": {
+      if (o.open) {
+        if (others.length) throw new GameError("Someone is standing in the doorway");
+        useInteraction(u);
+        setOpen(ctx, o, false);
+        ctx.events.push({ type: "object", objectId: o.id, unitId: u.id, what: "closed" });
+        return;
+      }
+      if (o.locked && o.group && ctx.s.keys?.includes(o.group)) {
+        useInteraction(u);
+        o.locked = false;
+        setOpen(ctx, o, true);
+        ctx.events.push({ type: "object", objectId: o.id, unitId: u.id, what: "unlocked", detail: "with the key" });
+        return;
+      }
+      if (o.locked) return breakIn(ctx, u, o, how ?? "pick");
+      useInteraction(u);
+      setOpen(ctx, o, true);
+      ctx.events.push({ type: "object", objectId: o.id, unitId: u.id, what: "opened" });
+      return;
+    }
+    case "gate":
+      if (o.open) throw new GameError("The gate is open");
+      if (how !== "force") throw new GameError("A lever works this gate, or force it");
+      return breakIn(ctx, u, o, "force");
+    case "lever": {
+      useInteraction(u);
+      o.open = !o.open;
+      ctx.events.push({ type: "object", objectId: o.id, unitId: u.id, what: "pulled" });
+      for (const g of ctx.s.objects ?? []) {
+        if (g.kind !== "gate" || g.group !== o.group) continue;
+        if (!g.open && ctx.s.units.some((x) => !x.dead && sameCell(x.pos, g.pos))) continue;
+        setOpen(ctx, g, !g.open);
+        ctx.events.push({ type: "object", objectId: g.id, unitId: u.id, what: g.open ? "opened" : "closed" });
+      }
+      return;
+    }
+    case "chest":
+      if (o.open) throw new GameError("It's empty");
+      if (o.locked) return breakIn(ctx, u, o, how ?? "pick");
+      useInteraction(u);
+      takeLoot(ctx, u, o);
+      return;
+    case "loot":
+      if (o.open) throw new GameError("Nothing left there");
+      useInteraction(u);
+      takeLoot(ctx, u, o);
+      return;
+    case "trap": {
+      if (!o.armed || o.hidden) throw new GameError("Nothing to disarm");
+      spend(u, "action");
+      const dc = o.dc ?? 12;
+      const roll = d20(ctx, toolsBonus(u));
+      ctx.events.push({ type: "feature", unitId: u.id, name: "Disarm", detail: `${roll.total} vs DC ${dc}` });
+      if (roll.total >= dc) {
+        o.armed = false;
+        ctx.events.push({ type: "object", objectId: o.id, unitId: u.id, what: "disarmed", detail: TRAP_NAME[o.trap ?? "spikes"] });
+      } else if (roll.total <= dc - 5) triggerTrap(ctx, o, u);
+      return;
+    }
+    default:
+      throw new GameError("Nothing to do with that");
+  }
+}
+
+/** Pick a lock (Dexterity, thieves' tools) or force it (Strength, Athletics, a little harder). Takes the action. */
+function breakIn(ctx: Ctx, u: Unit, o: Draft<MapObject>, how: "pick" | "force") {
+  spend(u, "action");
+  const dc = (o.dc ?? 12) + (how === "force" ? 2 : 0);
+  const roll = d20(ctx, how === "force" ? skillBonus(u, "Athletics", "str") : toolsBonus(u));
+  const ok = roll.total >= dc;
+  ctx.events.push({ type: "feature", unitId: u.id, name: how === "force" ? "Force it" : "Pick the lock", detail: `${roll.total} vs DC ${dc}: ${ok ? "it gives" : "it holds"}` });
+  if (!ok) {
+    ctx.events.push({ type: "object", objectId: o.id, unitId: u.id, what: "stuck" });
+    return;
+  }
+  o.locked = false;
+  if (o.kind === "chest") return takeLoot(ctx, u, o);
+  setOpen(ctx, o, true);
+  ctx.events.push({ type: "object", objectId: o.id, unitId: u.id, what: how === "force" ? "opened" : "unlocked" });
+}
+
+function search(ctx: Ctx, u: Unit) {
+  spend(u, "action");
+  const roll = d20(ctx, skillBonus(u, "Perception", "wis"));
+  const found = (ctx.s.objects ?? []).filter((o) => o.kind === "trap" && o.hidden && o.armed && distanceFt(u.pos, o.pos) <= 30 && roll.total >= (o.dc ?? 12) && lineOfSight(ctx.s.board, u.pos, o.pos));
+  ctx.events.push({ type: "feature", unitId: u.id, name: "Search", detail: `Perception ${roll.total}: ${found.length ? `finds ${found.length === 1 ? "a trap" : `${found.length} traps`}` : "nothing"}` });
+  for (const o of found) reveal(ctx, o, u);
+}
+
+/** Cells a thrown flask splashes: the square and the eight around it. */
+export const splashCells = (c: Cell): Cell[] => [-1, 0, 1].flatMap((dx) => [-1, 0, 1].map((dy) => ({ x: c.x + dx, y: c.y + dy })));
+
+function throwItem(ctx: Ctx, u: Unit, itemId: string, targetId?: string, point?: Cell) {
+  const item = THROWABLES[itemId];
+  if (!item || (ctx.s.stash?.[itemId] ?? 0) <= 0) throw new GameError("None of those left");
+  const at = item.burst ? point : targetId ? unit(ctx, targetId).pos : undefined;
+  if (!at) throw new GameError(item.burst ? "Pick a square to throw it at" : "Pick a creature to throw it at");
+  if (distanceFt(u.pos, at) > item.range) throw new GameError(`Out of range (${item.range} ft)`);
+  if (!sameCell(u.pos, at) && !lineOfSight(ctx.s.board, u.pos, at)) throw new GameError("Can't see there");
+  spend(u, "action");
+  ctx.s.stash![itemId]! -= 1;
+  if (has(u, "Hidden")) removeCondition(ctx, u, "Hidden");
+  if (item.burst) {
+    ctx.events.push({ type: "feature", unitId: u.id, name: item.name, detail: "bursts in flames" });
+    ctx.events.push({ type: "object", objectId: itemId, unitId: u.id, what: "burst", detail: `${at.x},${at.y}` });
+    const rolled = rollDamage([{ dice: item.dice, type: item.type as never }], { ac: 10, stats: null }, ctx.rng, false);
+    const save: SaveAction = { id: itemId, kind: "save", name: item.name, save: "dex", dc: item.burst.dc, damage: [{ dice: item.dice, type: item.type as never }], onSuccess: "half", notes: "" };
+    for (const t of ctx.s.units as Unit[]) if (!t.dead && splashCells(at).some((c) => sameCell(c, t.pos))) forceSave(ctx, t, save, rolled);
+    return;
+  }
+  const t = unit(ctx, targetId!);
+  if (t.dead) throw new GameError(`${t.name} is dead`);
+  const ability = itemId === "javelin" ? Math.max(abilityMod(u.stats.abilities.str), abilityMod(u.stats.abilities.dex)) : abilityMod(u.stats.abilities.dex);
+  const harmed = !item.vs || item.vs.includes(t.stats.creatureType ?? "");
+  const attack: AttackAction = {
+    id: itemId,
+    kind: "attack",
+    name: item.name,
+    attackType: "ranged",
+    toHit: ability + u.stats.proficiency,
+    reach: 5,
+    range: [item.range, item.range * 3],
+    damage: harmed ? [{ dice: itemId === "javelin" ? `${item.dice}+${Math.max(0, ability)}` : item.dice, type: item.type as never }] : [],
+    notes: "",
+  };
+  makeAttack(ctx, u, t, attack);
 }
 
 function run(ctx: Ctx, cmd: Command) {
@@ -1033,6 +1284,15 @@ function run(ctx: Ctx, cmd: Command) {
       return;
     }
     case "escape": {
+      if (!has(u, "Grappled") && has(u, "Restrained")) {
+        spend(u, "action");
+        const best = Math.max(skillBonus(u, "Athletics", "str"), skillBonus(u, "Acrobatics", "dex"));
+        const roll = d20(ctx, best);
+        const ok = roll.total >= 10;
+        ctx.events.push({ type: "feature", unitId: u.id, name: "Escape", detail: `${roll.total} vs DC 10: ${ok ? "cuts free of the net" : "still tangled"}` });
+        if (ok) removeCondition(ctx, u, "Restrained");
+        return;
+      }
       if (!has(u, "Grappled")) throw new GameError(`${u.name} isn't grappled`);
       spend(u, "action");
       const holder = ctx.s.effects.find((e) => e.kind === "grapple" && e.target === u.id);
@@ -1045,6 +1305,12 @@ function run(ctx: Ctx, cmd: Command) {
       if (ok) releaseGrapple(ctx, u.id);
       return;
     }
+    case "interact":
+      return interact(ctx, u, cmd.objectId, cmd.how);
+    case "search":
+      return search(ctx, u);
+    case "throw":
+      return throwItem(ctx, u, cmd.itemId, cmd.targetId, cmd.point);
     case "dodge":
       spend(u, "action");
       u.dodging = true;
@@ -1153,6 +1419,8 @@ export interface GameOptions {
   surprised?: Side;
   /** Party consumables available in the fight. */
   stash?: Record<string, number>;
+  /** Doors, traps, chests, the way in and out. */
+  objects?: MapObject[];
 }
 
 /** Rolls initiative (d20 + Dex, ties to higher Dex) and starts round 1. */
@@ -1189,9 +1457,23 @@ export function createGame(board: Board, setups: UnitSetup[], seed: number, opts
   });
   units.sort((a, b) => b.initiative - a.initiative || b.stats.abilities.dex - a.stats.abilities.dex);
   const initial: GameState = { board, units, turnIndex: 0, round: 1, effects: [], rngSeed: seeded.seed(), outcome: null, nextId: 1, stash: { ...opts.stash }, ...(opts.objective ? { objective: opts.objective } : {}) };
+  if (opts.objects?.length) {
+    initial.objects = opts.objects.map((o) => ({ ...o, pos: { ...o.pos } }));
+    initial.haul = { gold: 0, items: [] };
+    initial.keys = [];
+    // Closed doors and gates are walls until opened.
+    const shut = initial.objects.filter((o) => (o.kind === "door" || o.kind === "gate") && !o.open).map((o) => key(o.pos));
+    if (shut.length) initial.board = { ...board, walls: [...new Set([...board.walls, ...shut])] };
+  }
   const state = produce(initial, (draft) => {
     events.push({ type: "round", round: 1 });
     const ctx: Ctx = { s: draft, rng: mulberry32(draft.rngSeed).rng, events };
+    // Sharp eyes spot some traps before anyone takes a step.
+    for (const o of draft.objects ?? []) {
+      if (o.kind !== "trap" || !o.hidden) continue;
+      const eye = (draft.units as Unit[]).filter((u) => u.side === "party").find((u) => 10 + skillBonus(u, "Perception", "wis") >= (o.dc ?? 12));
+      if (eye) reveal(ctx, o, eye);
+    }
     startTurn(ctx);
   });
   return { state, events };

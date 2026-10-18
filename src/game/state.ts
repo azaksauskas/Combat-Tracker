@@ -18,6 +18,8 @@ export interface TurnBudget {
   needsDeathSave?: boolean;
   /** Already drew or stowed a weapon this turn. */
   swapped?: boolean;
+  /** Already opened a door, pulled a lever or the like this turn. */
+  interacted?: boolean;
 }
 
 export interface DeathSaves {
@@ -67,7 +69,51 @@ export type Objective =
   /** Hold out this many rounds. */
   | { kind: "survive"; rounds: number }
   /** Get every hero still on their feet onto these squares. */
-  | { kind: "escape"; cells: { x: number; y: number }[] };
+  | { kind: "escape"; cells: { x: number; y: number }[] }
+  /** A delve level: get every hero still on their feet to the way out. Beating the foes doesn't end it. */
+  | { kind: "exit"; cells: { x: number; y: number }[] };
+
+/** Things on the map besides creatures: doors, gates, traps, chests, the way in and out. */
+export type MapObjectKind = "door" | "gate" | "lever" | "trap" | "chest" | "loot" | "barrel" | "entrance" | "exit";
+
+/** What a level's way in or out looks like. */
+export type PassageLook = "stairs-down" | "stairs-up" | "door" | "ladder" | "boat";
+
+/** A trap: what it does to whoever steps on it. */
+export type TrapKind = "spikes" | "darts" | "fire" | "net";
+
+/** Gold and items picked up during a fight (taken home when it's won). */
+export interface Haul {
+  gold: number;
+  items: string[];
+}
+
+export interface MapObject {
+  id: string;
+  kind: MapObjectKind;
+  pos: Cell;
+  /** Doors and gates: open (passable). Chests: opened (emptied). Levers: pulled. */
+  open?: boolean;
+  /** Doors: locked (pick it or force it; a key opens it). */
+  locked?: boolean;
+  /** Traps: not yet found (drawn only once revealed). */
+  hidden?: boolean;
+  /** Traps: still dangerous. */
+  armed?: boolean;
+  trap?: TrapKind;
+  /** Difficulty of finding, disarming, picking or forcing it. */
+  dc?: number;
+  /** Damage dice (traps). */
+  damage?: string;
+  /** A lever opens the gates with the same group; a key opens the doors with it. */
+  group?: string;
+  /** Chests and floor loot: what's inside. Consumables go to the stash. */
+  loot?: Haul & { stash?: Record<string, number> };
+  /** Entrances and exits. */
+  look?: PassageLook;
+  /** Where it faces (doors: "h" runs left–right, "v" up–down). */
+  dir?: "h" | "v";
+}
 
 /** Temporary effects from weapon masteries etc. */
 export interface Effect {
@@ -98,6 +144,12 @@ export interface GameState {
   nextId: number;
   /** The party's shared consumables, e.g. { "potion-healing": 2 }. */
   stash?: Record<string, number>;
+  /** Doors, traps, chests… */
+  objects?: MapObject[];
+  /** What the party picked up. */
+  haul?: Haul;
+  /** Keys the party found (their groups). */
+  keys?: string[];
 }
 
 export type GameEvent =
@@ -127,6 +179,7 @@ export type GameEvent =
   | { type: "fortitude"; unitId: string; roll: RollResult; dc: number; success: boolean }
   | { type: "death-save"; unitId: string; roll: RollResult; successes: number; failures: number; result: "success" | "failure" | "stable" | "dead" | "revived" }
   | { type: "feature"; unitId: string; name: string; detail: string }
+  | { type: "object"; objectId: string; unitId?: string; what: "opened" | "closed" | "unlocked" | "stuck" | "pulled" | "triggered" | "revealed" | "disarmed" | "looted" | "burst"; detail?: string }
   | { type: "outcome"; outcome: "victory" | "defeat" };
 
 export class GameError extends Error {}
