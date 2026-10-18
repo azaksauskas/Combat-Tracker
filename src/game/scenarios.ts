@@ -45,7 +45,9 @@ export function objectiveOf(sc: Scenario): Objective | undefined {
 }
 
 export const objectiveText = (o: Objective, round: number) =>
-  o.kind === "survive" ? `Hold out for ${o.rounds} rounds (round ${Math.min(round, o.rounds)} of ${o.rounds}), or beat them all` : "Get every hero still standing onto the marked squares, or beat them all";
+  o.kind === "exit"
+    ? "Find the way out and get every hero still standing onto it"
+    : o.kind === "survive" ? `Hold out for ${o.rounds} rounds (round ${Math.min(round, o.rounds)} of ${o.rounds}), or beat them all` : "Get every hero still standing onto the marked squares, or beat them all";
 
 export const SCENARIOS: Scenario[] = [
   {

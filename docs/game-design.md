@@ -842,6 +842,61 @@ becomes the company's camp.
   flashes red. The board zooms (+ / −, 1.6× by default) and drags when the
   map is bigger than the panel, following whoever acts.
 
+## Direction: the delve (tactical play from above)
+
+The world and the town stay as they are for now; the focus is the battle
+grid. The **Delve** tab (the first one on the Play page) is a ladder of
+hand-made levels, five to start with (`src/game/delve.ts`):
+
+1. **The Cellar Steps** — giant rats, a door or two, an easy spiked pit.
+2. **The Goblin Warren** — goblins and a wolf; a net trap; a locked door whose
+   key lies on the floor in the middle of the fight.
+3. **The Flooded Hall** — nobody home: traps, chests, a gate worked by a lever,
+   a ford across the river and a boat as the way out.
+4. **The Bone Gate** — skeletons and zombies; fire runes; a gate between the
+   hall and the vaults (holy water in the first chest).
+5. **The Fog Shrine** — cultists, skeletons and the Fog Priest; the way out is
+   behind a locked door, the key near the priest.
+
+Every level has a way in and a way out (stairs, a door, a ladder, a boat).
+The objective is the way out: every hero still standing on it. Beating the
+foes doesn't end the level, and an exploring level has no foes at all.
+
+**Map objects** (`MapObject` in `state.ts`, handled by the engine):
+- doors (open/close: free, once a turn), locked doors (pick: Sleight of Hand,
+  rogues add thieves' tools; force: Athletics, 2 harder; or the key);
+- gates, opened by the lever of their group (or forced, hard);
+- traps (spiked pit, darts, fire rune, net): hidden until spotted by passive
+  Perception at the start or a Search action; heroes walk around the ones they
+  know; disarm as an action (fail by 5 or more and it goes off); stepping on
+  one stops the hero, Dex save for half (the pit also knocks Prone, the net
+  Restrains until cut free);
+- chests (free to open) and loot on the floor (picked up on the way past):
+  gold and items go home on a win, potions and flasks go into the packs;
+- barrels (in the way), racks of javelins;
+- things to throw (an action): Alchemist's Fire splashes a square and the
+  eight around it (Dex save DC 13 for half), Holy Water hurts only undead and
+  fiends, javelins.
+
+Closed doors and gates are walls in `board.walls` until opened, so line of
+sight and pathfinding need nothing new. Monsters ignore traps (it's their
+lair) and don't open doors.
+
+**Progress and gear.** The delve keeps its own purse and packs
+(`PlayerDoc.delve`). Clearing a level opens the next, pays gold, and the
+quartermaster gets new gear: simple weapons and light armour from the start,
+martial weapons and heavier armour level by level, magic items in chests.
+Heroes are kitted out at the quartermaster (it writes their loadouts), and
+consumables are bought with the delve's gold. Losing or retreating keeps the
+packs as they were but takes home nothing else. No lasting injuries in the
+delve for now.
+
+**Test kit** (Delve tab → Testing): 1000 gold, full packs, every level open,
+every item unlocked, the picked heroes raised to level 3.
+
+Later: more levels (the plan once was twenty), more monsters, rotating the
+angled view, sound.
+
 ## Future ideas
 
 - **A bigger world for a longer game.** Today's map (1000 × 640) suits

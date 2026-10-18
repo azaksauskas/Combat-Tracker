@@ -1040,13 +1040,25 @@ function search(ctx: Ctx, u: Unit) {
 /** Cells a thrown flask splashes: the square and the eight around it. */
 export const splashCells = (c: Cell): Cell[] => [-1, 0, 1].flatMap((dx) => [-1, 0, 1].map((dy) => ({ x: c.x + dx, y: c.y + dy })));
 
+/** Can this creature throw that item at that square? */
+export function checkThrow(s: GameState, unitId: string, itemId: string, at: Cell): { ok: true } | { ok: false; reason: string } {
+  const u = s.units.find((x) => x.id === unitId);
+  const item = THROWABLES[itemId];
+  if (!u || !item) return { ok: false, reason: "Nothing to throw" };
+  if ((s.stash?.[itemId] ?? 0) <= 0) return { ok: false, reason: "None of those left" };
+  if (distanceFt(u.pos, at) > item.range) return { ok: false, reason: `Out of range (${item.range} ft)` };
+  if (!sameCell(u.pos, at) && !lineOfSight(s.board, u.pos, at)) return { ok: false, reason: "Can't see there" };
+  return { ok: true };
+}
+
 function throwItem(ctx: Ctx, u: Unit, itemId: string, targetId?: string, point?: Cell) {
   const item = THROWABLES[itemId];
   if (!item || (ctx.s.stash?.[itemId] ?? 0) <= 0) throw new GameError("None of those left");
   const at = item.burst ? point : targetId ? unit(ctx, targetId).pos : undefined;
   if (!at) throw new GameError(item.burst ? "Pick a square to throw it at" : "Pick a creature to throw it at");
-  if (distanceFt(u.pos, at) > item.range) throw new GameError(`Out of range (${item.range} ft)`);
-  if (!sameCell(u.pos, at) && !lineOfSight(ctx.s.board, u.pos, at)) throw new GameError("Can't see there");
+  const check = checkThrow(ctx.s as GameState, u.id, itemId, at);
+  if (!check.ok) throw new GameError(check.reason);
+  if (!u.turn.action) throw new GameError(`${u.name} has already used their action`);
   spend(u, "action");
   ctx.s.stash![itemId]! -= 1;
   if (has(u, "Hidden")) removeCondition(ctx, u, "Hidden");

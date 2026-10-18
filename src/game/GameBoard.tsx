@@ -9,7 +9,8 @@ import { initials } from "../domain/combat";
 import { useThemeColors, useUi } from "../store/ui";
 import { withAlpha, type ThemeColors } from "../theme/themes";
 import { distanceFt, findPath, fromKey, key, type Cell } from "./board";
-import { areaCells, checkArea, checkTarget, currentUnit, reachable } from "./engine";
+import { THROWABLES, areaCells, checkArea, checkTarget, checkThrow, currentUnit, reachable, splashCells } from "./engine";
+import { MapObjectShape } from "./MapObjects";
 import type { GameState, Unit } from "./state";
 import type { Fx, ShotTone } from "./store";
 
@@ -18,7 +19,12 @@ export type BoardMode =
   /** Pick a creature; `picked` collects several for spells like Bless. */
   | { kind: "target"; actionId: string; picked?: string[] }
   /** Aim an area spell at a square. */
-  | { kind: "area"; actionId: string };
+  | { kind: "area"; actionId: string }
+  /** Throw something from the packs: at a square (a flask of fire) or a creature. */
+  | { kind: "throw"; itemId: string };
+
+/** A flask that bursts where it lands (aimed at a square) rather than at a creature. */
+export const throwsAtSquare = (mode: BoardMode) => mode.kind === "throw" && !!THROWABLES[mode.itemId]?.burst;
 
 export interface BoardProps {
   game: GameState;
@@ -32,6 +38,8 @@ export interface BoardProps {
   onTarget: (unitId: string) => void;
   onArea: (point: Cell) => void;
   onHoverUnit: (unitId: string | null) => void;
+  /** A door, lever or chest was clicked. */
+  onObject?: (objectId: string) => void;
 }
 
 export function useSize() {
@@ -65,8 +73,13 @@ export function useBoardLogic(game: GameState, mode: BoardMode, interactive: boo
   }, [hover, active, mode, reach, game, board]);
 
   const targets = useMemo(() => {
-    if (!heroTurn || mode.kind !== "target" || !active) return new Map<string, boolean>();
+    if (!heroTurn || !active) return new Map<string, boolean>();
     const result = new Map<string, boolean>();
+    if (mode.kind === "throw" && !throwsAtSquare(mode)) {
+      for (const u of game.units) if (!u.dead && u.id !== active.id) result.set(u.id, checkThrow(game, active.id, mode.itemId, u.pos).ok);
+      return result;
+    }
+    if (mode.kind !== "target") return result;
     for (const u of game.units) {
       if (u.dead) continue;
       // Help, Shove and Grapple: an enemy within 5 ft.
@@ -78,7 +91,12 @@ export function useBoardLogic(game: GameState, mode: BoardMode, interactive: boo
   }, [game, heroTurn, mode, active]);
 
   const area = useMemo(() => {
-    if (!heroTurn || mode.kind !== "area" || !active || !hover) return null;
+    if (!heroTurn || !active || !hover) return null;
+    if (mode.kind === "throw" && throwsAtSquare(mode)) {
+      const check = checkThrow(game, active.id, mode.itemId, hover);
+      return { ok: check.ok, reason: check.ok ? undefined : check.reason, cells: check.ok ? splashCells(hover) : [] };
+    }
+    if (mode.kind !== "area") return null;
     const check = checkArea(game, active.id, mode.actionId, hover);
     const action = active.stats.actions.find((a) => a.id === mode.actionId);
     if (!action) return null;
@@ -90,7 +108,7 @@ export function useBoardLogic(game: GameState, mode: BoardMode, interactive: boo
 }
 
 /** Tile-based battle board for the game (fixed grid, click to move/target). */
-export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onTarget, onArea, onHoverUnit }: BoardProps) {
+export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onTarget, onArea, onHoverUnit, onObject }: BoardProps) {
   const colors = useThemeColors();
   const [ref, size] = useSize();
   const { board } = game;
@@ -117,8 +135,25 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cell, size.width, size.height, focus?.id, roomy]);
 
+  /** Aiming an area spell or a flask: true when the click was for that. */
+  const aimAt = (c: Cell) => {
+    if (!heroTurn || !active) return false;
+    if (mode.kind === "area") {
+      if (checkArea(game, active.id, mode.actionId, c).ok) onArea(c);
+      return true;
+    }
+    if (mode.kind === "throw") {
+      if (throwsAtSquare(mode) && checkThrow(game, active.id, mode.itemId, c).ok) onArea(c);
+      return true;
+    }
+    return false;
+  };
   const center = (c: Cell) => ({ x: c.x * cell + cell / 2, y: c.y * cell + cell / 2 });
-  const ink = useMemo(() => drawInkBoard(board, cell, game.rngSeed), [board, cell, game.rngSeed]);
+  // Doorways are drawn as gaps in the wall; the doors and gates themselves go on top.
+  const doorways = useMemo(() => new Set((game.objects ?? []).filter((o) => o.kind === "door" || o.kind === "gate").map((o) => key(o.pos))), [game.objects]);
+  const walls = board.walls.filter((w) => !doorways.has(w)).join(";");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const ink = useMemo(() => drawInkBoard({ ...board, walls: walls ? walls.split(";") : [] }, cell, game.rngSeed), [walls, board.width, board.height, cell, game.rngSeed]);
 
   return (
     <div ref={ref} className="relative flex h-full w-full items-center justify-center overflow-hidden">
@@ -159,11 +194,10 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
             const p = e.target.getStage()?.getRelativePointerPosition();
             if (!p) return;
             const c = { x: Math.floor(p.x / cell), y: Math.floor(p.y / cell) };
-            if (mode.kind === "area") {
-              if (checkArea(game, active!.id, mode.actionId, c).ok) onArea(c);
-              return;
-            }
-            if (reach.has(key(c)) && key(c) !== key(active!.pos)) onMove(c);
+            if (aimAt(c)) return;
+            if (reach.has(key(c)) && key(c) !== key(active!.pos)) return onMove(c);
+            const o = game.objects?.find((x) => x.pos.x === c.x && x.pos.y === c.y && ["door", "gate", "lever", "chest", "trap"].includes(x.kind) && !x.hidden);
+            if (o) onObject?.(o.id);
           }}
           style={{ cursor: heroTurn ? (mode.kind === "move" ? "pointer" : "crosshair") : "wait" }}
         >
@@ -171,6 +205,15 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
           <Layer listening={false}>
             <KonvaImage image={ink} width={width} height={height} />
           </Layer>
+
+          {/* Doors, traps, chests, the ways in and out */}
+          {game.objects?.length ? (
+            <Layer listening={false}>
+              {game.objects.map((o) => (
+                <MapObjectShape key={o.id} o={o} cell={cell} exitColor={colors.heal} />
+              ))}
+            </Layer>
+          ) : null}
 
           {/* Movement range and path preview */}
           <Layer listening={false}>
@@ -235,7 +278,7 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
                   inArea={!!area?.cells.some((c) => c.x === u.pos.x && c.y === u.pos.y)}
                   path={paths[u.id]}
                   fx={fx.filter((f) => "unitId" in f && f.unitId === u.id)}
-                  onClick={() => targets.get(u.id) && onTarget(u.id)}
+                  onClick={() => (targets.get(u.id) ? onTarget(u.id) : aimAt(u.pos))}
                   onHover={(on) => onHoverUnit(on ? u.id : null)}
                 />
               ))}

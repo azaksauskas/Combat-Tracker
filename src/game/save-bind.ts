@@ -18,7 +18,7 @@ import { onBeforeSignOut } from "../store/game";
 interface SavedBattle {
   game: GameState;
   scenario: (Scenario & { custom?: UnitSetup[] }) | null;
-  mode: "skirmish" | "campaign" | "town";
+  mode: "skirmish" | "campaign" | "town" | "delve";
   context?: TownBattleContext | null;
   log: LogLine[];
 }

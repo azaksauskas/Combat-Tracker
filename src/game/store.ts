@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { create } from "zustand";
 import { nextAiCommand } from "./ai";
 import type { Board, Cell } from "./board";
-import { apply, canAct, createGame, currentUnit, type Command, type GameOptions } from "./engine";
+import { THROWABLES, apply, canAct, createGame, currentUnit, type Command, type GameOptions } from "./engine";
 import { describeEvents, type LogLine } from "./log";
 import { randomSeed } from "./rng";
 import { objectiveOf, setupFor, type Scenario } from "./scenarios";
@@ -35,7 +35,9 @@ export interface Tally {
 
 /** What a town battle is for: defending against a raid, a lair, a patrol, or a job from the board. */
 export interface TownBattleContext {
-  kind: "raid" | "lair" | "patrol" | "contract" | "reclaim" | "road";
+  kind: "raid" | "lair" | "patrol" | "contract" | "reclaim" | "road" | "delve";
+  /** A delve level (1-based). */
+  level?: number;
   /** A band met on the world map. */
   band?: string;
   /** Raids and lairs. */
@@ -52,7 +54,7 @@ interface PlayState {
   game: GameState | null;
   scenario: (Scenario & { custom?: UnitSetup[] }) | null;
   /** "campaign": the battle belongs to an adventure; "town": a fight for the player's town (raid, lair, patrol, contract). */
-  mode: "skirmish" | "campaign" | "town";
+  mode: "skirmish" | "campaign" | "town" | "delve";
   /** For town battles: what's being fought for. */
   context?: TownBattleContext | null;
   log: LogLine[];
@@ -74,6 +76,8 @@ const DAMAGE_TONE: Record<string, ShotTone> = { fire: "fire", cold: "cold", radi
 
 /** What an attack looks like: a shot for ranged and spells, a lunge for melee. */
 function shotTone(state: GameState, attackerId: string, action: string): ShotTone | null {
+  const thrown = Object.values(THROWABLES).find((t) => t.name === action);
+  if (thrown) return thrown.type === "radiant" ? "radiant" : "arrow";
   const a = state.units.find((u) => u.id === attackerId);
   const act = a?.stats.actions.find((x) => x.name === action);
   if (!act) return null;
@@ -114,6 +118,19 @@ function record(events: GameEvent[], state: GameState, before?: GameState | null
       if (!e.hit) fx.push({ id: fxId++, kind: "text", unitId: e.targetId, text: "MISS", tone: "miss" });
       if (e.crit) fx.push({ id: fxId++, kind: "text", unitId: e.targetId, text: "CRIT!", tone: "crit" });
     }
+    if (e.type === "object" && e.what === "burst" && e.detail) {
+      const [x, y] = e.detail.split(",").map(Number);
+      const from = e.unitId ? pos(e.unitId) : undefined;
+      if (from) fx.push({ id: fxId++, kind: "shot", from, to: { x: x!, y: y! }, tone: "fire" });
+      fx.push({ id: fxId++, kind: "burst", at: { x: x!, y: y! }, tone: "fire" });
+    }
+    if (e.type === "object" && e.what === "triggered" && e.unitId) {
+      const at = pos(e.unitId);
+      const fire = e.detail?.includes("fire");
+      if (at) fx.push({ id: fxId++, kind: "burst", at, tone: fire ? "fire" : "magic" });
+      fx.push({ id: fxId++, kind: "text", unitId: e.unitId, text: "TRAP!", tone: "crit" });
+    }
+    if (e.type === "object" && e.what === "looted" && e.unitId) fx.push({ id: fxId++, kind: "text", unitId: e.unitId, text: "✦ loot", tone: "heal" });
     if (e.type === "save") {
       const at = pos(e.targetId);
       if (at) fx.push({ id: fxId++, kind: "burst", at, tone: "magic" });

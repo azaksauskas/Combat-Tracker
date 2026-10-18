@@ -993,7 +993,7 @@ export function finishTownBattle(retreat = false) {
 }
 
 /** XP for the heroes who fought (monsters' XP shared out), and a lair's milestone level. */
-function awardXp(id: string, game: GameState, keys: string[], milestone: number | undefined, multiplier = num("xp.battleMultiplier")) {
+export function awardXp(id: string, game: GameState, keys: string[], milestone: number | undefined, multiplier = num("xp.battleMultiplier")) {
   if (!keys.length) return;
   const monsterXp = game.units.filter((u) => u.side === "enemy" && u.dead).reduce((n, u) => n + (XP_BY_CR[u.stats.cr ?? ""] ?? 0), 0);
   const share = Math.floor((monsterXp * multiplier) / keys.length);

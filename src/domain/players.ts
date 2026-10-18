@@ -232,6 +232,17 @@ export const PlayerDocSchema = z.object({
   spells: z.record(z.string(), z.array(z.string()).catch([])).catch({}),
   /** Weapons and armour in the town's armoury, not carried by anyone: item id → count. */
   armory: z.record(z.string(), z.number()).catch({}),
+  /** The delve (see game/delve.ts): levels cleared, its own purse and packs, and what the quartermaster has. */
+  delve: z
+    .object({
+      cleared: z.array(z.number()).catch([]),
+      gold: z.number().catch(0),
+      stash: z.record(z.string(), z.number()).catch({}),
+      unlocked: z.array(z.string()).catch([]),
+      /** Test kit taken: every level open and everything unlocked. */
+      tester: z.boolean().catch(false),
+    })
+    .catch({ cleared: [], gold: 0, stash: { "potion-healing": 2, "alchemists-fire": 1 }, unlocked: [], tester: false }),
   /** Renown = the highest level any of the player's heroes has reached. */
   renown: z.number().catch(1),
   /** Which open page wrote last, so a page ignores the echo of its own save. */

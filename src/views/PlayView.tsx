@@ -14,13 +14,15 @@ import { dispatch, quitGame, startGame, usePlay } from "../game/store";
 import { useGame } from "../store/game";
 import { ADVENTURES } from "../content/adventures";
 import { beginAdventure, returnFromBattle, useCampaign } from "../game/campaign-store";
-import { POTIONS } from "../game/engine";
+import { POTIONS, THROWABLES } from "../game/engine";
 import { distanceFt } from "../game/board";
 import { AdventureView } from "./AdventureView";
 import { AwayReportDialog, TownView } from "./TownView";
 import { RaidNewsDialog, ThreatBar } from "./RaidAlerts";
 import { HeroesView } from "./HeroesView";
 import { WorldView } from "./WorldView";
+import { DelveView } from "./DelveView";
+import { finishDelve } from "../game/delve-store";
 import { finishTownBattle } from "../game/town-store";
 import { CharacterBuilder } from "../components/CharacterBuilder";
 import type { CharacterSpec } from "../domain/character";
@@ -64,14 +66,14 @@ export function PlayView() {
 
 /** Between adventures: your town, or setting out. */
 function Home() {
-  const hasTown = usePlayers((s) => !!s.docs[useActiveProfile.getState().id ?? ""]?.town);
-  const [tab, setTab] = useState<"world" | "town" | "heroes" | "adventure">(hasTown ? "world" : "town");
+  const [tab, setTab] = useState<"delve" | "world" | "town" | "heroes" | "adventure">("delve");
   return (
     <div className="mx-auto w-full max-w-6xl space-y-4">
       <ClaimOldSave />
       <div className="relative flex items-center gap-1 border-b border-line" role="tablist">
         {(
           [
+            ["delve", "⛏ Delve"],
             ["world", "🧭 World"],
             ["town", "🏘 Town"],
             ["heroes", "🧙 Heroes"],
@@ -92,7 +94,9 @@ function Home() {
           <PlayingAs />
         </span>
       </div>
-      {tab === "world" ? (
+      {tab === "delve" ? (
+        <DelveView partyPicker={<PartyPicker />} />
+      ) : tab === "world" ? (
         <WorldView onGoTown={() => setTab("town")} onAdventure={() => setTab("adventure")} />
       ) : tab === "town" ? (
         <TownView />
@@ -349,7 +353,7 @@ function Battle({ game }: { game: GameState }) {
             <ThreatBar compact />
           </div>
         )}
-        {playMode === "campaign" || playMode === "town" ? (
+        {playMode === "campaign" || playMode === "town" || playMode === "delve" ? (
           !game.outcome && (
             <button
               className="btn btn-ghost"
@@ -390,6 +394,7 @@ function Battle({ game }: { game: GameState }) {
             paths={paths}
             onMove={(to) => active && dispatch({ type: "move", unitId: active.id, to })}
             onTarget={(targetId) => {
+              if (active && mode.kind === "throw") return void dispatch({ type: "throw", unitId: active.id, itemId: mode.itemId, targetId });
               if (!active || mode.kind !== "target") return;
               const special = mode.actionId;
               if (special === "@help") return void dispatch({ type: "help", unitId: active.id, targetId });
@@ -407,7 +412,14 @@ function Battle({ game }: { game: GameState }) {
               }
               dispatch({ type: "action", unitId: active.id, actionId: mode.actionId, targetId });
             }}
+            onObject={(objectId) => {
+              const o = game.objects?.find((x) => x.id === objectId);
+              if (!active || !o || distanceFt(active.pos, o.pos) > 5) return;
+              // The free, everyday use: open a door, pull a lever, open a chest. Locks and traps go through the side panel.
+              if ((o.kind === "door" && !o.locked) || o.kind === "lever" || (o.kind === "chest" && !o.locked && !o.open)) dispatch({ type: "interact", unitId: active.id, objectId });
+            }}
             onArea={(point) => {
+              if (active && mode.kind === "throw") return void dispatch({ type: "throw", unitId: active.id, itemId: mode.itemId, point });
               if (active && mode.kind === "area") dispatch({ type: "action", unitId: active.id, actionId: mode.actionId, point });
             }}
             onHoverUnit={setHoverId}
@@ -521,7 +533,7 @@ function HeroPanel({
 
           <div className="space-y-1.5">
             {u.stats.actions.map((a) => {
-              const selected = mode.kind !== "move" && mode.actionId === a.id;
+              const selected = "actionId" in mode && mode.actionId === a.id;
               const noSlot = !!a.slot && (u.resources[`slot${a.slot}`] ?? 0) <= 0;
               const stowed = weaponInHand(u, a) !== true;
               return (
@@ -623,6 +635,7 @@ function HeroPanel({
           </div>
 
           <Potions game={game} unit={u} heroTurn={heroTurn} />
+          <Surroundings game={game} unit={u} heroTurn={heroTurn} mode={mode} setMode={setMode} />
 
           <button className="btn btn-primary w-full font-display" disabled={!heroTurn} onClick={() => send({ type: "end-turn", unitId: u.id })} title="Shortcut: E">
             End turn
@@ -632,6 +645,8 @@ function HeroPanel({
               ? "Click a highlighted creature · Esc to cancel"
               : mode.kind === "area"
                 ? "Hover to aim, click a square to cast · Esc to cancel"
+                : mode.kind === "throw"
+                  ? `Click ${THROWABLES[mode.itemId]?.burst ? "a square" : "a highlighted creature"} to throw · Esc to cancel`
                 : "Click a lit square to move · pick an action to attack"}
           </p>
         </>
@@ -896,7 +911,11 @@ function Outcome({ game }: { game: GameState }) {
         </p>
         <BattleSummary game={game} />
         <div className="mt-4 flex flex-col gap-2">
-          {playMode === "town" ? (
+          {playMode === "delve" ? (
+            <button className="btn btn-primary font-display" onClick={() => finishDelve()}>
+              {won ? "Take the loot and climb out" : "Back to the surface"}
+            </button>
+          ) : playMode === "town" ? (
             <button className="btn btn-primary font-display" onClick={() => finishTownBattle()}>
               {usePlay.getState().context?.kind === "road" ? "Back on the road" : "Back to town"}
             </button>
@@ -922,9 +941,99 @@ function Outcome({ game }: { game: GameState }) {
   );
 }
 
+const OBJECT_NAME: Record<string, string> = { door: "Door", gate: "Gate", lever: "Lever", chest: "Chest", trap: "Trap", loot: "Loot", barrel: "Barrel", entrance: "Way in", exit: "Way out" };
+
+/** What's around the hero: doors, levers, chests and traps within reach; searching; things to throw. */
+function Surroundings({ game, unit: u, heroTurn, mode, setMode }: { game: GameState; unit: Unit; heroTurn: boolean; mode: BoardMode; setMode: (m: BoardMode) => void }) {
+  const near = (game.objects ?? []).filter((o) => distanceFt(o.pos, u.pos) <= 5 && !o.hidden && ["door", "gate", "lever", "chest", "trap"].includes(o.kind) && !(o.kind === "trap" && !o.armed) && !(o.kind === "chest" && o.open));
+  const throws = Object.entries(game.stash ?? {}).filter(([id, n]) => n > 0 && THROWABLES[id]);
+  const netted = u.conditions.includes("Restrained") && !u.conditions.includes("Grappled");
+  if (!game.objects?.length && !throws.length && !netted) return null;
+  const act = (objectId: string, how?: "pick" | "force") => dispatch({ type: "interact", unitId: u.id, objectId, how });
+  const free = !u.turn.interacted;
+  const busy = !heroTurn;
+  return (
+    <div className="space-y-1.5" aria-label="Around you">
+      {netted && (
+        <button className="btn w-full text-xs" disabled={busy || !u.turn.action} onClick={() => dispatch({ type: "escape", unitId: u.id })} title="Athletics or Acrobatics, DC 10">
+          ✂ Cut free of the net
+        </button>
+      )}
+      {near.map((o) => (
+        <div key={o.id} className="flex flex-wrap items-center gap-1 rounded-md border border-line bg-surface-2 px-2 py-1 text-xs">
+          <span className="mr-auto font-semibold text-strong">
+            {OBJECT_NAME[o.kind]}
+            {o.locked ? " (locked)" : o.kind === "door" || o.kind === "gate" ? (o.open ? " (open)" : " (shut)") : ""}
+          </span>
+          {o.kind === "door" && !o.locked && (
+            <button className="btn px-1.5 py-0 text-xs" disabled={busy || !free} onClick={() => act(o.id)} title="Free, once a turn">
+              {o.open ? "Close" : "Open"}
+            </button>
+          )}
+          {(o.kind === "door" || o.kind === "chest") && o.locked && (
+            <>
+              {o.group && game.keys?.includes(o.group) && o.kind === "door" ? (
+                <button className="btn px-1.5 py-0 text-xs" disabled={busy || !free} onClick={() => act(o.id)}>
+                  🗝 Unlock
+                </button>
+              ) : (
+                <>
+                  <button className="btn px-1.5 py-0 text-xs" disabled={busy || !u.turn.action} onClick={() => act(o.id, "pick")} title={`Action: Sleight of Hand (rogues add thieves' tools) vs DC ${o.dc ?? 12}`}>
+                    Pick lock
+                  </button>
+                  <button className="btn px-1.5 py-0 text-xs" disabled={busy || !u.turn.action} onClick={() => act(o.id, "force")} title={`Action: Athletics vs DC ${(o.dc ?? 12) + 2}`}>
+                    Force
+                  </button>
+                </>
+              )}
+            </>
+          )}
+          {o.kind === "gate" && !o.open && (
+            <button className="btn px-1.5 py-0 text-xs" disabled={busy || !u.turn.action} onClick={() => act(o.id, "force")} title={`Action: Athletics vs DC ${(o.dc ?? 12) + 2}, or find the lever`}>
+              Force
+            </button>
+          )}
+          {o.kind === "lever" && (
+            <button className="btn px-1.5 py-0 text-xs" disabled={busy || !free} onClick={() => act(o.id)} title="Free, once a turn">
+              Pull
+            </button>
+          )}
+          {o.kind === "chest" && !o.locked && (
+            <button className="btn px-1.5 py-0 text-xs" disabled={busy || !free} onClick={() => act(o.id)} title="Free, once a turn">
+              Open
+            </button>
+          )}
+          {o.kind === "trap" && (
+            <button className="btn px-1.5 py-0 text-xs" disabled={busy || !u.turn.action} onClick={() => act(o.id)} title={`Action: Sleight of Hand (rogues add thieves' tools) vs DC ${o.dc ?? 12}. Fail by 5 or more and it goes off`}>
+              Disarm
+            </button>
+          )}
+        </div>
+      ))}
+      {!!game.objects?.length && (
+        <button className="btn w-full text-xs" disabled={busy || !u.turn.action} onClick={() => dispatch({ type: "search", unitId: u.id })} title="Action: Perception check; finds hidden traps within 30 ft">
+          🔍 Search for traps
+        </button>
+      )}
+      {throws.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {throws.map(([id, n]) => {
+            const on = mode.kind === "throw" && mode.itemId === id;
+            return (
+              <button key={id} className={clsx("btn px-1.5 py-0.5 text-xs", on && "border-accent text-accent")} aria-pressed={on} disabled={busy || !u.turn.action} onClick={() => setMode(on ? { kind: "move" } : { kind: "throw", itemId: id })} title={`Action: ${THROWABLES[id]!.dice} ${THROWABLES[id]!.type}, ${THROWABLES[id]!.range} ft${THROWABLES[id]!.burst ? `, splashes the squares around (Dex save DC ${THROWABLES[id]!.burst!.dc} for half)` : THROWABLES[id]!.vs ? `, only hurts ${THROWABLES[id]!.vs!.join(" and ")}` : ""}`}>
+                🫙 {THROWABLES[id]!.name} ×{n}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Healing potions from the party's pack: drink, or hand to an ally within 5 ft (bonus action). */
 function Potions({ game, unit: u, heroTurn }: { game: GameState; unit: Unit; heroTurn: boolean }) {
-  const stock = Object.entries(game.stash ?? {}).filter(([, n]) => n > 0);
+  const stock = Object.entries(game.stash ?? {}).filter(([id, n]) => n > 0 && POTIONS[id]);
   if (stock.length === 0) return null;
   const allies = game.units.filter((x) => x.side === "party" && !x.dead && distanceFt(x.pos, u.pos) <= 5);
   return (
