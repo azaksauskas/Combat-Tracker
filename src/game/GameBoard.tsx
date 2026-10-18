@@ -328,7 +328,9 @@ function UnitToken({
       if (f.kind === "lunge") {
         const dx = (f.to.x - u.pos.x) * cell * 0.35;
         const dy = (f.to.y - u.pos.y) * cell * 0.35;
-        b.to({ x: dx, y: dy, duration: 0.1, onFinish: () => b.to({ x: 0, y: 0, duration: 0.15 }) });
+        // The figure stands on its base, a little below the square's middle: lunge from there and back.
+        const rest = cell * 0.24;
+        b.to({ x: dx, y: rest + dy, duration: 0.1, onFinish: () => b.to({ x: 0, y: rest, duration: 0.15 }) });
       }
       if (f.kind === "hit") {
         const amp = f.crit ? 7 : 4;
@@ -356,7 +358,7 @@ function UnitToken({
   const foe = u.side === "enemy";
   const img = miniImage(look, foe, () => setLoaded((n) => n + 1));
   const k = (cell * 1.3) / 128;
-  const feet = cell * 0.24;
+  const feet = cell * 0.24; // where the base sits (keep in step with the lunge above)
   const rx = cell * (look.kind === "wolf" ? 0.46 : look.kind === "rat" ? 0.3 : 0.37);
   const ry = rx * 0.42;
   const rim = foe ? INK_RED : INK;
