@@ -18,8 +18,11 @@ type Delve = PlayerDoc["delve"];
 const me = () => useActiveProfile.getState().id;
 export const delveOf = (doc: PlayerDoc | undefined): Delve => doc?.delve ?? { cleared: [], gold: 0, stash: {}, unlocked: [], tester: false };
 
+/** While the delve is being tried out, every level is open to everybody. Set to false to make them unlock in order again. */
+export const ALL_LEVELS_OPEN = true;
+
 /** A level can be entered once the one before it is cleared. */
-export const levelOpen = (d: Delve, n: number) => d.tester || n === 1 || d.cleared.includes(n - 1);
+export const levelOpen = (d: Delve, n: number) => ALL_LEVELS_OPEN || d.tester || n === 1 || d.cleared.includes(n - 1);
 
 /** What the quartermaster has: the basics, everything unlocked so far (all of it with the test kit). */
 export const unlockedOf = (d: Delve) => new Set([...STARTING_UNLOCKS, ...d.unlocked, ...(d.tester ? ALL_UNLOCKS : [])]);
