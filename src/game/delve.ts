@@ -30,6 +30,8 @@ export interface DelveLevel {
   monsters: string[];
   /** Renamed monsters (by their number on the map, 1-based). */
   names?: Record<number, string>;
+  /** Monsters lying in wait (by number): seen only from 10 ft, and they strike first. */
+  ambush?: number[];
   entrance: PassageLook;
   exit: PassageLook;
   /** The traps in map order (cycled), how hard to find and dodge, and how much they hurt. */
@@ -119,6 +121,7 @@ export const DELVE: DelveLevel[] = [
       "######################",
     ],
     monsters: ["goblin-warrior", "goblin-warrior", "wolf", "goblin-warrior", "goblin-warrior"],
+    ambush: [4, 5],
     entrance: "door",
     exit: "ladder",
     traps: ["net", "spikes"],
@@ -134,24 +137,26 @@ export const DELVE: DelveLevel[] = [
     n: 3,
     id: "flooded-hall",
     name: "The Flooded Hall",
-    blurb: "Nobody lives here any more: the sea came in. Old traps, old treasure, and a boat tied up by the far bank.",
+    blurb: "Nobody lives here any more, or so they say: the sea came in. Old traps, old treasure, things in the water, and a boat tied up by the far bank.",
     kind: "explore",
     look: "cave",
     map: [
       "######################",
       "#P<....#....wWw......#",
-      "#PP....#..^.wWw..C...#",
+      "#PP....#..^.wWw..C1..#",
       "#......#....wWw......#",
       "##+#####....www..^...#",
       "#......#.....^.......#",
       "#..j...G.....ww....$.#",
       "#...../#....wWw......#",
-      "#......#..^.wWw..b...#",
-      "#.C....#....wWw..,...#",
+      "#.3....#..^.wWw..b...#",
+      "#.C....#....wWw2.,...#",
       "#......#....wW>......#",
       "######################",
     ],
-    monsters: [],
+    monsters: ["giant-rat", "zombie", "giant-rat"],
+    names: { 2: "Drowned One" },
+    ambush: [1, 2, 3],
     entrance: "ladder",
     exit: "boat",
     traps: ["darts", "spikes", "fire", "darts"],
@@ -187,6 +192,7 @@ export const DELVE: DelveLevel[] = [
       "######################",
     ],
     monsters: ["skeleton", "skeleton", "skeleton", "zombie", "zombie"],
+    ambush: [4, 5],
     entrance: "boat",
     exit: "stairs-down",
     traps: ["fire"],
@@ -220,6 +226,7 @@ export const DELVE: DelveLevel[] = [
     ],
     monsters: ["cultist", "cultist", "cultist", "skeleton", "skeleton", "bandit-captain"],
     names: { 6: "The Fog Priest" },
+    ambush: [4, 5],
     entrance: "stairs-up",
     exit: "door",
     traps: ["fire"],
@@ -302,10 +309,13 @@ export function levelSetup(level: DelveLevel, members: ContentEntry[]): { scenar
   const { board, units } = scenarioSetup(scenario, members);
   const spots = new Set(objects.map((o) => key(o.pos)));
   board.walls = board.walls.filter((w) => !spots.has(w));
+  // Monsters haven't noticed the party yet: they join in when a hero sees them.
   const named = units.map((u) => {
     const i = /^m(\d+)$/.exec(u.id);
-    const name = i ? level.names?.[Number(i[1]) + 1] : undefined;
-    return name ? { ...u, name } : u;
+    if (!i) return u;
+    const n = Number(i[1]) + 1;
+    const name = level.names?.[n];
+    return { ...u, ...(name ? { name } : {}), dormant: true, ...(level.ambush?.includes(n) ? { ambush: true } : {}) };
   });
   const exits: Cell[] = objects.filter((o) => o.kind === "exit").map((o) => o.pos);
   return { scenario: { ...scenario, map: level.map }, board, units: named, objects, objective: { kind: "exit", cells: exits } };

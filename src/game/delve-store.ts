@@ -55,7 +55,7 @@ export function startDelveLevel(n: number) {
   const party = chosenParty();
   if (!party.length) return void toast.error("No one is fit to go down");
   const { scenario, board, units, objects, objective } = levelSetup(level, party);
-  startBattle(scenario, board, units, { objects, objective, stash: d.stash }, "delve", { kind: "delve", level: n, heroes: party.map((e) => e.key) });
+  startBattle(scenario, board, units, { objects, objective, stash: d.stash, fog: true }, "delve", { kind: "delve", level: n, heroes: party.map((e) => e.key) });
 }
 
 /** Back from a level: the packs as they are now; on a win, the gold, the finds and the next level. */

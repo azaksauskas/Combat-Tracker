@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { HpBar } from "../components/HpBar";
 import { actionDamage, describeAction, formatMod, type StatAction } from "../domain/statblock";
 import { averageDamage, hitChance } from "../game/ai";
-import { canAct, checkTarget, currentUnit, weaponInHand } from "../game/engine";
+import { canAct, checkTarget, currentUnit, reachable, weaponInHand } from "../game/engine";
 import { GameBoard, type BoardMode } from "../game/GameBoard";
 import { IsoBoard } from "../game/IsoBoard";
 import { useUi } from "../store/ui";
@@ -15,7 +15,7 @@ import { useGame } from "../store/game";
 import { ADVENTURES } from "../content/adventures";
 import { beginAdventure, returnFromBattle, useCampaign } from "../game/campaign-store";
 import { POTIONS, THROWABLES } from "../game/engine";
-import { distanceFt } from "../game/board";
+import { distanceFt, fromKey } from "../game/board";
 import { AdventureView } from "./AdventureView";
 import { AwayReportDialog, TownView } from "./TownView";
 import { RaidNewsDialog, ThreatBar } from "./RaidAlerts";
@@ -343,10 +343,16 @@ function Battle({ game }: { game: GameState }) {
               🎯 {objectiveText(game.objective, game.round)}
             </p>
           )}
+          {game.explore && !game.outcome ? (
+            <p className="text-sm text-muted">
+              🔦 <strong className="text-strong">Exploring</strong> · no one in sight · {active ? `${active.name} leads` : ""}
+            </p>
+          ) : (
           <p className="text-sm text-muted">
             Round <strong className="text-strong">{game.round}</strong> ·{" "}
             {game.outcome ? (game.outcome === "victory" ? "Victory!" : game.fled ? "Retreat" : "Defeat") : aiRunning ? "Monsters are acting…" : active ? `${active.name}'s turn` : ""}
           </p>
+          )}
         </div>
         {playMode !== "town" && (
           <div className="min-w-0 flex-1">
@@ -392,7 +398,8 @@ function Battle({ game }: { game: GameState }) {
             interactive={heroTurn}
             fx={fx}
             paths={paths}
-            onMove={(to) => active && dispatch({ type: "move", unitId: active.id, to })}
+            onMove={(to) => active && dispatch({ type: "move", unitId: active.id, to, ...(game.explore && useUi.getState().partyFollows ? { follow: true } : {}) })}
+            onSelect={(unitId) => dispatch({ type: "select", unitId })}
             onTarget={(targetId) => {
               if (active && mode.kind === "throw") return void dispatch({ type: "throw", unitId: active.id, itemId: mode.itemId, targetId });
               if (!active || mode.kind !== "target") return;
@@ -414,7 +421,16 @@ function Battle({ game }: { game: GameState }) {
             }}
             onObject={(objectId) => {
               const o = game.objects?.find((x) => x.id === objectId);
-              if (!active || !o || distanceFt(active.pos, o.pos) > 5) return;
+              if (!active || !o) return;
+              // Exploring: walk up to it first.
+              if (distanceFt(active.pos, o.pos) > 5 && game.explore) {
+                const seen = new Set(game.seen ?? []);
+                const next = [...reachable(game, active.id)].filter(([k]) => (!game.fog || seen.has(k)) && distanceFt(fromKey(k), o.pos) <= 5).sort((a, b) => a[1] - b[1])[0];
+                if (!next || dispatch({ type: "move", unitId: active.id, to: fromKey(next[0]), ...(useUi.getState().partyFollows ? { follow: true } : {}) })) return;
+                const now = usePlay.getState().game;
+                const me = now?.units.find((x) => x.id === active.id);
+                if (!now?.explore || !me || distanceFt(me.pos, o.pos) > 5) return;
+              } else if (distanceFt(active.pos, o.pos) > 5) return;
               // The free, everyday use: open a door, pull a lever, open a chest. Locks and traps go through the side panel.
               if ((o.kind === "door" && !o.locked) || o.kind === "lever" || (o.kind === "chest" && !o.locked && !o.open)) dispatch({ type: "interact", unitId: active.id, objectId });
             }}
@@ -441,13 +457,16 @@ function TurnOrder({ game, hoverId }: { game: GameState; hoverId: string | null 
   return (
     <section className="min-h-0 overflow-y-auto rounded-lg border border-line bg-surface p-2 shadow" aria-label="Turn order">
       <ol className="space-y-1">
-        {game.units.map((u) => (
+        {game.explore && <li className="px-1.5 pb-1 text-[11px] text-faint">Click a hero to lead</li>}
+        {game.units.filter((u) => !u.dormant && !(game.explore && u.side === "enemy")).map((u) => (
           <li
             key={u.id}
+            onClick={() => game.explore && u.side === "party" && !u.dead && dispatch({ type: "select", unitId: u.id })}
             className={clsx(
               "rounded-md border px-1.5 py-1 text-xs",
               u.id === active?.id ? "border-accent bg-accent/10" : u.id === hoverId ? "border-line bg-surface-3/50" : "border-transparent",
               u.dead && "opacity-40",
+              game.explore && u.side === "party" && "cursor-pointer hover:border-accent",
             )}
           >
             <div className="flex items-center justify-between gap-2">
@@ -508,7 +527,8 @@ function HeroPanel({
         <DyingPanel unit={u} busy={usePlay.getState().aiRunning || !!game.outcome} />
       ) : u.side === "party" ? (
         <>
-          <div className="flex flex-wrap gap-1">
+          {game.explore && <ExploreHelp game={game} />}
+          <div className={clsx("flex flex-wrap gap-1", game.explore && "hidden")}>
             <Pip on={u.turn.action} label="Action" />
             <Pip on={u.turn.bonusAction} label="Bonus" />
             <Pip on={u.reaction} label="Reaction" />
@@ -637,9 +657,11 @@ function HeroPanel({
           <Potions game={game} unit={u} heroTurn={heroTurn} />
           <Surroundings game={game} unit={u} heroTurn={heroTurn} mode={mode} setMode={setMode} />
 
-          <button className="btn btn-primary w-full font-display" disabled={!heroTurn} onClick={() => send({ type: "end-turn", unitId: u.id })} title="Shortcut: E">
-            End turn
-          </button>
+          {!game.explore && (
+            <button className="btn btn-primary w-full font-display" disabled={!heroTurn} onClick={() => send({ type: "end-turn", unitId: u.id })} title="Shortcut: E">
+              End turn
+            </button>
+          )}
           <p className="text-[11px] text-faint">
             {mode.kind === "target"
               ? "Click a highlighted creature · Esc to cancel"
@@ -647,7 +669,9 @@ function HeroPanel({
                 ? "Hover to aim, click a square to cast · Esc to cancel"
                 : mode.kind === "throw"
                   ? `Click ${THROWABLES[mode.itemId]?.burst ? "a square" : "a highlighted creature"} to throw · Esc to cancel`
-                : "Click a lit square to move · pick an action to attack"}
+                : game.explore
+                  ? "Click a square you've seen to walk there"
+                  : "Click a lit square to move · pick an action to attack"}
           </p>
         </>
       ) : (
@@ -937,6 +961,26 @@ function Outcome({ game }: { game: GameState }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** What to do while exploring. */
+function ExploreHelp({ game }: { game: GameState }) {
+  const follows = useUi((s) => s.partyFollows);
+  const traps = (game.objects ?? []).filter((o) => o.kind === "trap" && !o.hidden && o.armed).length;
+  const exitSeen = (game.objects ?? []).some((o) => o.kind === "exit" && game.seen?.includes(`${o.pos.x},${o.pos.y}`));
+  return (
+    <div className="space-y-1.5 rounded-md border border-heal/40 bg-heal/5 p-2 text-xs text-muted">
+      <p>
+        <strong className="text-strong">Exploring.</strong> No rounds until something sees you. Walk into the dark to find the way out; open doors and chests next to you; search for traps before you step on them.
+      </p>
+      <p>{exitSeen ? "✓ You've found the way out (green frame): get everyone onto it." : "The way out is still somewhere in the dark."}</p>
+      {traps > 0 && <p className="text-danger">⚠ {traps} trap{traps === 1 ? "" : "s"} spotted: walk around, or disarm from next to it.</p>}
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={follows} onChange={(e) => useUi.setState({ partyFollows: e.target.checked })} />
+        The others follow the hero you move
+      </label>
     </div>
   );
 }

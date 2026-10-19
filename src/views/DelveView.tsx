@@ -40,6 +40,8 @@ export function DelveView({ partyPicker }: { partyPicker: ReactNode }) {
         </div>
       </header>
 
+      <HowToPlay first={d.cleared.length === 0} />
+
       <ol className="grid gap-3 md:grid-cols-5" aria-label="Delve levels">
         {DELVE.map((l) => {
           const open = levelOpen(d, l.n);
@@ -158,5 +160,31 @@ function Quartermaster() {
         })}
       </ul>
     </section>
+  );
+}
+
+/** The game in five lines, open until the first level is cleared. */
+function HowToPlay({ first }: { first: boolean }) {
+  return (
+    <details open={first} className="rounded-lg border border-accent/50 bg-accent/5 p-3 text-sm">
+      <summary className="cursor-pointer font-display font-bold text-accent">How to play</summary>
+      <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted">
+        <li>
+          <strong className="text-strong">Pick your heroes</strong> below (up to six) and give them weapons and armour at the <strong className="text-strong">Quartermaster</strong>.
+        </li>
+        <li>
+          <strong className="text-strong">Go down</strong> into a level. It starts dark: you see only what your heroes' light reaches.
+        </li>
+        <li>
+          <strong className="text-strong">Explore:</strong> click a square to walk there, and the party follows. Open doors and chests by clicking them when you're next to them. Hidden traps show only when a hero gets close or <em>searches</em>.
+        </li>
+        <li>
+          <strong className="text-strong">Fight</strong> when monsters see you: then it's turns, hero by hero (move, then an action; <em>End turn</em> when done). Some monsters lie in wait. When the last one falls, you explore again.
+        </li>
+        <li>
+          <strong className="text-strong">Get out:</strong> bring every hero still standing onto the way out (green frame). You keep the gold and gear you found, and the quartermaster gets new stock.
+        </li>
+      </ol>
+    </details>
   );
 }

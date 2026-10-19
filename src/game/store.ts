@@ -163,7 +163,8 @@ function record(events: GameEvent[], state: GameState, before?: GameState | null
 
 /** Whose turn needs the computer: enemies, until a hero can act or the battle ends. */
 const aiShouldAct = (s: GameState | null) => {
-  if (!s || s.outcome) return false;
+  // Nobody fights while the party explores.
+  if (!s || s.outcome || s.explore) return false;
   const u = currentUnit(s);
   // A dying hero waits for the player to roll their death save.
   return !!u && !(u.side === "party" && u.turn.needsDeathSave) && (u.side === "enemy" || !canAct(u));
@@ -174,7 +175,8 @@ const AI_STEP_MS = 750;
 
 /** Plays monster turns one command at a time, so moves and hits can be followed. */
 export function runAi() {
-  if (usePlay.getState().aiRunning) return;
+  // Nothing for the monsters to do (a hero's turn, or exploring): don't hold up the player.
+  if (usePlay.getState().aiRunning || !aiShouldAct(usePlay.getState().game)) return;
   const step = () => {
     const { game } = usePlay.getState();
     if (!aiShouldAct(game)) {

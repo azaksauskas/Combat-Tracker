@@ -860,7 +860,23 @@ hand-made levels, five to start with (`src/game/delve.ts`):
 
 Every level has a way in and a way out (stairs, a door, a ladder, a boat).
 The objective is the way out: every hero still standing on it. Beating the
-foes doesn't end the level, and an exploring level has no foes at all.
+foes doesn't end the level.
+
+**Exploring and the fog of war** (`GameState.fog`, `explore`). A delve level
+starts dark: the heroes see 8 squares around them where nothing blocks the
+line of sight, and the map is remembered once seen (dimmed when out of
+sight). While nobody is fighting there are no rounds: click any hero to lead,
+click a square already seen to walk there, and the others follow (a toggle
+lets one hero go alone). Clicking a door, lever or chest across the room
+walks up to it and opens it. Monsters start *dormant*: out of the turn order
+and off the board until a hero sees one. Then that monster and its friends
+within 20 ft wake, the walk stops where it is, and the fight begins in
+initiative order. Some monsters lie in wait (*ambush*): seen only from 10 ft,
+and they act first. When the last monster in the fight falls, the party is
+back to exploring (the fallen are stabilised). Hidden traps are noticed only
+within 10 ft (the best passive Perception nearby), and a hero who notices a
+trap on the way ahead stops in front of it. Search gives each hero one roll
+per trap.
 
 **Map objects** (`MapObject` in `state.ts`, handled by the engine):
 - doors (open/close: free, once a turn), locked doors (pick: Sleight of Hand,

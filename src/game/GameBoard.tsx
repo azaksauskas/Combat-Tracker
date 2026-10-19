@@ -9,7 +9,7 @@ import { initials } from "../domain/combat";
 import { useThemeColors, useUi } from "../store/ui";
 import { withAlpha, type ThemeColors } from "../theme/themes";
 import { distanceFt, findPath, fromKey, key, type Cell } from "./board";
-import { THROWABLES, areaCells, checkArea, checkTarget, checkThrow, currentUnit, reachable, splashCells } from "./engine";
+import { THROWABLES, areaCells, checkArea, checkTarget, checkThrow, currentUnit, reachable, splashCells, visibleNow } from "./engine";
 import { MapObjectShape } from "./MapObjects";
 import type { GameState, Unit } from "./state";
 import type { Fx, ShotTone } from "./store";
@@ -40,6 +40,8 @@ export interface BoardProps {
   onHoverUnit: (unitId: string | null) => void;
   /** A door, lever or chest was clicked. */
   onObject?: (objectId: string) => void;
+  /** Exploring: a hero was clicked to take the lead. */
+  onSelect?: (unitId: string) => void;
 }
 
 export function useSize() {
@@ -60,7 +62,16 @@ export function useBoardLogic(game: GameState, mode: BoardMode, interactive: boo
   const { board } = game;
   const active = currentUnit(game);
   const heroTurn = interactive && active?.side === "party";
-  const reach = useMemo(() => (heroTurn && mode.kind === "move" && active ? reachable(game, active.id) : new Map<string, number>()), [game, heroTurn, mode, active]);
+  const reach = useMemo(() => {
+    if (!heroTurn || mode.kind !== "move" || !active) return new Map<string, number>();
+    const all = reachable(game, active.id);
+    // In the fog, only squares the party has seen.
+    if (game.fog) {
+      const seen = new Set(game.seen ?? []);
+      for (const k of [...all.keys()]) if (!seen.has(k)) all.delete(k);
+    }
+    return all;
+  }, [game, heroTurn, mode, active]);
   const path = useMemo(() => {
     if (!hover || !active || mode.kind !== "move" || !reach.has(key(hover)) || key(hover) === key(active.pos)) return null;
     const u = game.units.find((x) => x.id === active.id)!;
@@ -108,7 +119,7 @@ export function useBoardLogic(game: GameState, mode: BoardMode, interactive: boo
 }
 
 /** Tile-based battle board for the game (fixed grid, click to move/target). */
-export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onTarget, onArea, onHoverUnit, onObject }: BoardProps) {
+export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onTarget, onArea, onHoverUnit, onObject, onSelect }: BoardProps) {
   const colors = useThemeColors();
   const [ref, size] = useSize();
   const { board } = game;
@@ -148,6 +159,22 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
     }
     return false;
   };
+  // The fog of war: what the party sees now, and what it remembers.
+  const lit = useMemo(() => (game.fog ? visibleNow(game) : null), [game]);
+  const fog = useMemo(() => {
+    if (!game.fog || !lit) return [];
+    const seen = new Set(game.seen ?? []);
+    const out: { x: number; y: number; dark: boolean }[] = [];
+    for (let y = 0; y < board.height; y++)
+      for (let x = 0; x < board.width; x++) {
+        const k = `${x},${y}`;
+        if (!seen.has(k)) out.push({ x, y, dark: true });
+        else if (!lit.has(k)) out.push({ x, y, dark: false });
+      }
+    return out;
+  }, [game.fog, game.seen, lit, board.width, board.height]);
+  /** Monsters show only when a hero can see them (and once they've been noticed). */
+  const shown = (u: Unit) => u.side === "party" || !lit || (!u.dormant && lit.has(key(u.pos))) || (!!u.dead && lit.has(key(u.pos)));
   const center = (c: Cell) => ({ x: c.x * cell + cell / 2, y: c.y * cell + cell / 2 });
   // Doorways are drawn as gaps in the wall; the doors and gates themselves go on top.
   const doorways = useMemo(() => new Set((game.objects ?? []).filter((o) => o.kind === "door" || o.kind === "gate").map((o) => key(o.pos))), [game.objects]);
@@ -206,11 +233,14 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
             <KonvaImage image={ink} width={width} height={height} />
           </Layer>
 
-          {/* Doors, traps, chests, the ways in and out */}
-          {game.objects?.length ? (
+          {/* Doors, traps, chests, the ways in and out, and the fog over what's not been seen */}
+          {game.objects?.length || fog.length ? (
             <Layer listening={false}>
-              {game.objects.map((o) => (
+              {game.objects?.map((o) => (
                 <MapObjectShape key={o.id} o={o} cell={cell} exitColor={colors.heal} />
+              ))}
+              {fog.map((f) => (
+                <Rect key={`f${f.x},${f.y}`} x={f.x * cell - 0.5} y={f.y * cell - 0.5} width={cell + 1} height={cell + 1} fill={INK} opacity={f.dark ? 1 : 0.42} />
               ))}
             </Layer>
           ) : null}
@@ -224,7 +254,7 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
                   <Text x={c.x * cell} y={c.y * cell} width={cell} height={cell} text="⇥" align="center" verticalAlign="middle" fontSize={cell * 0.5} fill={colors.heal} />
                 </Group>
               ))}
-            {[...reach.keys()].map((k) => {
+            {!game.explore && [...reach.keys()].map((k) => {
               const c = fromKey(k);
               return <Rect key={k} x={c.x * cell + 1} y={c.y * cell + 1} width={cell - 2} height={cell - 2} fill={withAlpha(colors.accent, 0.13)} cornerRadius={3} />;
             })}
@@ -263,6 +293,7 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
             {game.units
               // The slain leave the board once they've fallen.
               .filter((u) => !(u.dead && u.side === "enemy" && !fx.some((f) => f.kind === "fall" && f.unitId === u.id)))
+              .filter(shown)
               // Figures stand up out of their squares: the ones further down the map in front.
               .slice()
               .sort((a, b) => a.pos.y - b.pos.y)
@@ -278,7 +309,7 @@ export function GameBoard({ game, mode, interactive, fx, paths = {}, onMove, onT
                   inArea={!!area?.cells.some((c) => c.x === u.pos.x && c.y === u.pos.y)}
                   path={paths[u.id]}
                   fx={fx.filter((f) => "unitId" in f && f.unitId === u.id)}
-                  onClick={() => (targets.get(u.id) ? onTarget(u.id) : aimAt(u.pos))}
+                  onClick={() => (targets.get(u.id) ? onTarget(u.id) : aimAt(u.pos) || (game.explore && u.side === "party" && !u.dead && onSelect?.(u.id)))}
                   onHover={(on) => onHoverUnit(on ? u.id : null)}
                 />
               ))}

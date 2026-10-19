@@ -27,6 +27,8 @@ interface UiState {
   boardView: "iso" | "flat";
   /** The board from above: zoom over the size that fits the whole map (drag to look around). */
   boardZoom: number;
+  /** Exploring: the rest of the party walks along behind the hero you move. */
+  partyFollows: boolean;
   /** Battle order page on narrow screens: which pane is showing. */
   combatTab: CombatTab;
   /** Combatant pinned in the details panel; null = follow the active turn. */
@@ -65,6 +67,7 @@ export const useUi = create<UiState>()(
       dockMap: true,
       boardView: "flat",
       boardZoom: 1.6,
+      partyFollows: true,
       combatTab: "order",
       pinnedId: null,
       hoverId: null,

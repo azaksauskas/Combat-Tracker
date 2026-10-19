@@ -62,6 +62,10 @@ export interface Unit {
   wentDown?: boolean;
   /** The spare weapon is drawn (the main one is on the back). */
   wieldingSpare?: boolean;
+  /** A monster that hasn't noticed the party yet: out of the fight until a hero sees it. */
+  dormant?: boolean;
+  /** Lies in wait: only seen from 10 ft away, and strikes first when it is. */
+  ambush?: boolean;
 }
 
 /** What winning means, besides beating every foe. */
@@ -113,6 +117,8 @@ export interface MapObject {
   look?: PassageLook;
   /** Where it faces (doors: "h" runs left–right, "v" up–down). */
   dir?: "h" | "v";
+  /** Traps: heroes who already searched for it (each gets one try). */
+  searched?: string[];
 }
 
 /** Temporary effects from weapon masteries etc. */
@@ -150,6 +156,12 @@ export interface GameState {
   haul?: Haul;
   /** Keys the party found (their groups). */
   keys?: string[];
+  /** Fog of war: the heroes only see what's in their light, and discover the map as they go. */
+  fog?: boolean;
+  /** Squares the party has seen ("x,y"). */
+  seen?: string[];
+  /** Exploring: nobody is fighting, so there are no rounds; any hero can act, and the others follow. */
+  explore?: boolean;
 }
 
 export type GameEvent =

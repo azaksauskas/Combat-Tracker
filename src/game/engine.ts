@@ -25,7 +25,10 @@ import { GameError, type Effect, type GameEvent, type GameState, type MapObject,
  */
 
 export type Command =
-  | { type: "move"; unitId: string; to: Cell }
+  /** Move; while exploring, `follow` brings the rest of the party along behind. */
+  | { type: "move"; unitId: string; to: Cell; follow?: boolean }
+  /** Exploring: this hero takes the lead. */
+  | { type: "select"; unitId: string }
   /**
    * Use an action from the stat block. Single-target actions take
    * `targetId`; buffs may take several `targetIds`; area spells take a
@@ -96,7 +99,7 @@ const SPEED_ZERO = ["Grappled", "Restrained", "Paralyzed", "Petrified", "Stunned
 const has = (u: Unit, c: string) => u.conditions.includes(c);
 export const isAlive = (u: Unit) => !u.dead;
 /** Conscious and able to act. */
-export const canAct = (u: Unit) => !u.dead && u.hp > 0 && !INCAPACITATING.some((c) => has(u, c));
+export const canAct = (u: Unit) => !u.dead && !u.dormant && u.hp > 0 && !INCAPACITATING.some((c) => has(u, c));
 /** Standing creatures occupy their cell; the dead don't. */
 const occupies = (u: Unit) => !u.dead;
 
@@ -154,6 +157,7 @@ export function checkTarget(s: GameState, attackerId: string, actionId: string, 
   const no = (reason: string): TargetCheck => ({ ok: false, reason, advantage: "normal", reasons: [], cover: 0 });
   if (!a || !t || !action) return no("Unknown creature or action");
   if (t.dead) return no(`${t.name} is dead`);
+  if (t.dormant) return no(`Nobody has seen ${t.name} yet`);
   if (action.slot && (a.resources[`slot${action.slot}`] ?? 0) <= 0) return no(`No level ${action.slot} spell slots left`);
   const friendly = action.kind === "heal" || action.kind === "buff";
   if (friendly && t.side !== a.side) return no(`${action.name} is for your allies`);
@@ -290,6 +294,8 @@ function kill(ctx: Ctx, u: Unit) {
  */
 function takeDamage(ctx: Ctx, u: Unit, amount: number, detail: string, opts: { crit?: boolean; types?: string[] } = {}) {
   if (amount <= 0 || u.dead) return;
+  // Hurt from out of the dark: it knows the party is here now.
+  if (u.dormant) wake(ctx, [u]);
   // Turned undead snap out of it when they take damage.
   if (has(u, "Turned")) removeCondition(ctx, u, "Turned");
   // Getting hurt gives a hidden creature away.
@@ -709,6 +715,9 @@ function moveUnit(ctx: Ctx, u: Unit, to: Cell) {
   const travelled: Cell[] = [];
   let spent = 0;
   let from = u.pos;
+  const exploring = !!ctx.s.explore;
+  // Where the first thing found on the way (a trap, loot, a monster) was told: the walk is shown before it.
+  let found1 = -1;
   for (const step of found.path) {
     // Opportunity attacks from every enemy whose reach this step leaves.
     if (!u.turn.disengaged) {
@@ -729,18 +738,21 @@ function moveUnit(ctx: Ctx, u: Unit, to: Cell) {
     from = step;
     u.pos = { ...step };
     if (u.side === "party") {
+      const before = ctx.events.length;
       pickUp(ctx, u);
-      if (springTrap(ctx, u)) break;
+      const stop =
+        springTrap(ctx, u) ||
+        // Exploring in the dark: stop on spotting a trap ahead, or a monster.
+        (!!ctx.s.fog && look(ctx, u, found.path.slice(found.path.indexOf(step) + 1)));
+      if (found1 < 0 && ctx.events.length > before) found1 = before;
+      if (stop) break;
     }
   }
-  u.turn.movement = Math.max(0, u.turn.movement - spent);
-  ctx.events.push({ type: "move", unitId: u.id, path: travelled, cost: spent });
-  // A trap or a find comes after the move that led there.
-  const sprung = ctx.events.findIndex((e) => e.type === "object" && (e.what === "triggered" || e.what === "looted") && e.unitId === u.id);
-  if (sprung >= 0) {
-    const moved = ctx.events.pop()!;
-    ctx.events.splice(sprung, 0, moved);
-  }
+  // Walking while exploring is free; a fight that broke out on the way starts everyone fresh.
+  if (!(exploring && !ctx.s.explore)) u.turn.movement = Math.max(0, u.turn.movement - spent);
+  const moved: GameEvent = { type: "move", unitId: u.id, path: travelled, cost: spent };
+  if (found1 >= 0) ctx.events.splice(found1, 0, moved);
+  else ctx.events.push(moved);
   // Walking off lets go of whoever you were holding.
   for (const e of [...ctx.s.effects]) if (e.kind === "grapple" && e.source === u.id && distanceFt(u.pos, unit(ctx, e.target).pos) > 5) releaseGrapple(ctx, e.target);
 }
@@ -773,7 +785,8 @@ function startTurn(ctx: Ctx) {
     // Effects that last "until the start of X's next turn".
     tickEffects(ctx, u.id, "start");
 
-    if (u.dead) {
+    // The dead, and monsters that haven't joined the fight, have no turn.
+    if (u.dead || u.dormant) {
       advance(ctx);
       continue;
     }
@@ -1032,7 +1045,10 @@ function breakIn(ctx: Ctx, u: Unit, o: Draft<MapObject>, how: "pick" | "force") 
 function search(ctx: Ctx, u: Unit) {
   spend(u, "action");
   const roll = d20(ctx, skillBonus(u, "Perception", "wis"));
-  const found = (ctx.s.objects ?? []).filter((o) => o.kind === "trap" && o.hidden && o.armed && distanceFt(u.pos, o.pos) <= 30 && roll.total >= (o.dc ?? 12) && lineOfSight(ctx.s.board, u.pos, o.pos));
+  // Each hero gets one good look at each spot: searching again finds nothing new.
+  const near = (ctx.s.objects ?? []).filter((o) => o.kind === "trap" && o.hidden && o.armed && distanceFt(u.pos, o.pos) <= 30 && lineOfSight(ctx.s.board, u.pos, o.pos) && !o.searched?.includes(u.id));
+  for (const o of near) o.searched = [...(o.searched ?? []), u.id];
+  const found = near.filter((o) => roll.total >= (o.dc ?? 12));
   ctx.events.push({ type: "feature", unitId: u.id, name: "Search", detail: `Perception ${roll.total}: ${found.length ? `finds ${found.length === 1 ? "a trap" : `${found.length} traps`}` : "nothing"}` });
   for (const o of found) reveal(ctx, o, u);
 }
@@ -1088,9 +1104,158 @@ function throwItem(ctx: Ctx, u: Unit, itemId: string, targetId?: string, point?:
   makeAttack(ctx, u, t, attack);
 }
 
+// --- Exploring and the fog of war ------------------------------------------------------------
+
+/** How far the party's light reaches, in squares. */
+export const SIGHT = 8;
+/** Monsters lying in wait are only seen this close (squares). */
+const AMBUSH_SIGHT = 2;
+/** Feet a hero can walk in one go while exploring. */
+const EXPLORE_FT = 1000;
+
+const awake = (u: Unit) => !u.dead && !u.dormant;
+
+/** Squares a hero can see from where they stand. */
+export function visibleFrom(board: Board, from: Cell): Cell[] {
+  const out: Cell[] = [];
+  for (let y = Math.max(0, from.y - SIGHT); y <= Math.min(board.height - 1, from.y + SIGHT); y++)
+    for (let x = Math.max(0, from.x - SIGHT); x <= Math.min(board.width - 1, from.x + SIGHT); x++) {
+      const c = { x, y };
+      if (Math.hypot(x - from.x, y - from.y) <= SIGHT + 0.5 && (sameCell(c, from) || lineOfSight(board, from, c))) out.push(c);
+    }
+  return out;
+}
+
+/** What the party can see right now ("x,y"). */
+export function visibleNow(s: GameState): Set<string> {
+  const out = new Set<string>();
+  for (const u of s.units) if (u.side === "party" && !u.dead) for (const c of visibleFrom(s.board, u.pos)) out.add(key(c));
+  return out;
+}
+
+/** Can this hero see that monster? Ambushers hide until a hero is right on top of them. */
+const spots = (s: GameState, h: Unit, m: Unit) => {
+  const d = Math.max(Math.abs(h.pos.x - m.pos.x), Math.abs(h.pos.y - m.pos.y));
+  return d <= (m.ambush ? AMBUSH_SIGHT : SIGHT) && Math.hypot(h.pos.x - m.pos.x, h.pos.y - m.pos.y) <= SIGHT + 0.5 && lineOfSight(s.board, h.pos, m.pos);
+};
+
+/**
+ * A hero looks around after a step: notices traps close by (passive
+ * Perception) and monsters in the light. Returns true when the hero should
+ * stop: a trap now in plain sight on the way ahead, or a fight starting.
+ */
+function look(ctx: Ctx, h: Unit, ahead: Cell[]): boolean {
+  let stop = false;
+  for (const o of ctx.s.objects ?? []) {
+    if (o.kind !== "trap" || !o.hidden || !o.armed || distanceFt(h.pos, o.pos) > 10 || !lineOfSight(ctx.s.board, h.pos, o.pos)) continue;
+    const best = (ctx.s.units as Unit[]).filter((u) => u.side === "party" && canAct(u) && distanceFt(u.pos, o.pos) <= 10).reduce((n, u) => Math.max(n, 10 + skillBonus(u, "Perception", "wis")), 0);
+    if (best >= (o.dc ?? 12)) {
+      reveal(ctx, o, h);
+      if (ahead.some((c) => sameCell(c, o.pos))) stop = true;
+    }
+  }
+  const seen = (ctx.s.units as Unit[]).filter((m) => m.side === "enemy" && m.dormant && !m.dead && spots(ctx.s as GameState, h, m));
+  if (seen.length) {
+    wake(ctx, seen);
+    stop = true;
+  }
+  return stop;
+}
+
+/** Monsters notice the party: they and their friends close by join the fight. */
+function wake(ctx: Ctx, first: Unit[]) {
+  const s = ctx.s;
+  const ambush = first.some((m) => m.ambush);
+  const group = [...first];
+  for (let i = 0; i < group.length; i++)
+    for (const m of s.units as Unit[])
+      if (m.side === "enemy" && m.dormant && !m.dead && !group.includes(m) && distanceFt(m.pos, group[i]!.pos) <= 20 && lineOfSight(s.board, m.pos, group[i]!.pos)) group.push(m);
+  for (const m of group) m.dormant = false;
+  if (!s.explore) {
+    // More of them join a fight already going: they take their turns from the next round.
+    ctx.events.push({ type: "feature", unitId: group[0]!.id, name: "Joins the fight", detail: group.map((m) => m.name).join(", ") });
+    return;
+  }
+  s.explore = false;
+  const rest = group.slice(1).map((m) => m.name);
+  ctx.events.push({ type: "feature", unitId: group[0]!.id, name: ambush ? "Ambush!" : "Spotted!", detail: `${ambush ? "leaps out of hiding" : "has seen you"}${rest.length ? `, with ${rest.join(", ")}` : ""} — to arms` });
+  ctx.events.push({ type: "round", round: s.round });
+  // Everyone in the fight starts fresh. Ambushers strike first; otherwise initiative order.
+  for (const u of s.units as Unit[]) if (awake(u)) u.turn = { movement: u.speed, action: true, bonusAction: true, disengaged: false, sneakAttackUsed: false };
+  const firstUp = s.units.findIndex((u) => awake(u as Unit) && (!ambush || u.side === "enemy"));
+  s.turnIndex = Math.max(0, firstUp);
+  startTurn(ctx);
+}
+
+/** The heroes walk on behind the one who led, keeping close. */
+function follow(ctx: Ctx, leader: Unit) {
+  const s = ctx.s;
+  const others = (s.units as Unit[]).filter((u) => u.side === "party" && u.id !== leader.id && canAct(u)).sort((a, b) => distanceFt(a.pos, leader.pos) - distanceFt(b.pos, leader.pos));
+  for (const f of others) {
+    if (!s.explore || s.outcome) return;
+    if (distanceFt(f.pos, leader.pos) <= 10) continue;
+    f.turn.movement = EXPLORE_FT;
+    const reach = reachableCells(s.board, f.pos, EXPLORE_FT, pathOptions(s as GameState, f));
+    let best: { c: Cell; d: number; cost: number } | null = null;
+    for (const [k, cost] of reach) {
+      const [x, y] = k.split(",").map(Number);
+      const c = { x: x!, y: y! };
+      if (sameCell(c, leader.pos) || (s.fog && !s.seen?.includes(k))) continue;
+      const d = Math.max(Math.abs(c.x - leader.pos.x), Math.abs(c.y - leader.pos.y));
+      if (!best || d < best.d || (d === best.d && cost < best.cost)) best = { c, d, cost };
+    }
+    if (!best || sameCell(best.c, f.pos)) continue;
+    try {
+      moveUnit(ctx, f, best.c);
+    } catch {
+      // Can't get there: stays put.
+    }
+  }
+}
+
+/**
+ * After every command in a fogged map: the party sees what's in its light,
+ * a fight starts when a monster is seen, and when the last foe in the fight
+ * falls the party goes back to exploring.
+ */
+function settle(ctx: Ctx) {
+  const s = ctx.s;
+  if (s.outcome) return;
+  const seen = new Set(s.seen ?? []);
+  for (const k of visibleNow(s as GameState)) seen.add(k);
+  s.seen = [...seen];
+  if (s.explore) for (const h of s.units as Unit[]) if (h.side === "party" && !h.dead && h.hp > 0 && s.explore) look(ctx, h, []);
+  if (!s.explore && !(s.units as Unit[]).some((u) => u.side === "enemy" && awake(u) && u.hp > 0)) {
+    s.explore = true;
+    ctx.events.push({ type: "feature", unitId: s.units.find((u) => u.side === "party")!.id, name: "All clear", detail: "the fight is over; explore on" });
+    // Out of the fight, the fallen are tended to: stable, not dying.
+    for (const u of s.units as Unit[]) if (u.side === "party" && !u.dead && u.hp <= 0) u.death.stable = true;
+    s.effects = s.effects.filter((e) => e.kind === "bless" || e.kind === "faith");
+  }
+  if (s.explore) {
+    for (const u of s.units as Unit[])
+      if (u.side === "party") {
+        u.turn = { movement: EXPLORE_FT, action: true, bonusAction: true, disengaged: false, sneakAttackUsed: false };
+        u.reaction = true;
+      }
+    const cur = s.units[s.turnIndex] as Unit | undefined;
+    if (!cur || cur.side !== "party" || !canAct(cur)) {
+      const i = s.units.findIndex((u) => u.side === "party" && canAct(u as Unit));
+      if (i >= 0) s.turnIndex = i;
+    }
+  }
+}
+
 function run(ctx: Ctx, cmd: Command) {
   const s = ctx.s;
   if (s.outcome) throw new GameError("The battle is over");
+  if (s.explore) {
+    // No rounds while exploring: whichever hero the player picks acts.
+    const i = s.units.findIndex((x) => x.id === cmd.unitId && x.side === "party" && !x.dead);
+    if (i < 0) throw new GameError("Pick one of your heroes");
+    s.turnIndex = i;
+    if (cmd.type === "select" || cmd.type === "end-turn") return;
+  }
   const u = currentUnit(s as GameState) as Unit | undefined;
   if (!u || u.id !== cmd.unitId) throw new GameError("It's not that creature's turn");
   if (cmd.type === "retreat") return retreat(ctx, u);
@@ -1099,7 +1264,11 @@ function run(ctx: Ctx, cmd: Command) {
 
   switch (cmd.type) {
     case "move":
+      if (s.explore && s.fog && !s.seen?.includes(key(cmd.to))) throw new GameError("You haven't seen that far yet");
       moveUnit(ctx, u, cmd.to);
+      if (s.explore && cmd.follow) follow(ctx, u);
+      return;
+    case "select":
       return;
     case "action": {
       const action: StatAction | undefined = u.stats.actions.find((a) => a.id === cmd.actionId);
@@ -1387,6 +1556,7 @@ export function apply(state: GameState, cmd: Command, opts: { rng?: Rng } = {}):
     // Whatever happened (a kill by Graze, an opportunity attack, a failed
     // death save…), check for victory/defeat after every command.
     checkOutcome(ctx);
+    if (draft.fog) settle(ctx);
     if (!opts.rng) draft.rngSeed = seeded.seed();
   });
   return { state: next, events };
@@ -1409,6 +1579,9 @@ export interface UnitSetup {
   pos: Cell;
   /** Remaining uses of limited features; defaults to full. */
   resources?: Record<string, number>;
+  /** Not yet aware of the party (see Unit.dormant). */
+  dormant?: boolean;
+  ambush?: boolean;
 }
 
 /** Full uses of each limited feature a creature has. */
@@ -1433,6 +1606,8 @@ export interface GameOptions {
   stash?: Record<string, number>;
   /** Doors, traps, chests, the way in and out. */
   objects?: MapObject[];
+  /** Fog of war and exploring (see GameState.fog). */
+  fog?: boolean;
 }
 
 /** Rolls initiative (d20 + Dex, ties to higher Dex) and starts round 1. */
@@ -1465,6 +1640,8 @@ export function createGame(board: Board, setups: UnitSetup[], seed: number, opts
       dodging: false,
       concentration: null,
       resources: { ...defaultResources(x.stats), ...x.resources },
+      ...(x.dormant ? { dormant: true } : {}),
+      ...(x.ambush ? { ambush: true } : {}),
     };
   });
   units.sort((a, b) => b.initiative - a.initiative || b.stats.abilities.dex - a.stats.abilities.dex);
@@ -1480,6 +1657,13 @@ export function createGame(board: Board, setups: UnitSetup[], seed: number, opts
   const state = produce(initial, (draft) => {
     events.push({ type: "round", round: 1 });
     const ctx: Ctx = { s: draft, rng: mulberry32(draft.rngSeed).rng, events };
+    if (opts.fog) {
+      draft.fog = true;
+      draft.seen = [];
+      draft.explore = true;
+      settle(ctx);
+      return;
+    }
     // Sharp eyes spot some traps before anyone takes a step.
     for (const o of draft.objects ?? []) {
       if (o.kind !== "trap" || !o.hidden) continue;

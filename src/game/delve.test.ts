@@ -9,7 +9,7 @@ import { ARMORS, WEAPONS } from "./arsenal";
 describe("the delve", () => {
   it("has five levels, getting harder", () => {
     expect(DELVE.map((l) => l.n)).toEqual([1, 2, 3, 4, 5]);
-    expect(DELVE.some((l) => l.kind === "explore" && l.monsters.length === 0)).toBe(true);
+    expect(DELVE.some((l) => l.kind === "explore")).toBe(true);
     expect(DELVE.at(-1)!.kind).toBe("boss");
     for (let i = 1; i < DELVE.length; i++) expect(DELVE[i]!.trapDc).toBeGreaterThanOrEqual(DELVE[i - 1]!.trapDc);
   });
@@ -50,7 +50,7 @@ describe("the delve", () => {
 
       it("starts a battle that isn't over before it begins", () => {
         const { board, units, objects, objective } = levelSetup(level, PARTY);
-        const { state } = createGame(board, units, 3, { objects, objective });
+        const { state } = createGame(board, units, 3, { objects, objective, fog: true });
         expect(state.outcome).toBeNull();
         // Closed doors are walls now.
         for (const o of objects.filter((x) => x.kind === "door" || x.kind === "gate")) expect(state.board.walls).toContain(key(o.pos));
